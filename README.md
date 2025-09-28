@@ -14,26 +14,70 @@ pip install finbricklab
 
 ```python
 from datetime import date
-from finbricklab import Scenario, ABrick, LBrick, FBrick
+from finbricklab import Scenario, ABrick, LBrick
 
 # Create financial bricks
-cash = ABrick(id="cash", name="Main Cash", kind="a.cash",
-              spec={"initial_balance": 0.0, "interest_pa": 0.02})
+cash = ABrick(
+    id="cash", 
+    name="Main Cash", 
+    kind="a.cash",
+    spec={"initial_balance": 50000.0, "interest_pa": 0.02}
+)
 
-house = ABrick(id="house", name="Property", kind="a.property",
-               spec={"price": 420_000, "fees_pct": 0.095, "appreciation_pa": 0.02})
+house = ABrick(
+    id="house", 
+    name="Primary Residence", 
+    kind="a.property_discrete",
+    spec={
+        "initial_value": 400000.0,
+        "appreciation_pa": 0.03,
+        "sell_on_window_end": False
+    }
+)
 
-mortgage = LBrick(id="mortgage", name="Home Loan", kind="l.mortgage.annuity",
-                  links={"principal": {"from_house": "house"}},
-                  spec={"rate_pa": 0.034, "term_months": 300})
+mortgage = LBrick(
+    id="mortgage", 
+    name="Home Loan", 
+    kind="l.mortgage.annuity",
+    links={"principal": {"from_house": "house"}},
+    spec={
+        "rate_pa": 0.034, 
+        "term_months": 300,
+        "loan_to_value": 0.8
+    }
+)
 
 # Create and run scenario
-scenario = Scenario(id="demo", name="House Purchase", 
-                   bricks=[cash, house, mortgage])
-results = scenario.run(start=date(2026, 1, 1), months=360)
+scenario = Scenario(
+    id="demo", 
+    name="House Purchase Demo", 
+    bricks=[cash, house, mortgage]
+)
+results = scenario.run(start=date(2026, 1, 1), months=12)
 
 # View results
-print(results["totals"].head())
+print("Scenario completed successfully!")
+print(f"Final cash balance: ${results['totals']['cash_balance'][-1]:,.2f}")
+print(f"Final house value: ${results['totals']['asset_value'][-1]:,.2f}")
+print(f"Final mortgage balance: ${results['totals']['debt_balance'][-1]:,.2f}")
+```
+
+### Using the CLI
+
+You can also use the command-line interface:
+
+```bash
+# Generate an example scenario
+finbrick example > my_scenario.json
+
+# Validate the scenario
+finbrick validate -i my_scenario.json
+
+# Run the scenario
+finbrick run -i my_scenario.json -o results.json --months 12
+
+# View results
+cat results.json
 ```
 
 ## Concepts
@@ -58,16 +102,16 @@ Brick behavior is determined by their `kind` discriminator and associated strate
 
 **Assets:**
 - `a.cash`: Cash account with interest
-- `a.property`: Real estate with appreciation  
-- `a.invest.etf`: ETF investment with price drift
+- `a.property_discrete`: Real estate with appreciation  
+- `a.etf_unitized`: ETF investment with unitized pricing
 
 **Liabilities:**
 - `l.mortgage.annuity`: Fixed-rate mortgage with annuity payments
 
 **Flows:**
 - `f.transfer.lumpsum`: One-time lump sum transfer
-- `f.income.salary`: Fixed monthly income with escalation
-- `f.expense.living`: Fixed monthly expenses
+- `f.income.fixed`: Fixed monthly income with escalation
+- `f.expense.fixed`: Fixed monthly expenses
 
 ## Roadmap
 

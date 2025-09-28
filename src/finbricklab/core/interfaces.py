@@ -1,137 +1,88 @@
 """
 Strategy interface protocols for FinBrickLab.
+Defines the contracts that all strategies must satisfy.
 """
 
 from __future__ import annotations
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING, runtime_checkable
 from .context import ScenarioContext
 from .results import BrickOutput
 
+if TYPE_CHECKING:
+    # Only imported for type checking to avoid runtime cycles
+    from .bricks import ABrick, LBrick, FBrick
 
+
+@runtime_checkable
 class IValuationStrategy(Protocol):
     """
-    Protocol for asset valuation strategies.
-    
-    This protocol defines the interface that all asset valuation strategies must implement.
-    Asset strategies handle the valuation and cash flow generation for assets like cash,
-    property, investments, etc.
-    
-    Methods:
-        prepare: Initialize the strategy with brick parameters and context
-        simulate: Generate the simulation results for the asset
+    Contract for ASSET valuation strategies (family='a').
+    Responsibilities: produce asset values over time and any internal cash flows.
     """
-    
+
     def prepare(self, brick: "ABrick", ctx: ScenarioContext) -> None:
         """
-        Prepare the strategy for simulation.
-        
-        This method is called once before simulation begins to validate parameters,
-        perform any necessary calculations, and set up the strategy state.
-        
-        Args:
-            brick: The asset brick being simulated
-            ctx: The simulation context containing time index and registry
+        Validate inputs, compute derived params, and initialize any internal state.
+        Called exactly once before simulation.
         """
         ...
-    
+
     def simulate(self, brick: "ABrick", ctx: ScenarioContext) -> BrickOutput:
         """
-        Simulate the asset over the entire time period.
-        
-        This method generates the complete simulation results for the asset,
-        including cash flows, asset values, and any relevant events.
-        
-        Args:
-            brick: The asset brick being simulated
-            ctx: The simulation context containing time index and registry
-            
+        Run the full-period simulation for this asset brick.
+
         Returns:
-            BrickOutput containing cash flows, asset values, and events
+            BrickOutput with fields:
+              - cash_in:    np.ndarray[T]
+              - cash_out:   np.ndarray[T]
+              - asset_value: np.ndarray[T]
+              - debt_balance: np.ndarray[T] (usually zeros for assets)
+              - events:     list[Event]
         """
         ...
 
 
+@runtime_checkable
 class IScheduleStrategy(Protocol):
     """
-    Protocol for liability scheduling strategies.
-    
-    This protocol defines the interface that all liability scheduling strategies must implement.
-    Liability strategies handle the payment schedules and balance tracking for debts like
-    mortgages, loans, credit cards, etc.
-    
-    Methods:
-        prepare: Initialize the strategy with brick parameters and context
-        simulate: Generate the simulation results for the liability
+    Contract for LIABILITY schedule strategies (family='l').
+    Responsibilities: produce debt balances and payment schedules over time.
     """
-    
+
     def prepare(self, brick: "LBrick", ctx: ScenarioContext) -> None:
-        """
-        Prepare the strategy for simulation.
-        
-        This method is called once before simulation begins to validate parameters,
-        perform any necessary calculations, and set up the strategy state.
-        
-        Args:
-            brick: The liability brick being simulated
-            ctx: The simulation context containing time index and registry
-        """
+        """Validate inputs and initialize internal state prior to simulate()."""
         ...
-    
+
     def simulate(self, brick: "LBrick", ctx: ScenarioContext) -> BrickOutput:
         """
-        Simulate the liability over the entire time period.
-        
-        This method generates the complete simulation results for the liability,
-        including payment schedules, debt balances, and any relevant events.
-        
-        Args:
-            brick: The liability brick being simulated
-            ctx: The simulation context containing time index and registry
-            
+        Run the full-period schedule simulation.
+
         Returns:
-            BrickOutput containing cash flows, debt balances, and events
+            BrickOutput (same schema). For liabilities, debt_balance is populated;
+            asset_value is typically zeros.
         """
         ...
 
 
+@runtime_checkable
 class IFlowStrategy(Protocol):
     """
-    Protocol for cash flow strategies.
-    
-    This protocol defines the interface that all cash flow strategies must implement.
-    Flow strategies handle the generation of cash flows for income, expenses,
-    transfers, and other cash flow events.
-    
-    Methods:
-        prepare: Initialize the strategy with brick parameters and context
-        simulate: Generate the simulation results for the flow
+    Contract for CASH FLOW strategies (family='f').
+    Responsibilities: generate external cash inflows/outflows over time.
     """
-    
+
     def prepare(self, brick: "FBrick", ctx: ScenarioContext) -> None:
-        """
-        Prepare the strategy for simulation.
-        
-        This method is called once before simulation begins to validate parameters,
-        perform any necessary calculations, and set up the strategy state.
-        
-        Args:
-            brick: The flow brick being simulated
-            ctx: The simulation context containing time index and registry
-        """
+        """Validate inputs and initialize internal state prior to simulate()."""
         ...
-    
+
     def simulate(self, brick: "FBrick", ctx: ScenarioContext) -> BrickOutput:
         """
-        Simulate the flow over the entire time period.
-        
-        This method generates the complete simulation results for the flow,
-        including cash inflows/outflows and any relevant events.
-        
-        Args:
-            brick: The flow brick being simulated
-            ctx: The simulation context containing time index and registry
-            
+        Run the full-period flow simulation.
+
         Returns:
-            BrickOutput containing cash flows and events
+            BrickOutput (same schema). For pure flows, asset_value/debt_balance are zeros.
         """
         ...
+
+
+__all__ = ["IValuationStrategy", "IScheduleStrategy", "IFlowStrategy"]
