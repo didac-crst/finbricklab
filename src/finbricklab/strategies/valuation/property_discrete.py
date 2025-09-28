@@ -38,7 +38,8 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         """
         Prepare the property valuation strategy.
         
-        Validates that all required parameters are present.
+        Validates that all required parameters are present and normalizes
+        parameter names for backward compatibility.
         
         Args:
             brick: The property brick
@@ -47,7 +48,20 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         Raises:
             AssertionError: If required parameters are missing
         """
-        required_params = ["price", "fees_pct", "appreciation_pa"]
+        # Normalize property value parameter (initial_value preferred, price deprecated)
+        if "initial_value" not in brick.spec:
+            if "price" in brick.spec:
+                import warnings
+                warnings.warn(
+                    "Property spec 'price' is deprecated; use 'initial_value'.",
+                    DeprecationWarning, stacklevel=2
+                )
+                brick.spec["initial_value"] = brick.spec["price"]
+            else:
+                raise AssertionError("Property needs 'initial_value' (or legacy 'price')")
+        
+        # Validate required parameters
+        required_params = ["initial_value", "fees_pct", "appreciation_pa"]
         for param in required_params: 
             assert param in brick.spec, f"Missing required parameter: {param}"
 
@@ -72,8 +86,8 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         value    = np.zeros(T)
 
         # Extract parameters
-        price = float(brick.spec["price"])
-        fees  = price * float(brick.spec["fees_pct"])
+        initial_value = float(brick.spec["initial_value"])
+        fees = initial_value * float(brick.spec["fees_pct"])
         
         # Calculate fees financing (new logic with percentage support)
         fees_fin_pct = float(brick.spec.get("fees_financed_pct", 1.0 if brick.spec.get("finance_fees") else 0.0))
@@ -81,20 +95,20 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         fees_cash = fees * (1.0 - fees_fin_pct)
 
         # t0 settlement: pay seller + cash portion of fees ONCE
-        cash_out[0] = price + fees_cash
+        cash_out[0] = initial_value + fees_cash
 
         # Calculate monthly appreciation rate
         r_m = (1 + float(brick.spec["appreciation_pa"])) ** (1/12) - 1
         
         # Set initial value and calculate appreciation
-        value[0] = price
+        value[0] = initial_value
         for t in range(1, T): 
             value[t] = value[t-1] * (1 + r_m)
 
         
         # Create time-stamped events
         events = [
-            Event(ctx.t_index[0], "purchase", f"Purchase {brick.name}", {"price": price}),
+            Event(ctx.t_index[0], "purchase", f"Purchase {brick.name}", {"price": initial_value}),
         ]
         if fees_cash > 0:
             events.append(Event(ctx.t_index[0], "fees_cash", f"Fees paid from cash: €{fees_cash:,.2f}",

@@ -14,5 +14,7 @@ warnings.warn(
     stacklevel=2
 )
 
-# Import everything from finbricklab to maintain compatibility
-from finbricklab import *
+# Import specific items from finbricklab to maintain compatibility
+from finbricklab import Scenario, ABrick, LBrick, FBrick, kinds
+
+__all__ = ["Scenario", "ABrick", "LBrick", "FBrick", "kinds"]

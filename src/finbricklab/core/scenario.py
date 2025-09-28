@@ -116,6 +116,17 @@ class Scenario:
         # Wire strategies to bricks based on their kind discriminators
         wire_strategies(self.bricks)
         
+        # Normalize mortgage start_date to activation window for backward compatibility
+        for b in self.bricks:
+            if b.kind.startswith("l.mortgage") and "start_date" in b.spec:
+                if not hasattr(b, 'start_date') or b.start_date is None:
+                    from datetime import datetime
+                    start_date_str = b.spec.pop("start_date")
+                    if isinstance(start_date_str, str):
+                        b.start_date = datetime.fromisoformat(start_date_str).date()
+                    else:
+                        b.start_date = start_date_str
+        
         # Prepare all bricks for simulation (validate parameters, setup state)
         for b in self.bricks: 
             b.prepare(ctx)
@@ -435,17 +446,18 @@ class Scenario:
                 if not isinstance(house_brick, ABrick) or house_brick.kind != K.A_PROPERTY_DISCRETE:
                     raise ConfigError(f"PrincipalLink from_house must reference a property: {principal_link.from_house}")
                 
-                # Extract house data
+                # Extract house data (support both initial_value and price for backward compatibility)
                 house_spec = house_brick.spec
-                price = float(house_spec.get("price", 0))
+                initial_value = house_spec.get("initial_value") or house_spec.get("price", 0)
+                initial_value = float(initial_value)
                 down_payment = float(house_spec.get("down_payment", 0))
                 fees_pct = float(house_spec.get("fees_pct", 0))
                 finance_fees = bool(house_spec.get("finance_fees", False))
                 
                 # Calculate principal
-                principal = price - down_payment
+                principal = initial_value - down_payment
                 if finance_fees:
-                    principal += price * fees_pct
+                    principal += initial_value * fees_pct
                 
                 # Store resolved principal for later use
                 brick.spec["principal"] = principal

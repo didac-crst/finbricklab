@@ -3,7 +3,7 @@ name = "finbricklab"
 version = "0.1.0"
 description = "Strategy-Driven Brick Architecture for Financial Scenarios"
 authors = ["FinBrickLab Team"]
-license = "MIT"
+license = "Apache-2.0"
 readme = "README.md"
 homepage = "https://github.com/your-org/finbricklab"
 repository = "https://github.com/your-org/finbricklab"
@@ -12,7 +12,7 @@ keywords = ["finance", "modeling", "scenario", "simulation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

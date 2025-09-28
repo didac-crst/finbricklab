@@ -20,16 +20,16 @@ def register_defaults():
     Registered Strategies:
         Assets:
             - 'a.cash': Cash account with interest
-            - 'a.property': Real estate with appreciation
-            - 'a.invest.etf': ETF investment with price drift
+            - 'a.property_discrete': Real estate with appreciation
+            - 'a.etf_unitized': ETF investment with unitized pricing
             
         Liabilities:
             - 'l.mortgage.annuity': Fixed-rate mortgage with annuity payments
             
         Flows:
             - 'f.transfer.lumpsum': One-time lump sum transfer
-            - 'f.income.salary': Fixed monthly income
-            - 'f.expense.living': Fixed monthly expenses
+            - 'f.income.fixed': Fixed recurring income
+            - 'f.expense.fixed': Fixed recurring expense
             
     Note:
         This function is automatically called when the module is imported.

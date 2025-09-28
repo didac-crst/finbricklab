@@ -16,68 +16,72 @@ pip install finbricklab
 from datetime import date
 from finbricklab import Scenario, ABrick, LBrick
 
-# Create financial bricks
+# 1) Bricks
 cash = ABrick(
-    id="cash", 
-    name="Main Cash", 
+    id="cash",
+    name="Main Cash",
     kind="a.cash",
-    spec={"initial_balance": 50000.0, "interest_pa": 0.02}
+    spec={"initial_balance": 50_000.0, "interest_pa": 0.02}
 )
 
 house = ABrick(
-    id="house", 
-    name="Primary Residence", 
+    id="house",
+    name="Primary Residence",
     kind="a.property_discrete",
     spec={
-        "initial_value": 400000.0,
+        "initial_value": 400_000.0,
+        "fees_pct": 0.05,
         "appreciation_pa": 0.03,
         "sell_on_window_end": False
     }
 )
 
 mortgage = LBrick(
-    id="mortgage", 
-    name="Home Loan", 
+    id="mortgage",
+    name="Fixed Mortgage",
     kind="l.mortgage.annuity",
-    links={"principal": {"from_house": "house"}},
     spec={
-        "rate_pa": 0.034, 
-        "term_months": 300,
-        "loan_to_value": 0.8
+        # Either provide principal directly...
+        "principal": 320_000.0,
+        # ...or link to the house (if your engine supports links)
+        # "links": {"principal": {"type": "from_house", "house_id": "house", "ltv": 0.8}},
+
+        "rate_pa": 0.035,
+        "term_months": 360,
+        "start_date": "2026-01-01",
+        # Optional: prepayments, fees, etc.
     }
 )
 
-# Create and run scenario
+# 2) Scenario
 scenario = Scenario(
-    id="demo", 
-    name="House Purchase Demo", 
+    id="demo",
+    name="House Purchase Demo",
     bricks=[cash, house, mortgage]
 )
+
+# 3) Run
 results = scenario.run(start=date(2026, 1, 1), months=12)
 
-# View results
-print("Scenario completed successfully!")
-print(f"Final cash balance: ${results['totals']['cash_balance'][-1]:,.2f}")
-print(f"Final house value: ${results['totals']['asset_value'][-1]:,.2f}")
-print(f"Final mortgage balance: ${results['totals']['debt_balance'][-1]:,.2f}")
+# 4) Inspect
+totals = results["totals"]
+print("Scenario completed.")
+print(f"Final cash balance: {totals['cash'].iloc[-1]:,.2f}")
+print(f"Final asset value:  {totals['assets'].iloc[-1]:,.2f}")
+print(f"Final debt balance: {totals['liabilities'].iloc[-1]:,.2f}")
 ```
 
 ### Using the CLI
 
-You can also use the command-line interface:
-
 ```bash
-# Generate an example scenario
-finbrick example > my_scenario.json
+# Print a sample scenario
+finbrick example > demo.json
 
-# Validate the scenario
-finbrick validate -i my_scenario.json
+# Run it for one year starting Jan 2026
+finbrick run -i demo.json -o results.json --start 2026-01-01 --months 12
 
-# Run the scenario
-finbrick run -i my_scenario.json -o results.json --months 12
-
-# View results
-cat results.json
+# Validate a scenario (errors by default; use --warn to downgrade)
+finbrick validate -i demo.json
 ```
 
 ## Concepts
@@ -141,4 +145,4 @@ poetry build
 
 ## License
 
-MIT License - see LICENSE file for details.
+Apache-2.0 License - see LICENSE file for details.
