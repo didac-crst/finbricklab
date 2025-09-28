@@ -357,7 +357,8 @@ class TestCashRoutingIntegration:
             name="Property",
             kind=K.A_PROPERTY_DISCRETE,
             spec={
-                "initial_value": 400000.0,
+                "price": 400000.0,
+                "fees_pct": 0.05,
                 "appreciation_pa": 0.03,
                 "sell_on_window_end": False
             }
