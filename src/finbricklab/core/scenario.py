@@ -82,92 +82,138 @@ class Scenario:
             The simulation assumes exactly one cash account to receive all routed flows.
             Cash flows from all other bricks are automatically routed to this account.
         """
-        # Create time index for the simulation period
+        # Initialize simulation context
+        t_index, ctx = self._initialize_simulation(start, months)
+        
+        # Prepare bricks for simulation
+        self._prepare_simulation(ctx)
+        
+        # Simulate all bricks and route cash flows
+        outputs = self._simulate_bricks(ctx, t_index)
+        
+        # Aggregate results into summary statistics
+        totals = self._aggregate_results(outputs, t_index, include_cash)
+        
+        # Store for convenience methods
+        self._last_totals = totals
+        self._last_results = {"outputs": outputs, "totals": totals, "views": ScenarioResults(totals), "_scenario_bricks": self.bricks}
+        
+        return self._last_results
+    
+    def _initialize_simulation(self, start: date, months: int) -> tuple[np.ndarray, ScenarioContext]:
+        """Initialize the simulation context and resolve mortgage links."""
         t_index = month_range(start, months)
         ctx = ScenarioContext(t_index=t_index, currency=self.currency,
                               registry={b.id: b for b in self.bricks})
-
+        
         # Resolve mortgage links and validate settlement buckets
         self._resolve_mortgage_links()
         
+        return t_index, ctx
+    
+    def _prepare_simulation(self, ctx: ScenarioContext) -> None:
+        """Wire strategies and prepare all bricks for simulation."""
         # Wire strategies to bricks based on their kind discriminators
         wire_strategies(self.bricks)
-
+        
         # Prepare all bricks for simulation (validate parameters, setup state)
         for b in self.bricks: 
             b.prepare(ctx)
-
-        # Simulate all non-cash bricks first, then route cash flows to cash account
+    
+    def _simulate_bricks(self, ctx: ScenarioContext, t_index: np.ndarray) -> Dict[str, BrickOutput]:
+        """Simulate all bricks and route cash flows to cash account."""
         outputs: Dict[str, BrickOutput] = {}
+        
+        # Find the cash account brick
         cash_ids = [b.id for b in self.bricks if isinstance(b, ABrick) and b.kind == "a.cash"]
         assert len(cash_ids) == 1, "Scenario expects exactly one cash account brick (kind='a.cash')"
         cash_id = cash_ids[0]
-
+        
         # Accumulate cash flows from all non-cash bricks
-        routed_in  = np.zeros(len(t_index))
+        routed_in = np.zeros(len(t_index))
         routed_out = np.zeros(len(t_index))
-
+        
+        # Simulate all non-cash bricks
         for b in self.bricks:
-            if b.id == cash_id: 
+            if b.id == cash_id:
                 continue  # Skip cash account for now
             
-            # Handle delayed brick activation
-            if b.start_date is not None:
-                # Find the start index for this brick
-                start_idx = self._find_start_index(b.start_date, t_index)
-                if start_idx is None:
-                    # Brick starts after simulation period, skip it
-                    continue
-            else:
-                start_idx = 0  # Brick starts at beginning of simulation
-            
-            # Create a modified context for this brick with delayed start
-            brick_ctx = self._create_delayed_context(ctx, start_idx)
-            
-            out = b.simulate(brick_ctx)
-            
-            # Shift the output arrays to the correct time positions
-            if start_idx > 0:
-                shifted_out = self._shift_output(out, start_idx, len(t_index))
-                outputs[b.id] = shifted_out
-            else:
-                outputs[b.id] = out
-            
-            # Apply equity-neutral activation window mask
-            mask = active_mask(t_index, b.start_date, b.end_date, b.duration_m)
-            _apply_window_equity_neutral(outputs[b.id], mask)
-            
-            # Add window end event if brick has an end
-            if b.end_date is not None or b.duration_m is not None:
-                end_idx = np.where(mask)[0]
-                if len(end_idx) > 0:
-                    last_active_idx = end_idx[-1]
-                    outputs[b.id]["events"].append(
-                        Event(t_index[last_active_idx], "window_end", 
-                              f"Brick '{b.name}' window ended", {"brick_id": b.id})
-                    )
+            # Simulate this brick
+            brick_output = self._simulate_single_brick(b, ctx, t_index)
+            outputs[b.id] = brick_output
             
             # Accumulate cash flows for routing
-            routed_in  += outputs[b.id]["cash_in"]
-            routed_out += outputs[b.id]["cash_out"]
-
+            routed_in += brick_output["cash_in"]
+            routed_out += brick_output["cash_out"]
+        
         # Route accumulated cash flows to the cash account
         cash_brick = ctx.registry[cash_id]
-        cash_brick.spec.setdefault("external_in",  np.zeros(len(t_index)))
+        cash_brick.spec.setdefault("external_in", np.zeros(len(t_index)))
         cash_brick.spec.setdefault("external_out", np.zeros(len(t_index)))
-        cash_brick.spec["external_in"]  = routed_in
+        cash_brick.spec["external_in"] = routed_in
         cash_brick.spec["external_out"] = routed_out
-
+        
         # Simulate the cash account with all routed flows
         outputs[cash_id] = cash_brick.simulate(ctx)
-
-        # Aggregate results into summary statistics
-        cash_in_tot   = sum(o["cash_in"] for o in outputs.values())
-        cash_out_tot  = sum(o["cash_out"] for o in outputs.values())
-        assets_tot    = sum(o["asset_value"] for o in outputs.values())
+        
+        return outputs
+    
+    def _simulate_single_brick(self, brick: FinBrickABC, ctx: ScenarioContext, t_index: np.ndarray) -> BrickOutput:
+        """Simulate a single brick with delayed activation and window handling."""
+        # Handle delayed brick activation
+        if brick.start_date is not None:
+            start_idx = self._find_start_index(brick.start_date, t_index)
+            if start_idx is None:
+                # Brick starts after simulation period, return empty output
+                return self._create_empty_output(len(t_index))
+        else:
+            start_idx = 0  # Brick starts at beginning of simulation
+        
+        # Create a modified context for this brick with delayed start
+        brick_ctx = self._create_delayed_context(ctx, start_idx)
+        
+        # Simulate the brick
+        out = brick.simulate(brick_ctx)
+        
+        # Shift the output arrays to the correct time positions
+        if start_idx > 0:
+            out = self._shift_output(out, start_idx, len(t_index))
+        
+        # Apply equity-neutral activation window mask
+        mask = active_mask(t_index, brick.start_date, brick.end_date, brick.duration_m)
+        _apply_window_equity_neutral(out, mask)
+        
+        # Add window end event if brick has an end
+        if brick.end_date is not None or brick.duration_m is not None:
+            end_idx = np.where(mask)[0]
+            if len(end_idx) > 0:
+                last_active_idx = end_idx[-1]
+                out["events"].append(
+                    Event(t_index[last_active_idx], "window_end", 
+                          f"Brick '{brick.name}' window ended", {"brick_id": brick.id})
+                )
+        
+        return out
+    
+    def _create_empty_output(self, length: int) -> BrickOutput:
+        """Create an empty BrickOutput for bricks that don't participate in simulation."""
+        return BrickOutput(
+            cash_in=np.zeros(length),
+            cash_out=np.zeros(length),
+            asset_value=np.zeros(length),
+            debt_balance=np.zeros(length),
+            events=[]
+        )
+    
+    def _aggregate_results(self, outputs: Dict[str, BrickOutput], t_index: np.ndarray, include_cash: bool) -> pd.DataFrame:
+        """Aggregate simulation results into summary statistics."""
+        # Calculate totals
+        cash_in_tot = sum(o["cash_in"] for o in outputs.values())
+        cash_out_tot = sum(o["cash_out"] for o in outputs.values())
+        assets_tot = sum(o["asset_value"] for o in outputs.values())
         liabilities_tot = sum(o["debt_balance"] for o in outputs.values())
-        net_cf        = cash_in_tot - cash_out_tot
-        equity        = assets_tot - liabilities_tot
+        net_cf = cash_in_tot - cash_out_tot
+        equity = assets_tot - liabilities_tot
         
         # Calculate non-cash assets (total assets minus cash)
         cash_assets = None
@@ -177,7 +223,7 @@ class Scenario:
                 cash_assets = s if cash_assets is None else (cash_assets + s)
         cash_assets = cash_assets if cash_assets is not None else np.zeros(len(t_index))
         non_cash_assets = assets_tot - cash_assets
-
+        
         # Create summary DataFrame with monthly totals
         totals = pd.DataFrame({
             "t": t_index, 
@@ -185,8 +231,8 @@ class Scenario:
             "cash_out": cash_out_tot,
             "net_cf": net_cf, 
             "assets": assets_tot, 
-            "liabilities": liabilities_tot,  # Changed from "debt" to "liabilities"
-            "non_cash": non_cash_assets,     # New column for non-cash assets
+            "liabilities": liabilities_tot,
+            "non_cash": non_cash_assets,
             "equity": equity
         }).set_index("t")
         
@@ -199,13 +245,7 @@ class Scenario:
             totals.index = totals.index.to_period("M")
         
         # Finalize totals with proper identities and assertions
-        totals = finalize_totals(totals)
-        
-        # Store for convenience methods
-        self._last_totals = totals
-        self._last_results = {"outputs": outputs, "totals": totals, "views": ScenarioResults(totals), "_scenario_bricks": self.bricks}
-        
-        return self._last_results
+        return finalize_totals(totals)
     
     def aggregate_totals(self, freq: str = "Q", **kwargs) -> pd.DataFrame:
         """
@@ -392,7 +432,7 @@ class Scenario:
                 house_brick = brick_registry.get(principal_link.from_house)
                 if not house_brick:
                     raise ConfigError(f"PrincipalLink references unknown house: {principal_link.from_house}")
-                if not isinstance(house_brick, ABrick) or house_brick.kind != K.A_PROPERTY:
+                if not isinstance(house_brick, ABrick) or house_brick.kind != K.A_PROPERTY_DISCRETE:
                     raise ConfigError(f"PrincipalLink from_house must reference a property: {principal_link.from_house}")
                 
                 # Extract house data
@@ -688,13 +728,13 @@ def validate_run(res: dict, bricks=None, mode: str = "raise", tol: float = 1e-6)
                 brick = b
                 break
         
-        if brick and hasattr(brick, 'kind') and brick.kind == K.A_INV_ETF:
-            asset_value = output["asset_value"]
-            # We can't directly check units, but we can check for negative asset values
-            if (asset_value < -tol).any():
-                t_idx = int(np.where(asset_value < -tol)[0][0])
-                val = float(asset_value[t_idx])
-                fails.append(f"ETF units negative: '{brick_id}' has negative asset value €{val:,.2f} at month {t_idx}")
+            if brick and hasattr(brick, 'kind') and brick.kind == K.A_ETF_UNITIZED:
+                asset_value = output["asset_value"]
+                # We can't directly check units, but we can check for negative asset values
+                if (asset_value < -tol).any():
+                    t_idx = int(np.where(asset_value < -tol)[0][0])
+                    val = float(asset_value[t_idx])
+                    fails.append(f"ETF units negative: '{brick_id}' has negative asset value €{val:,.2f} at month {t_idx}")
     
     # 8) Income escalator monotonicity (when annual_step_pct >= 0)
     for brick_id, output in outputs.items():
@@ -705,12 +745,12 @@ def validate_run(res: dict, bricks=None, mode: str = "raise", tol: float = 1e-6)
                 brick = b
                 break
         
-        if brick and hasattr(brick, 'kind') and brick.kind == K.F_INCOME:
-            annual_step_pct = float((brick.spec or {}).get("annual_step_pct", 0.0))
-            if annual_step_pct >= 0:
-                cash_in = output["cash_in"]
-                # Get activation mask to only check within active periods
-                mask = active_mask(res["totals"].index, brick.start_date, brick.end_date, brick.duration_m)
+            if brick and hasattr(brick, 'kind') and brick.kind == K.F_INCOME_FIXED:
+                annual_step_pct = float((brick.spec or {}).get("annual_step_pct", 0.0))
+                if annual_step_pct >= 0:
+                    cash_in = output["cash_in"]
+                    # Get activation mask to only check within active periods
+                    mask = active_mask(res["totals"].index, brick.start_date, brick.end_date, brick.duration_m)
                 
                 # Check that income is non-decreasing within active periods
                 for t in range(1, len(cash_in)):

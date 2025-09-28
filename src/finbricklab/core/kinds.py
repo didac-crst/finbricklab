@@ -15,16 +15,16 @@ class K:
     
     # Asset kinds
     A_CASH = "a.cash"
-    A_PROPERTY = "a.property"
-    A_INV_ETF = "a.invest.etf"
+    A_PROPERTY_DISCRETE = "a.property_discrete"
+    A_ETF_UNITIZED = "a.etf_unitized"
     
     # Liability kinds
     L_MORT_ANN = "l.mortgage.annuity"
     
     # Flow kinds
-    F_TRANSFER = "f.transfer.lumpsum"
-    F_INCOME = "f.income.salary"
-    F_EXP_LIVING = "f.expense.living"
+    F_TRANSFER_LUMP_SUM = "f.transfer.lumpsum"
+    F_INCOME_FIXED = "f.income.fixed"
+    F_EXPENSE_FIXED = "f.expense.fixed"
     
     # Validation: ensure all registered kinds are covered
     @classmethod
@@ -32,10 +32,10 @@ class K:
         """Return all defined kind constants."""
         return [
             cls.A_CASH,
-            cls.A_PROPERTY, 
-            cls.A_INV_ETF,
+            cls.A_PROPERTY_DISCRETE, 
+            cls.A_ETF_UNITIZED,
             cls.L_MORT_ANN,
-            cls.F_TRANSFER,
-            cls.F_INCOME,
-            cls.F_EXP_LIVING,
+            cls.F_TRANSFER_LUMP_SUM,
+            cls.F_INCOME_FIXED,
+            cls.F_EXPENSE_FIXED,
         ]

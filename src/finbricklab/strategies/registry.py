@@ -37,14 +37,14 @@ def register_defaults():
         dictionaries directly.
     """
     # Register asset valuation strategies
-    ValuationRegistry[K.A_CASH]      = ValuationCash()
-    ValuationRegistry[K.A_PROPERTY]  = ValuationPropertyDiscrete()
-    ValuationRegistry[K.A_INV_ETF]   = ValuationETFUnitized()
+    ValuationRegistry[K.A_CASH]              = ValuationCash()
+    ValuationRegistry[K.A_PROPERTY_DISCRETE] = ValuationPropertyDiscrete()
+    ValuationRegistry[K.A_ETF_UNITIZED]      = ValuationETFUnitized()
     
     # Register liability schedule strategies
-    ScheduleRegistry[K.L_MORT_ANN]   = ScheduleMortgageAnnuity()
+    ScheduleRegistry[K.L_MORT_ANN]           = ScheduleMortgageAnnuity()
     
     # Register cash flow strategies
-    FlowRegistry[K.F_TRANSFER]       = FlowTransferLumpSum()
-    FlowRegistry[K.F_INCOME]         = FlowIncomeFixed()
-    FlowRegistry[K.F_EXP_LIVING]     = FlowExpenseFixed()
+    FlowRegistry[K.F_TRANSFER_LUMP_SUM]      = FlowTransferLumpSum()
+    FlowRegistry[K.F_INCOME_FIXED]           = FlowIncomeFixed()
+    FlowRegistry[K.F_EXPENSE_FIXED]          = FlowExpenseFixed()
