@@ -70,9 +70,9 @@ class TestScenarioBasics:
         house = ABrick(
             id="house",
             name="Property",
-            kind="a.property",
+            kind="a.property_discrete",
             spec={
-                "price": 400000.0,
+                "initial_value": 400000.0,
                 "fees_pct": 0.095,
                 "appreciation_pa": 0.02,
                 "down_payment": 40000.0

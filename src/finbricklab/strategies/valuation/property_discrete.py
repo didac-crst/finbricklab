@@ -38,8 +38,7 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         """
         Prepare the property valuation strategy.
         
-        Validates that all required parameters are present and normalizes
-        parameter names for backward compatibility.
+        Validates that all required parameters are present.
         
         Args:
             brick: The property brick
@@ -48,18 +47,6 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         Raises:
             AssertionError: If required parameters are missing
         """
-        # Normalize property value parameter (initial_value preferred, price deprecated)
-        if "initial_value" not in brick.spec:
-            if "price" in brick.spec:
-                import warnings
-                warnings.warn(
-                    "Property spec 'price' is deprecated; use 'initial_value'.",
-                    DeprecationWarning, stacklevel=2
-                )
-                brick.spec["initial_value"] = brick.spec["price"]
-            else:
-                raise AssertionError("Property needs 'initial_value' (or legacy 'price')")
-        
         # Validate required parameters
         required_params = ["initial_value", "fees_pct", "appreciation_pa"]
         for param in required_params: 

@@ -116,17 +116,6 @@ class Scenario:
         # Wire strategies to bricks based on their kind discriminators
         wire_strategies(self.bricks)
         
-        # Normalize mortgage start_date to activation window for backward compatibility
-        for b in self.bricks:
-            if b.kind.startswith("l.mortgage") and "start_date" in b.spec:
-                if not hasattr(b, 'start_date') or b.start_date is None:
-                    from datetime import datetime
-                    start_date_str = b.spec.pop("start_date")
-                    if isinstance(start_date_str, str):
-                        b.start_date = datetime.fromisoformat(start_date_str).date()
-                    else:
-                        b.start_date = start_date_str
-        
         # Prepare all bricks for simulation (validate parameters, setup state)
         for b in self.bricks: 
             b.prepare(ctx)
@@ -329,36 +318,6 @@ class Scenario:
             if isinstance(brick.spec, LMortgageSpec):
                 brick.spec = brick.spec.__dict__.copy()
                 
-            # Handle legacy auto_principal_from
-            if "auto_principal_from" in (brick.links or {}):
-                warnings.warn(
-                    f"Deprecated: auto_principal_from on {brick.id}. "
-                    "Use PrincipalLink(from_house=...) instead.",
-                    DeprecationWarning,
-                    stacklevel=2
-                )
-                if "principal" not in (brick.links or {}):
-                    brick.links = brick.links or {}
-                    brick.links["principal"] = PrincipalLink(
-                        from_house=brick.links["auto_principal_from"]
-                    ).__dict__
-            
-            # Handle legacy duration_m for mortgages
-            if hasattr(brick, 'duration_m') and brick.duration_m is not None:
-                warnings.warn(
-                    f"Deprecated: duration_m on mortgage {brick.id}. "
-                    "Use fix_rate_months instead.",
-                    DeprecationWarning,
-                    stacklevel=2
-                )
-                
-                if brick.spec.get("fix_rate_months") is None:
-                    brick.spec["fix_rate_months"] = brick.duration_m
-                elif brick.spec.get("fix_rate_months") != brick.duration_m:
-                    raise ConfigError(
-                        f"Conflict on {brick.id}: duration_m={brick.duration_m} "
-                        f"vs fix_rate_months={brick.spec.get('fix_rate_months')}"
-                    )
         
         # Resolve start dates
         self._resolve_start_dates(brick_registry)
@@ -446,10 +405,11 @@ class Scenario:
                 if not isinstance(house_brick, ABrick) or house_brick.kind != K.A_PROPERTY_DISCRETE:
                     raise ConfigError(f"PrincipalLink from_house must reference a property: {principal_link.from_house}")
                 
-                # Extract house data (support both initial_value and price for backward compatibility)
+                # Extract house data (require initial_value, no legacy price support)
                 house_spec = house_brick.spec
-                initial_value = house_spec.get("initial_value") or house_spec.get("price", 0)
-                initial_value = float(initial_value)
+                if "initial_value" not in house_spec:
+                    raise ConfigError(f"Property '{principal_link.from_house}' must specify 'initial_value' (no legacy 'price')")
+                initial_value = float(house_spec["initial_value"])
                 down_payment = float(house_spec.get("down_payment", 0))
                 fees_pct = float(house_spec.get("fees_pct", 0))
                 finance_fees = bool(house_spec.get("finance_fees", False))

@@ -11,15 +11,29 @@ def test_import_finbricklab():
     assert hasattr(finbricklab, '__version__')
     assert finbricklab.__version__ == "0.1.0"
 
-def test_import_finscenlab_compatibility():
-    """Test that the compatibility shim works."""
-    import warnings
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        import finscenlab
-        assert len(w) == 1
-        assert issubclass(w[0].category, DeprecationWarning)
-        assert "deprecated" in str(w[0].message)
+def test_legacy_api_failures():
+    """Test that legacy APIs properly fail with clear error messages."""
+    from finbricklab import ABrick, LBrick
+    from finbricklab.core.kinds import K
+    
+    # Test that old auto_principal_from fails
+    with pytest.raises(AssertionError, match="Missing principal"):
+        LBrick(
+            id="mortgage",
+            name="Test Mortgage",
+            kind=K.L_MORT_ANN,
+            links={"auto_principal_from": "house"},  # legacy format
+            spec={"rate_pa": 0.03, "term_months": 300}
+        )
+    
+    # Test that old property price fails
+    with pytest.raises(AssertionError, match="Missing required parameter"):
+        ABrick(
+            id="house",
+            name="Test House",
+            kind=K.A_PROPERTY_DISCRETE,
+            spec={"price": 100000, "fees_pct": 0.095, "appreciation_pa": 0.02}  # legacy price
+        )
 
 def test_import_core_components():
     """Test that core components can be imported."""

@@ -44,14 +44,14 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
     Required Parameters:
         - rate_pa: Annual interest rate (e.g., 0.034 for 3.4%)
         - term_months: Total term in months (e.g., 300 for 25 years)
-        - principal: Loan principal amount (can be auto-calculated)
         
-    Optional Parameters (for auto-calculation):
-        - links: Dictionary with 'auto_principal_from' key pointing to property brick ID
+    Principal Specification (exactly one required):
+        - spec.principal: Direct principal amount, OR
+        - links.principal: PrincipalLink dict with 'from_house' pointing to property brick ID
         
     Note:
-        If principal is not provided, it will be calculated from the linked property's
-        price minus down_payment. This enables automatic mortgage sizing based on
+        If using links.principal, the principal will be calculated from the linked property's
+        initial_value minus down_payment. This enables automatic mortgage sizing based on
         property purchases.
     """
     
@@ -68,87 +68,48 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         Raises:
             AssertionError: If required parameters are missing or auto-calculation fails
         """
-        # Handle resolved principal from mortgage resolution
-        if "principal" in brick.spec:
-            # Principal was resolved by the mortgage resolution system
+        # Enforce exactly one of spec.principal or links.principal
+        has_spec_principal = _get_spec_value(brick.spec, "principal") is not None
+        has_link_principal = bool((brick.links or {}).get("principal"))
+
+        if has_spec_principal and has_link_principal:
+            raise AssertionError("Provide either spec.principal or links.principal, not both.")
+        if not has_spec_principal and not has_link_principal:
+            raise AssertionError("Missing principal: specify spec.principal or links.principal (PrincipalLink).")
+
+        if has_spec_principal:
+            # Principal was provided directly in spec
             principal = brick.spec["principal"]
-        # Auto-calculate principal from linked property if not provided
-        elif _get_spec_value(brick.spec, "principal") is None:
-            # Check for new PrincipalLink format first
+        else:
+            # Calculate principal from PrincipalLink
             principal_link_data = (brick.links or {}).get("principal")
-            if principal_link_data:
-                principal_link = PrincipalLink(**principal_link_data)
+            principal_link = PrincipalLink(**principal_link_data)
+            
+            if principal_link.from_house:
+                # Calculate principal from house initial_value (not legacy price)
+                prop: ABrick = ctx.registry.get(principal_link.from_house)  # type: ignore
+                if not prop:
+                    raise AssertionError(f"PrincipalLink.from_house '{principal_link.from_house}' not found")
                 
-                if principal_link.from_house:
-                    # Calculate principal from house
-                    auto_from = principal_link.from_house
-                    if auto_from in ctx.registry:
-                        prop: ABrick = ctx.registry[auto_from]  # type: ignore
-                        price = float(prop.spec["price"])
-                        down = float(_get_spec_value(prop.spec, "down_payment", 0.0))
-                        fees_pct = float(_get_spec_value(prop.spec, "fees_pct", 0.0))
-                        fees = price * fees_pct
-                        
-                        # Handle fees financing
-                        finance_fees = bool(_get_spec_value(prop.spec, "finance_fees", False))
-                        fees_fin_pct = float(_get_spec_value(prop.spec, "fees_financed_pct", 1.0 if finance_fees else 0.0))
-                        fees_fin_pct = max(0.0, min(1.0, fees_fin_pct))  # Clamp to [0,1]
-                        fees_financed = fees * fees_fin_pct
-                        
-                        # Calculate principal: price - down_payment + financed_fees
-                        principal = price - down + fees_financed
-                        
-                        brick.spec["principal"] = principal
-                        # Store derived values for logging/validation
-                        brick.spec["_derived"] = {
-                            "price": price,
-                            "down_payment": down,
-                            "fees": fees,
-                            "fees_financed": fees_financed
-                        }
-                    else:
-                        raise AssertionError(f"PrincipalLink references unknown house: {auto_from}")
-                        
-                elif principal_link.nominal is not None:
-                    # Direct nominal amount
-                    brick.spec["principal"] = principal_link.nominal
-                    
-                elif principal_link.remaining_of:
-                    # This will be handled by settlement buckets during simulation
-                    # For now, we'll defer the principal calculation
-                    brick.spec["_deferred_principal"] = True
-                    
-                else:
-                    raise AssertionError("PrincipalLink must specify from_house, nominal, or remaining_of")
+                price = float(prop.spec["initial_value"])  # Use initial_value, not price
+                down = float(_get_spec_value(prop.spec, "down_payment", 0.0))
+                fees_pct = float(_get_spec_value(prop.spec, "fees_pct", 0.0))
+                fees = price * fees_pct
+                finance_fees = bool(_get_spec_value(prop.spec, "finance_fees", False))
+                fees_fin_pct = float(_get_spec_value(prop.spec, "fees_financed_pct", 1.0 if finance_fees else 0.0))
+                fees_fin_pct = max(0.0, min(1.0, fees_fin_pct))
+                fees_financed = fees * fees_fin_pct
+                principal = price - down + fees_financed
+                brick.spec["principal"] = principal
+                brick.spec["_derived"] = {"initial_value": price, "down_payment": down, "fees": fees, "fees_financed": fees_financed}
+            elif principal_link.nominal is not None:
+                # Direct nominal amount
+                brick.spec["principal"] = principal_link.nominal
+            elif principal_link.remaining_of:
+                # This will be handled by settlement buckets during simulation
+                brick.spec["_deferred_principal"] = True
             else:
-                # Fallback to legacy format
-                auto_from = (brick.links or {}).get("auto_principal_from")
-                if auto_from and auto_from in ctx.registry:
-                    prop: ABrick = ctx.registry[auto_from]  # type: ignore
-                    price = float(prop.spec["price"])
-                    down = float(_get_spec_value(prop.spec, "down_payment", 0.0))
-                    fees_pct = float(_get_spec_value(prop.spec, "fees_pct", 0.0))
-                    fees = price * fees_pct
-                    
-                    # Handle fees financing
-                    finance_fees = bool(_get_spec_value(prop.spec, "finance_fees", False))
-                    fees_fin_pct = float(_get_spec_value(prop.spec, "fees_financed_pct", 1.0 if finance_fees else 0.0))
-                    fees_fin_pct = max(0.0, min(1.0, fees_fin_pct))  # Clamp to [0,1]
-                    fees_financed = fees * fees_fin_pct
-                    
-                    # Calculate principal: price - down_payment + financed_fees
-                    principal = price - down + fees_financed
-                    
-                    brick.spec["principal"] = principal
-                    # Store derived values for logging/validation
-                    brick.spec["_derived"] = {
-                        "price": price,
-                        "down_payment": down,
-                        "fees": fees,
-                        "fees_financed": fees_financed
-                    }
-                else:
-                    raise AssertionError("Principal link missing or invalid - check PrincipalLink or auto_principal_from")
+                raise AssertionError("PrincipalLink must specify from_house, nominal, or remaining_of")
         
         # Validate required parameters
         rate_pa = _get_spec_value(brick.spec, "rate_pa")

@@ -20,7 +20,6 @@
 * [Strategy Catalog](#strategy-catalog)
 * [Outputs](#outputs)
 * [Validation & Errors](#validation--errors)
-* [Compatibility & Deprecations](#compatibility--deprecations)
 * [Extending](#extending)
 * [Development](#development)
 * [Repository Layout](#repository-layout)
@@ -122,7 +121,6 @@ house = ABrick(
     name="Primary Residence",
     kind="a.property_discrete",
     spec={
-        # Preferred field (property strategy also accepts legacy `price` with a deprecation warning)
         "initial_value": 400_000.0,
         "appreciation_pa": 0.03,
         # Acquisition fees as a fraction (e.g., taxes/notary). Applied at t0.
@@ -206,7 +204,6 @@ finbrick validate -i demo.json
 **Notes**
 
 * `start_date` inside a mortgage `spec` is normalized into the brick `window` if no window is set.
-* The property strategy accepts `initial_value` (preferred) **or** legacy `price` (deprecated; warns).
 
 ---
 
@@ -215,7 +212,7 @@ finbrick validate -i demo.json
 | Family    | Kind                  | What it models                   | Key `spec` fields (examples)                                                      |
 | --------- | --------------------- | -------------------------------- | --------------------------------------------------------------------------------- |
 | Asset     | `a.cash`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`                                                  |
-| Asset     | `a.property_discrete` | Property with discrete valuation | `initial_value` (or legacy `price`), `appreciation_pa`, `fees_pct`                |
+| Asset     | `a.property_discrete` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
 | Asset     | `a.etf_unitized`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
 | Liability | `l.mortgage.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
 | Flow      | `f.income.fixed`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
@@ -255,13 +252,6 @@ Typical checks:
 
 ---
 
-## Compatibility & Deprecations
-
-* **Property `price` → `initial_value`**: `price` is supported with a **DeprecationWarning**; prefer `initial_value`.
-* **Mortgage `start_date` in `spec`**: accepted, then normalized into the brick `window` if not set.
-* **Package alias**: the `finscenlab` shim re‑exports `finbricklab` symbols and emits a deprecation warning. Migrate imports.
-
----
 
 ## Extending
 
@@ -320,7 +310,7 @@ finbricklab/
 │   ├── strategies/          # asset/liability/flow strategies + registry
 │   └── cli.py               # finbrick CLI entry point
 ├── tests/                   # unit & integration tests
-├── examples/                # examples & legacy POC (not packaged)
+├── examples/                # examples (not packaged)
 ├── pyproject.toml
 ├── README.md (this file)
 ├── LICENSE (Apache-2.0)

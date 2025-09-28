@@ -1,5 +1,5 @@
 """
-FinScenLab Kind Constants
+FinBrickLab Kind Constants
 
 This module provides centralized constants for all brick kind discriminators,
 preventing typos and providing a single source of truth for kind strings.
@@ -7,7 +7,7 @@ preventing typos and providing a single source of truth for kind strings.
 
 class K:
     """
-    Kind constants for all FinScenLab brick types.
+    Kind constants for all FinBrickLab brick types.
     
     These constants should be used instead of hardcoded strings to prevent
     typos and ensure consistency across the codebase.

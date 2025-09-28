@@ -22,18 +22,18 @@ Architecture Overview:
 Quick Start:
     ```python
     from datetime import date
-    from finscenlab.core import Scenario, ABrick, LBrick, FBrick
-    import finscenlab.strategies  # Registers default strategies
+    from finbricklab import Scenario, ABrick, LBrick, FBrick
+    import finbricklab.strategies  # Registers default strategies
     
     # Create financial bricks
     cash = ABrick(id="cash", name="Main Cash", kind="a.cash",
                   spec={"initial_balance": 0.0, "interest_pa": 0.02})
     
-    house = ABrick(id="house", name="Property", kind="a.property",
-                   spec={"price": 420_000, "fees_pct": 0.095, "appreciation_pa": 0.02})
+    house = ABrick(id="house", name="Property", kind="a.property_discrete",
+                   spec={"initial_value": 420_000, "fees_pct": 0.095, "appreciation_pa": 0.02})
     
     mortgage = LBrick(id="mortgage", name="Home Loan", kind="l.mortgage.annuity",
-                      links={"auto_principal_from": "house"},
+                      links={"principal": {"from_house": "house"}},
                       spec={"rate_pa": 0.034, "term_months": 300})
     
     # Create and run scenario
@@ -45,16 +45,16 @@ Quick Start:
 Available Strategies:
     Assets:
         - 'a.cash': Cash account with interest
-        - 'a.property': Real estate with appreciation  
-        - 'a.invest.etf': ETF investment with price drift
+        - 'a.property_discrete': Real estate with appreciation  
+        - 'a.etf_unitized': ETF investment with unitized pricing
         
     Liabilities:
         - 'l.mortgage.annuity': Fixed-rate mortgage with annuity payments
         
     Flows:
         - 'f.transfer.lumpsum': One-time lump sum transfer
-        - 'f.income.salary': Fixed monthly income
-        - 'f.expense.living': Fixed monthly expenses
+        - 'f.income.fixed': Fixed recurring income
+        - 'f.expense.fixed': Fixed recurring expense
 
 Extending the System:
     To add new financial instruments, simply:
@@ -90,7 +90,9 @@ from .core import (
     export_ledger_csv,
     ValuationRegistry,
     ScheduleRegistry,
-    FlowRegistry
+    FlowRegistry,
+    StartLink,
+    PrincipalLink
 )
 
 # Import strategy interfaces
@@ -132,6 +134,10 @@ __all__ = [
     "ValuationRegistry",
     "ScheduleRegistry",
     "FlowRegistry",
+    
+    # Link classes
+    "StartLink",
+    "PrincipalLink",
     
     # Kind constants
     "kinds",
