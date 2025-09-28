@@ -13,27 +13,36 @@ def test_import_finbricklab():
 
 def test_legacy_api_failures():
     """Test that legacy APIs properly fail with clear error messages."""
-    from finbricklab import ABrick, LBrick
+    from finbricklab import ABrick, LBrick, Scenario
     from finbricklab.core.kinds import K
+    from datetime import date
     
-    # Test that old auto_principal_from fails
+    # Test that old auto_principal_from fails during scenario run
+    cash = ABrick(id="cash", name="Cash", kind=K.A_CASH, spec={"initial_balance": 1000.0})
+    mortgage = LBrick(
+        id="mortgage",
+        name="Test Mortgage",
+        kind=K.L_MORT_ANN,
+        links={"auto_principal_from": "house"},  # legacy format
+        spec={"rate_pa": 0.03, "term_months": 300}
+    )
+    scenario = Scenario(id="test", name="Test", bricks=[cash, mortgage])
+    
     with pytest.raises(AssertionError, match="Missing principal"):
-        LBrick(
-            id="mortgage",
-            name="Test Mortgage",
-            kind=K.L_MORT_ANN,
-            links={"auto_principal_from": "house"},  # legacy format
-            spec={"rate_pa": 0.03, "term_months": 300}
-        )
+        scenario.run(start=date(2026, 1, 1), months=1)
     
-    # Test that old property price fails
+    # Test that old property price fails during scenario run
+    cash2 = ABrick(id="cash2", name="Cash", kind=K.A_CASH, spec={"initial_balance": 1000.0})
+    house = ABrick(
+        id="house",
+        name="Test House",
+        kind=K.A_PROPERTY_DISCRETE,
+        spec={"price": 100000, "fees_pct": 0.095, "appreciation_pa": 0.02}  # legacy price
+    )
+    scenario2 = Scenario(id="test2", name="Test", bricks=[cash2, house])
+    
     with pytest.raises(AssertionError, match="Missing required parameter"):
-        ABrick(
-            id="house",
-            name="Test House",
-            kind=K.A_PROPERTY_DISCRETE,
-            spec={"price": 100000, "fees_pct": 0.095, "appreciation_pa": 0.02}  # legacy price
-        )
+        scenario2.run(start=date(2026, 1, 1), months=1)
 
 def test_import_core_components():
     """Test that core components can be imported."""

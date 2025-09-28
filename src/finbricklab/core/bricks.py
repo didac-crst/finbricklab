@@ -28,7 +28,7 @@ class FinBrickABC:
         kind: Dot-separated string discriminator (e.g., 'a.cash', 'l.mortgage.annuity')
         currency: Currency code for the brick (default: 'EUR')
         spec: Dictionary containing strategy-specific parameters
-        links: Dictionary for referencing other bricks (e.g., {'auto_principal_from': 'house_id'})
+        links: Dictionary for referencing other bricks (e.g., {'principal': {'from_house': 'house_id'}})
         family: Brick family type ('a' for assets, 'l' for liabilities, 'f' for flows)
         start_date: Optional start date for the brick (default: None = starts at scenario start)
         
@@ -99,8 +99,8 @@ class ABrick(FinBrickABC):
         
     Examples:
         Cash account: kind='a.cash'
-        Real estate: kind='a.property'  
-        ETF investment: kind='a.invest.etf'
+        Real estate: kind='a.property_discrete'  
+        ETF investment: kind='a.etf_unitized'
     """
     valuation: IValuationStrategy = None
     

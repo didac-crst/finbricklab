@@ -304,7 +304,7 @@ class Scenario:
         1. Resolve start dates from StartLink references
         2. Resolve principal amounts from PrincipalLink references
         3. Validate settlement buckets for remaining_of links
-        4. Handle deprecation warnings for legacy formats
+        4. Validate brick configurations
         """
         # Create brick registry for lookups
         brick_registry = {b.id: b for b in self.bricks}
@@ -405,10 +405,10 @@ class Scenario:
                 if not isinstance(house_brick, ABrick) or house_brick.kind != K.A_PROPERTY_DISCRETE:
                     raise ConfigError(f"PrincipalLink from_house must reference a property: {principal_link.from_house}")
                 
-                # Extract house data (require initial_value, no legacy price support)
+                # Extract house data (require initial_value)
                 house_spec = house_brick.spec
                 if "initial_value" not in house_spec:
-                    raise ConfigError(f"Property '{principal_link.from_house}' must specify 'initial_value' (no legacy 'price')")
+                    raise ConfigError(f"Property '{principal_link.from_house}' must specify 'initial_value'")
                 initial_value = float(house_spec["initial_value"])
                 down_payment = float(house_spec.get("down_payment", 0))
                 fees_pct = float(house_spec.get("fees_pct", 0))

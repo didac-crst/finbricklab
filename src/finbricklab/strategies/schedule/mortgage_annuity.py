@@ -86,7 +86,7 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
             principal_link = PrincipalLink(**principal_link_data)
             
             if principal_link.from_house:
-                # Calculate principal from house initial_value (not legacy price)
+                # Calculate principal from house initial_value
                 prop: ABrick = ctx.registry.get(principal_link.from_house)  # type: ignore
                 if not prop:
                     raise AssertionError(f"PrincipalLink.from_house '{principal_link.from_house}' not found")
