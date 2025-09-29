@@ -68,10 +68,14 @@ jobs:
           echo "No source code found, skipping type checking"
         fi
 
-    - name: Run tests (if source exists)
+    - name: Run tests (if source and tests exist)
       run: |
         if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          poetry run pytest --cov=src/finbricklab --cov-report=xml
+          if find tests/ -name "*.py" -type f | grep -q .; then
+            poetry run pytest --cov=src/finbricklab --cov-report=xml
+          else
+            echo "No test files found, skipping tests (expected for core engine PR)"
+          fi
         else
           echo "No source code found, skipping tests"
         fi
