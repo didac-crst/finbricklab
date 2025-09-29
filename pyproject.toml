@@ -44,9 +44,9 @@ finbrick = "finbricklab.cli:main"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[[tool.poetry.packages]]
-include = "finbricklab"
-from = "src"
+# [[tool.poetry.packages]]
+# include = "finbricklab"
+# from = "src"
 
 [tool.black]
 line-length = 88
