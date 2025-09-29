@@ -14,7 +14,7 @@ from finbricklab.core.results import BrickOutput
 
 class FlowExpenseFixed(IFlowStrategy):
     """
-    Fixed monthly expense flow strategy (kind: 'f.expense.living').
+    Fixed monthly expense flow strategy (kind: 'f.expense.fixed').
 
     This strategy models a regular monthly expense with a constant amount.
     Commonly used for living expenses, insurance, subscriptions, or other

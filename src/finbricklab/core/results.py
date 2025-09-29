@@ -147,8 +147,9 @@ def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:
     if "debt" in df.columns:
         df = df.rename(columns={"debt": "liabilities"})
 
-    # Calculate non_cash assets
-    df["non_cash"] = df["assets"] - df["cash"]
+    # Calculate non_cash assets (only if both columns exist)
+    if "assets" in df.columns and "cash" in df.columns:
+        df["non_cash"] = df["assets"] - df["cash"]
 
     # Assert financial identities with small tolerance for floating point errors
     eps = 1e-6

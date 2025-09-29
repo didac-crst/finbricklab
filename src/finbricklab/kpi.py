@@ -99,7 +99,7 @@ def fee_drag_cum(
     inflows_col: str = "inflows",
 ) -> pd.Series:
     """
-    Calculate cumulative fee drag as percentage of cumulative inflows.
+    Calculate cumulative fee drag as ratio of cumulative inflows.
 
     Args:
         df: DataFrame with canonical schema
@@ -107,7 +107,7 @@ def fee_drag_cum(
         inflows_col: Column name for inflows
 
     Returns:
-        Series with cumulative fee drag percentage
+        Series with cumulative fee drag ratio (0-1)
     """
     cum_fees = df[fees_col].cumsum()
     cum_inflows = df[inflows_col].cumsum()
@@ -119,7 +119,7 @@ def fee_drag_cum(
         0.0,
     )
 
-    return pd.Series(fee_drag, index=df.index, name="fee_drag_cum_pct")
+    return pd.Series(fee_drag, index=df.index, name="fee_drag_cum")
 
 
 def tax_burden_cum(
@@ -128,7 +128,7 @@ def tax_burden_cum(
     inflows_col: str = "inflows",
 ) -> pd.Series:
     """
-    Calculate cumulative tax burden as percentage of cumulative inflows.
+    Calculate cumulative tax burden as ratio of cumulative inflows.
 
     Args:
         df: DataFrame with canonical schema
@@ -136,7 +136,7 @@ def tax_burden_cum(
         inflows_col: Column name for inflows
 
     Returns:
-        Series with cumulative tax burden percentage
+        Series with cumulative tax burden ratio (0-1)
     """
     cum_taxes = df[taxes_col].cumsum()
     cum_inflows = df[inflows_col].cumsum()
@@ -148,7 +148,7 @@ def tax_burden_cum(
         0.0,
     )
 
-    return pd.Series(tax_burden, index=df.index, name="tax_burden_cum_pct")
+    return pd.Series(tax_burden, index=df.index, name="tax_burden_cum")
 
 
 def effective_tax_rate(
@@ -167,7 +167,7 @@ def effective_tax_rate(
         inflows_col: Column name for inflows
 
     Returns:
-        Series with effective tax rate
+        Series with effective tax rate ratio (0-1)
     """
     return tax_burden_cum(df, taxes_col, inflows_col)
 

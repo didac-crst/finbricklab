@@ -119,6 +119,12 @@ class ABrick(FinBrickABC):
         Args:
             ctx: The simulation context containing time index and registry
         """
+        if self.valuation is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Asset brick '{self.id}' ({self.kind}) has no valuation strategy configured"
+            )
         self.valuation.prepare(self, ctx)
 
     def simulate(self, ctx: ScenarioContext) -> BrickOutput:
@@ -133,6 +139,12 @@ class ABrick(FinBrickABC):
         Returns:
             BrickOutput containing asset values, cash flows, and events
         """
+        if self.valuation is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Asset brick '{self.id}' ({self.kind}) has no valuation strategy configured"
+            )
         return self.valuation.simulate(self, ctx)
 
 
@@ -169,6 +181,12 @@ class LBrick(FinBrickABC):
         Args:
             ctx: The simulation context containing time index and registry
         """
+        if self.schedule is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Liability brick '{self.id}' ({self.kind}) has no schedule strategy configured"
+            )
         self.schedule.prepare(self, ctx)
 
     def simulate(self, ctx: ScenarioContext) -> BrickOutput:
@@ -183,6 +201,12 @@ class LBrick(FinBrickABC):
         Returns:
             BrickOutput containing debt balances, payment flows, and events
         """
+        if self.schedule is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Liability brick '{self.id}' ({self.kind}) has no schedule strategy configured"
+            )
         return self.schedule.simulate(self, ctx)
 
 
@@ -219,6 +243,12 @@ class FBrick(FinBrickABC):
         Args:
             ctx: The simulation context containing time index and registry
         """
+        if self.flow is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Flow brick '{self.id}' ({self.kind}) has no flow strategy configured"
+            )
         self.flow.prepare(self, ctx)
 
     def simulate(self, ctx: ScenarioContext) -> BrickOutput:
@@ -233,6 +263,12 @@ class FBrick(FinBrickABC):
         Returns:
             BrickOutput containing cash flows and events
         """
+        if self.flow is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Flow brick '{self.id}' ({self.kind}) has no flow strategy configured"
+            )
         return self.flow.simulate(self, ctx)
 
 
