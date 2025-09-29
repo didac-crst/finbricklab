@@ -5,10 +5,12 @@ Context classes for FinBrickLab simulation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .bricks import FinBrickABC
+if TYPE_CHECKING:
+    from .bricks import FinBrickABC
 
 
 @dataclass
