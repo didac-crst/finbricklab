@@ -13,7 +13,7 @@ import sys
 
 
 def find_forbidden_tokens(
-    directory: str, tokens: list[str], exclude_patterns: list[str] = None
+    directory: str, tokens: list[str], exclude_patterns: list[str] | None = None
 ) -> dict[str, list[tuple[int, str]]]:
     """
     Find forbidden tokens in the codebase.
