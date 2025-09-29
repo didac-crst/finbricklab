@@ -8,6 +8,10 @@ on:
 
 jobs:
   test:
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -73,11 +77,13 @@ jobs:
         fi
 
     - name: Upload coverage to Codecov
+      if: ${{ hashFiles('coverage.xml') != '' }}
       uses: codecov/codecov-action@v4
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
+        # token: ${{ secrets.CODECOV_TOKEN }}  # required if the Codecov App is not installed for this org/repo
 
   build:
     runs-on: ubuntu-latest
