@@ -92,26 +92,18 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_reexport = true
 show_error_codes = true
+# mypy_path = "src"  # uncomment if you need it
 
-# If you rely on numpy's typing plugin (optional):
-# plugins = ["numpy.typing.mypy_plugin"]
-
-# --- Scoped relaxations instead of global blanket disables ---
-
-# 1) Third-party libs without full stubs
-[tool.mypy-plotly.*]
+# Third-party libs without full stubs
+[[tool.mypy.overrides]]
+module = ["plotly", "plotly.*", "kaleido"]
 ignore_missing_imports = true
 
-[tool.mypy-kaleido]
-ignore_missing_imports = true
-
-# 2) Tests: keep signal, reduce friction
-[tool.mypy-tests.*]
+# Tests: keep signal, reduce friction
+[[tool.mypy.overrides]]
+module = ["tests.*"]
 disallow_untyped_defs = false
 check_untyped_defs = false
-disallow_incomplete_defs = false
-warn_no_return = false
-warn_unreachable = false
 
 [tool.pytest.ini_options]
 minversion = "7.0"
