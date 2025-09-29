@@ -274,7 +274,7 @@ class TestMortgageScenarioIntegration:
             name="Primary Residence",
             kind=K.A_PROPERTY_DISCRETE,
             spec={
-                "price": 500000.0,
+                "initial_value": 500000.0,
                 "fees_pct": 0.05,
                 "appreciation_pa": 0.03,
                 "sell_on_window_end": False,
@@ -286,7 +286,7 @@ class TestMortgageScenarioIntegration:
             name="Home Loan",
             kind=K.L_MORT_ANN,
             links={"principal": {"from_house": "house"}},
-            spec={"rate_pa": 0.034, "term_months": 300, "loan_to_value": 0.8},
+            spec={"rate_pa": 0.034, "term_months": 300},
         )
 
         cash = ABrick(
@@ -324,7 +324,7 @@ class TestMortgageScenarioIntegration:
             id="house",
             name="Property",
             kind=K.A_PROPERTY_DISCRETE,
-            spec={"price": 300000.0, "fees_pct": 0.05, "appreciation_pa": 0.02},
+            spec={"initial_value": 300000.0, "fees_pct": 0.05, "appreciation_pa": 0.02},
         )
 
         mortgage = LBrick(
@@ -332,7 +332,7 @@ class TestMortgageScenarioIntegration:
             name="Mortgage",
             kind=K.L_MORT_ANN,
             links={"principal": {"from_house": "house"}},
-            spec={"rate_pa": 0.03, "term_months": 240, "loan_to_value": 0.9},
+            spec={"rate_pa": 0.03, "term_months": 240},
         )
 
         cash = ABrick(

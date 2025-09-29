@@ -153,6 +153,7 @@ class TestActivationWindows:
             kind=K.A_PROPERTY_DISCRETE,
             spec={
                 "initial_value": 100000.0,
+                "fees_pct": 0.05,
                 "appreciation_pa": 0.05,
                 "sell_on_window_end": True,  # Auto-sell when window ends
             },
@@ -285,6 +286,7 @@ class TestActivationWindows:
             kind=K.A_PROPERTY_DISCRETE,
             spec={
                 "initial_value": 50000.0,
+                "fees_pct": 0.03,
                 "appreciation_pa": 0.03,
                 "sell_on_window_end": False,
             },

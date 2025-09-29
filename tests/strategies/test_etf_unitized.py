@@ -28,10 +28,10 @@ class TestETFUnitizedMath:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 1000.0,
-                "initial_price": initial_price,
-                "price_drift_pa": price_drift_pa,
+                "price0": initial_price,
+                "drift_pa": price_drift_pa,
                 "volatility_pa": volatility_pa,
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -72,11 +72,11 @@ class TestETFUnitizedMath:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 1000.0,
-                "initial_price": 100.0,
-                "price_drift_pa": 0.0,  # No drift for clean test
+                "price0": 100.0,
+                "drift_pa": 0.0,  # No drift for clean test
                 "volatility_pa": 0.0,  # No volatility for clean test
                 "splits": [{"month": 6, "ratio": 2.0}],  # 2:1 split in month 6
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -108,10 +108,10 @@ class TestETFUnitizedMath:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 500.0,
-                "initial_price": 150.0,
-                "price_drift_pa": 0.08,
+                "price0": 150.0,
+                "drift_pa": 0.08,
                 "volatility_pa": 0.20,
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -134,10 +134,10 @@ class TestETFUnitizedMath:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 200.0,
-                "initial_price": 75.0,
-                "price_drift_pa": 0.06,
+                "price0": 75.0,
+                "drift_pa": 0.06,
                 "volatility_pa": 0.10,
-                "sell_on_window_end": True,
+                "liquidate_on_window_end": True,
             },
         )
 
@@ -177,10 +177,10 @@ class TestETFUnitizedMath:
                 kind=K.A_ETF_UNITIZED,
                 spec={
                     "initial_units": units,
-                    "initial_price": initial_price,
-                    "price_drift_pa": price_drift_pa,
+                    "price0": initial_price,
+                    "drift_pa": price_drift_pa,
                     "volatility_pa": volatility_pa,
-                    "sell_on_window_end": False,
+                    "liquidate_on_window_end": False,
                 },
             )
 
@@ -209,10 +209,10 @@ class TestETFUnitizedMath:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 1000.0,
-                "initial_price": 100.0,
-                "price_drift_pa": 0.0,  # No drift for clean volatility test
+                "price0": 100.0,
+                "drift_pa": 0.0,  # No drift for clean volatility test
                 "volatility_pa": 0.20,  # 20% annual volatility
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -260,10 +260,10 @@ class TestETFScenarioIntegration:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 50.0,
-                "initial_price": 200.0,
-                "price_drift_pa": 0.07,
+                "price0": 200.0,
+                "drift_pa": 0.07,
                 "volatility_pa": 0.18,
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -273,8 +273,9 @@ class TestETFScenarioIntegration:
             kind=K.A_PROPERTY_DISCRETE,
             spec={
                 "initial_value": 300000.0,
+                "fees_pct": 0.03,
                 "appreciation_pa": 0.03,
-                "sell_on_window_end": False,
+                "liquidate_on_window_end": False,
             },
         )
 
@@ -315,10 +316,10 @@ class TestETFScenarioIntegration:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 100.0,
-                "initial_price": 150.0,
-                "price_drift_pa": 0.08,
+                "price0": 150.0,
+                "drift_pa": 0.08,
                 "volatility_pa": 0.15,
-                "sell_on_window_end": True,  # Auto-sell at end
+                "liquidate_on_window_end": True,  # Auto-sell at end
             },
         )
 
@@ -350,8 +351,8 @@ class TestETFScenarioIntegration:
             kind=K.A_ETF_UNITIZED,
             spec={
                 "initial_units": 200.0,
-                "initial_price": 100.0,
-                "price_drift_pa": 0.05,
+                "price0": 100.0,
+                "drift_pa": 0.05,
                 "volatility_pa": 0.12,
             },
         )

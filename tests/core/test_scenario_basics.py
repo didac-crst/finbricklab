@@ -66,7 +66,6 @@ class TestScenarioBasics:
                 "initial_value": 400000.0,
                 "fees_pct": 0.095,
                 "appreciation_pa": 0.02,
-                "down_payment": 40000.0,
             },
         )
 

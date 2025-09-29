@@ -373,7 +373,7 @@ class TestCashRoutingIntegration:
             name="Home Loan",
             kind=K.L_MORT_ANN,
             links={"principal": {"from_house": "house"}},
-            spec={"rate_pa": 0.035, "term_months": 300, "loan_to_value": 0.8},
+            spec={"rate_pa": 0.035, "term_months": 300},
         )
 
         scenario = Scenario(
