@@ -1,0 +1,28 @@
+# .coderabbit.yaml
+reviews:
+  summary: true
+  walkthrough: true
+  inline_comments: true
+  max_comments: 40            # keep GitHub happy
+  min_severity: "medium"      # skip nits
+  group_similar_comments: true
+  suggest_fixes: true
+  codebase_verification: true
+  issue_validation: true
+  fail_on_post_error: false
+
+# Downweight noise-heavy areas
+rules:
+  - paths: ["docs/**", "examples/**", "**/*.md", "**/*.png", "**/*.svg", "**/*.ipynb"]
+    inline_comments: false
+    summary: true
+  - paths: ["tests/**"]
+    max_comments: 10
+
+# Ignore generated/large files entirely
+exclude:
+  - "**/*.lock"
+  - "**/.coverage*"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.pytest_cache/**"
