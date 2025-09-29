@@ -5,6 +5,7 @@ Lump sum transfer flow strategy.
 from __future__ import annotations
 
 import numpy as np
+
 from finbricklab.core.bricks import FBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.events import Event
