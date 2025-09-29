@@ -34,8 +34,9 @@ repos:
         always_run: true
 
       - id: check-forbidden-tokens
-        name: Check for forbidden tokens (tenant/entity)
+        name: Check for forbidden tokens
         entry: python scripts/check_forbidden_tokens.py
+        args: [--exclude, scripts/check_forbidden_tokens.py, --exclude, .pre-commit-config.yaml]
         language: system
         pass_filenames: false
         always_run: true

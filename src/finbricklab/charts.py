@@ -617,6 +617,359 @@ def contribution_vs_market_growth(
 
 
 # =============================================================================
+# MacroBrick-level charts
+# =============================================================================
+
+
+def category_allocation_over_time(
+    tidy: pd.DataFrame, scenario_name: str | None = None
+) -> tuple[go.Figure, pd.DataFrame]:
+    """
+    Plot category allocation over time as stacked area chart.
+
+    This chart shows how assets are allocated across different categories
+    (housing, investing, income, insurance, other) over time.
+
+    Args:
+        tidy: DataFrame from Entity.compare()
+        scenario_name: Name of scenario to analyze. If None, uses first scenario.
+
+    Returns:
+        Tuple of (plotly_figure, tidy_dataframe_used)
+    """
+    _check_plotly()
+
+    if scenario_name is None:
+        scenario_name = tidy["scenario_name"].iloc[0]
+
+    scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
+    scenario_data = scenario_data.sort_values("date")
+
+    # Create category allocation data
+    # For now, we'll use the canonical schema fields as proxies for categories
+    allocation_df = pd.DataFrame(
+        {
+            "date": scenario_data["date"],
+            "Cash": scenario_data["cash"],
+            "Liquid Assets": scenario_data["liquid_assets"],
+            "Illiquid Assets": scenario_data["illiquid_assets"],
+            "Liabilities": -scenario_data["liabilities"],  # Negative for stacked area
+        }
+    )
+
+    # Melt for stacked area chart
+    melted = allocation_df.melt(
+        id_vars=["date"], var_name="category", value_name="value"
+    )
+
+    fig = px.area(
+        melted,
+        x="date",
+        y="value",
+        color="category",
+        title=f"Category Allocation Over Time - {scenario_name}",
+        labels={"value": "Amount", "date": "Date", "category": "Category"},
+    )
+
+    fig.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Amount",
+        hovermode="x unified",
+    )
+
+    return fig, melted
+
+
+def category_cashflow_bars(
+    tidy: pd.DataFrame, scenario_name: str | None = None
+) -> tuple[go.Figure, pd.DataFrame]:
+    """
+    Plot category cashflow bars per year.
+
+    Shows inflow/outflow per year per category to quickly spot cost centers.
+
+    Args:
+        tidy: DataFrame from Entity.compare()
+        scenario_name: Name of scenario to analyze. If None, uses first scenario.
+
+    Returns:
+        Tuple of (plotly_figure, tidy_dataframe_used)
+    """
+    _check_plotly()
+
+    if scenario_name is None:
+        scenario_name = tidy["scenario_name"].iloc[0]
+
+    scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
+    scenario_data = scenario_data.sort_values("date")
+
+    # Create yearly aggregation
+    scenario_data["year"] = scenario_data["date"].dt.year
+    yearly_data = (
+        scenario_data.groupby("year")
+        .agg(
+            {
+                "inflows": "sum",
+                "outflows": "sum",
+                "taxes": "sum",
+                "fees": "sum",
+            }
+        )
+        .reset_index()
+    )
+
+    # Melt for grouped bar chart
+    cashflow_df = yearly_data.melt(
+        id_vars=["year"],
+        value_vars=["inflows", "outflows", "taxes", "fees"],
+        var_name="category",
+        value_name="amount",
+    )
+
+    # Color mapping
+    colors = {
+        "inflows": "green",
+        "outflows": "red",
+        "taxes": "orange",
+        "fees": "purple",
+    }
+
+    fig = go.Figure()
+
+    for category in cashflow_df["category"].unique():
+        category_data = cashflow_df[cashflow_df["category"] == category]
+        fig.add_trace(
+            go.Bar(
+                name=category.title(),
+                x=category_data["year"],
+                y=category_data["amount"],
+                marker_color=colors.get(category, "gray"),
+            )
+        )
+
+    fig.update_layout(
+        title=f"Category Cashflows Per Year - {scenario_name}",
+        xaxis_title="Year",
+        yaxis_title="Amount",
+        barmode="group",
+    )
+
+    return fig, cashflow_df
+
+
+# =============================================================================
+# FinBrick-level charts
+# =============================================================================
+
+
+def event_timeline(
+    tidy: pd.DataFrame, scenario_name: str | None = None
+) -> tuple[go.Figure, pd.DataFrame]:
+    """
+    Plot event timeline for FinBricks.
+
+    Shows buys, sells, prepayments, resets, and other events over time.
+    This is a placeholder implementation since events are not yet in the canonical schema.
+
+    Args:
+        tidy: DataFrame from Entity.compare()
+        scenario_name: Name of scenario to analyze. If None, uses first scenario.
+
+    Returns:
+        Tuple of (plotly_figure, tidy_dataframe_used)
+    """
+    _check_plotly()
+
+    if scenario_name is None:
+        scenario_name = tidy["scenario_name"].iloc[0]
+
+    scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
+    scenario_data = scenario_data.sort_values("date")
+
+    # Create mock event data for demonstration
+    # In a real implementation, this would come from the scenario's event history
+    events_data = []
+
+    # Add some mock events based on cashflow patterns
+    for i, row in scenario_data.iterrows():
+        if i > 0:  # Skip first row
+            prev_row = scenario_data.iloc[i - 1]
+
+            # Detect significant cashflow changes as "events"
+            if abs(row["inflows"] - prev_row["inflows"]) > 100:
+                events_data.append(
+                    {
+                        "date": row["date"],
+                        "event_type": "Income Change",
+                        "amount": row["inflows"] - prev_row["inflows"],
+                        "description": f"Inflow changed by {row['inflows'] - prev_row['inflows']:.0f}",
+                    }
+                )
+
+            if abs(row["outflows"] - prev_row["outflows"]) > 100:
+                events_data.append(
+                    {
+                        "date": row["date"],
+                        "event_type": "Expense Change",
+                        "amount": row["outflows"] - prev_row["outflows"],
+                        "description": f"Outflow changed by {row['outflows'] - prev_row['outflows']:.0f}",
+                    }
+                )
+
+    if not events_data:
+        # Create a placeholder event if no events detected
+        events_data = [
+            {
+                "date": scenario_data["date"].iloc[0],
+                "event_type": "Scenario Start",
+                "amount": 0,
+                "description": "Scenario initialization",
+            }
+        ]
+
+    events_df = pd.DataFrame(events_data)
+
+    # Create timeline chart
+    fig = go.Figure()
+
+    # Color mapping for event types
+    event_colors = {
+        "Income Change": "green",
+        "Expense Change": "red",
+        "Scenario Start": "blue",
+        "Property Purchase": "orange",
+        "Investment": "purple",
+        "Loan": "brown",
+    }
+
+    for event_type in events_df["event_type"].unique():
+        type_data = events_df[events_df["event_type"] == event_type]
+        fig.add_trace(
+            go.Scatter(
+                x=type_data["date"],
+                y=[event_type] * len(type_data),
+                mode="markers",
+                marker={
+                    "size": 10,
+                    "color": event_colors.get(event_type, "gray"),
+                },
+                name=event_type,
+                text=type_data["description"],
+                hovertemplate="<b>%{text}</b><br>"
+                + "Date: %{x}<br>"
+                + "Event: %{y}<br>"
+                + "<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=f"Event Timeline - {scenario_name}",
+        xaxis_title="Date",
+        yaxis_title="Event Type",
+        hovermode="closest",
+    )
+
+    return fig, events_df
+
+
+def holdings_cost_basis(
+    tidy: pd.DataFrame, scenario_name: str | None = None
+) -> tuple[go.Figure, pd.DataFrame]:
+    """
+    Plot holdings and cost basis over time.
+
+    Shows units, average price, and unrealized P/L for assets.
+
+    Args:
+        tidy: DataFrame from Entity.compare()
+        scenario_name: Name of scenario to analyze. If None, uses first scenario.
+
+    Returns:
+        Tuple of (plotly_figure, tidy_dataframe_used)
+    """
+    _check_plotly()
+
+    if scenario_name is None:
+        scenario_name = tidy["scenario_name"].iloc[0]
+
+    scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
+    scenario_data = scenario_data.sort_values("date")
+
+    # Create mock holdings data based on liquid assets
+    # In a real implementation, this would come from individual brick outputs
+    holdings_df = pd.DataFrame(
+        {
+            "date": scenario_data["date"],
+            "asset_type": "Liquid Assets",  # Placeholder
+            "units": scenario_data["liquid_assets"] / 100,  # Mock units
+            "avg_price": 100.0,  # Mock average price
+            "market_value": scenario_data["liquid_assets"],
+            "cost_basis": scenario_data["liquid_assets"]
+            * 0.95,  # Mock cost basis (5% gain)
+            "unrealized_pl": scenario_data["liquid_assets"] * 0.05,  # Mock 5% gain
+        }
+    )
+
+    # Create subplot with secondary y-axis
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        subplot_titles=["Holdings Value", "Unrealized P&L"],
+        vertical_spacing=0.1,
+    )
+
+    # Holdings value
+    fig.add_trace(
+        go.Scatter(
+            x=holdings_df["date"],
+            y=holdings_df["market_value"],
+            name="Market Value",
+            line={"color": "blue"},
+            fill="tonexty",
+        ),
+        row=1,
+        col=1,
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=holdings_df["date"],
+            y=holdings_df["cost_basis"],
+            name="Cost Basis",
+            line={"color": "red"},
+            fill="tozeroy",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Unrealized P&L
+    fig.add_trace(
+        go.Scatter(
+            x=holdings_df["date"],
+            y=holdings_df["unrealized_pl"],
+            name="Unrealized P&L",
+            line={"color": "green"},
+            fill="tonexty",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_layout(
+        title=f"Holdings & Cost Basis - {scenario_name}",
+        height=600,
+        showlegend=True,
+    )
+
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+    fig.update_yaxes(title_text="Value", row=1, col=1)
+    fig.update_yaxes(title_text="P&L", row=2, col=1)
+
+    return fig, holdings_df
+
+
+# =============================================================================
 # Utility functions
 # =============================================================================
 

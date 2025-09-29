@@ -758,10 +758,19 @@ class Scenario:
 
         # Cash and asset mapping
         canonical_df["cash"] = df.get("cash", 0.0)
-        canonical_df["liquid_assets"] = df.get(
-            "non_cash", 0.0
-        )  # Map non_cash to liquid_assets for now
-        canonical_df["illiquid_assets"] = 0.0  # Not currently tracked separately
+        canonical_df["liquid_assets"] = df.get("non_cash", 0.0)
+
+        # Map property_value -> illiquid_assets (Option B, strict non-negative)
+        if "property_value" in df.columns:
+            pv = df["property_value"]
+            if (pv < 0).any():
+                bad_ix = list(df.index[(pv < 0)])
+                raise ValueError(
+                    f"property_value contains negative entries at indices {bad_ix[:5]}..."
+                )
+            canonical_df["illiquid_assets"] = pv
+        else:
+            canonical_df["illiquid_assets"] = 0.0
 
         # Liabilities
         canonical_df["liabilities"] = df.get("liabilities", 0.0)
@@ -783,6 +792,23 @@ class Scenario:
         canonical_df["net_worth"] = (
             canonical_df["total_assets"] - canonical_df["liabilities"]
         )
+
+        # Enforce dtypes
+        required_numeric_cols = [
+            "cash",
+            "liquid_assets",
+            "illiquid_assets",
+            "liabilities",
+            "inflows",
+            "outflows",
+            "taxes",
+            "fees",
+            "total_assets",
+            "net_worth",
+        ]
+        for col in required_numeric_cols:
+            if col in canonical_df.columns:
+                canonical_df[col] = canonical_df[col].astype("float64")
 
         # Reset index to have date as a column
         canonical_df = canonical_df.reset_index(drop=True)

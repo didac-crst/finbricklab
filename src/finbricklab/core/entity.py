@@ -64,6 +64,16 @@ class Entity:
         if invalid_ids:
             raise ValueError(f"Unknown scenario IDs: {sorted(invalid_ids)}")
 
+        # Validate currencies (placeholder - assumes all scenarios use entity's base currency)
+        try:
+            from ..fx import validate_entity_currencies
+
+            scenarios_to_validate = [s for s in self.scenarios if s.id in scenario_ids]
+            validate_entity_currencies(self, scenarios_to_validate)
+        except ImportError:
+            # FX module not available - assume all scenarios are compatible
+            pass
+
         dfs = []
         for scenario in self.scenarios:
             if scenario.id in scenario_ids:

@@ -127,7 +127,7 @@ def main():
         r"dist$",
         r"build$",
         # Exclude this script itself
-        r"check_forbidden_tokens\.py$",
+        r"scripts/check_forbidden_tokens\.py$",
         # Exclude pre-commit config that mentions the tokens it's checking
         r"\.pre-commit-config\.yaml$",
         # Exclude test files that might legitimately test for these tokens

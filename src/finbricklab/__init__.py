@@ -112,13 +112,34 @@ from .core import (
 # Import Entity system
 from .core.entity import Entity
 
+# Import FX utilities
+from .fx import FXConverter, create_fx_converter, validate_entity_currencies
+
+# Import KPI utilities
+from .kpi import (
+    breakeven_month,
+    dsti,
+    effective_tax_rate,
+    fee_drag_cum,
+    interest_paid_cum,
+    liquidity_runway,
+    ltv,
+    max_drawdown,
+    savings_rate,
+    tax_burden_cum,
+)
+
 # Import chart functions (optional - requires plotly)
 try:
     from .charts import (
         asset_composition_small_multiples,
         cashflow_waterfall,
+        category_allocation_over_time,
+        category_cashflow_bars,
         contribution_vs_market_growth,
         cumulative_fees_taxes,
+        event_timeline,
+        holdings_cost_basis,
         liabilities_amortization,
         liquidity_runway_heatmap,
         ltv_dsti_over_time,
@@ -145,6 +166,21 @@ __all__ = [
     "Event",
     # Entity system
     "Entity",
+    # FX utilities
+    "FXConverter",
+    "create_fx_converter",
+    "validate_entity_currencies",
+    # KPI utilities
+    "breakeven_month",
+    "dsti",
+    "effective_tax_rate",
+    "fee_drag_cum",
+    "interest_paid_cum",
+    "liquidity_runway",
+    "ltv",
+    "max_drawdown",
+    "savings_rate",
+    "tax_burden_cum",
     # Utility functions
     "month_range",
     "wire_strategies",
@@ -190,6 +226,10 @@ if CHARTS_AVAILABLE:
             "owner_equity_vs_property_mortgage",
             "ltv_dsti_over_time",
             "contribution_vs_market_growth",
+            "category_allocation_over_time",
+            "category_cashflow_bars",
+            "event_timeline",
+            "holdings_cost_basis",
             "save_chart",
         ]
     )

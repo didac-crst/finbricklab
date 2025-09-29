@@ -174,12 +174,12 @@ All scenarios emit standardized monthly data:
 | `date` | datetime64 | Month-end dates |
 | `cash` | float64 | Immediately spendable cash |
 | `liquid_assets` | float64 | Tradable assets (≤5 business days) |
-| `illiquid_assets` | float64 | Non-tradable assets (property, private equity) |
+| `illiquid_assets` | float64 | Non-tradable assets (property, private equity) - mapped from property_value when available |
 | `liabilities` | float64 | All debt balances |
 | `inflows` | float64 | Post-tax income + dividends + rents |
 | `outflows` | float64 | Consumption + rent + maintenance + insurance |
-| `taxes` | float64 | Tax payments |
-| `fees` | float64 | Fee payments |
+| `taxes` | float64 | Tax payments (currently defaults to 0) |
+| `fees` | float64 | Fee payments (currently defaults to 0) |
 | `total_assets` | float64 | `cash + liquid_assets + illiquid_assets` |
 | `net_worth` | float64 | `total_assets - liabilities` |
 
@@ -215,6 +215,26 @@ flowchart LR
   classDef scenario fill:#7ed321,stroke:#5ba517,stroke-width:2px,color:#fff;
   classDef visualization fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
 ```
+
+### Multi-Currency Support
+
+The Entity system includes FX (Foreign Exchange) utilities for scenarios with different base currencies:
+
+```python
+from finbricklab import FXConverter, create_fx_converter
+
+# Create FX converter with exchange rates
+fx_converter = create_fx_converter("EUR", {
+    ("USD", "EUR"): 0.85,  # 1 USD = 0.85 EUR
+    ("GBP", "EUR"): 1.18,  # 1 GBP = 1.18 EUR
+})
+
+# Convert DataFrame from USD to EUR
+usd_data = pd.DataFrame({"cash": [1000, 2000], "date": [...]})
+eur_data = fx_converter.convert_frame(usd_data, "USD", "EUR")
+```
+
+**Note**: Currently, all scenarios within an Entity must use the same base currency. Multi-currency scenarios require manual FX conversion before Entity comparison.
 
 ---
 
@@ -568,14 +588,23 @@ finbricklab/
 │   │   └── ...              # other core modules
 │   ├── strategies/          # asset/liability/flow strategies + registry
 │   ├── charts.py            # visualization functions (requires plotly)
+│   ├── kpi.py               # KPI calculation utilities
+│   ├── fx.py                # Foreign exchange utilities
 │   └── cli.py               # finbrick CLI entry point
 ├── tests/                   # unit & integration tests
 │   ├── test_entity_*.py     # Entity system tests
+│   ├── test_kpi_utilities.py # KPI function tests
+│   ├── test_fx_utilities.py  # FX utility tests
+│   ├── data/golden_12m.csv   # Golden dataset for testing
 │   └── ...                  # other test modules
+├── docs/                    # comprehensive documentation
+│   ├── API_REFERENCE.md      # Complete API documentation
+│   ├── STRATEGIES.md         # Strategy catalog
+│   ├── EXAMPLES.md           # Comprehensive examples (includes MacroBrick usage)
+│   ├── CONTRIBUTING.md       # Development guide
+│   └── ENTITY_AND_CANONICAL_SCHEMA.md  # Entity system docs
 ├── scripts/                 # utility scripts
 │   └── check_forbidden_tokens.py  # CI token guard
-├── docs/                    # documentation
-│   └── ENTITY_AND_CANONICAL_SCHEMA.md  # Entity system docs
 ├── examples/                # examples (not packaged)
 ├── pyproject.toml           # dependencies + optional [viz] extras
 ├── README.md (this file)
@@ -593,13 +622,16 @@ finbricklab/
 * **Rich Visualizations**: Interactive Plotly charts for analysis
 * **KPI Calculations**: Liquidity runway, breakeven analysis, fee/tax summaries
 
-### In Progress 🚧
-* **MacroBrick Enhancements**: Category-based grouping and analysis
-* **Additional KPI Utilities**: DSTI, LTV, fee drag calculations
-* **Extended Chart Library**: More scenario and FinBrick-level visualizations
+### Shipped ✅
+* MacroBrick enhancements: `category_allocation_over_time`, `category_cashflow_bars`
+* FinBrick timeline: `event_timeline`
+* Holdings & basis: `holdings_cost_basis`
+* KPI utilities: `dsti`, `ltv`, `fee_drag_cum`, `effective_tax_rate`, `liquidity_runway`, `max_drawdown`, `tax_burden_cum`, `interest_paid_cum`
 
 ### Planned 📋
-* Broader strategy set (bonds, variable‑rate mortgages, DCA/SDCA flows)
+* Broader strategy set (bonds, var-rate mortgages, DCA/SDCA flows)
+* Scenario diffs view (structural & numeric deltas)
+* Mortgage schedule lens for FinBricks (amort schedule inspection)
 * Richer validation & JSON schema docs
 * Deterministic export snapshots + baseline comparisons
 * Documentation site (MkDocs) with tutorials

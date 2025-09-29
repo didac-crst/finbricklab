@@ -55,12 +55,12 @@ All scenarios must emit data in the canonical schema format through the `to_cano
 | `date` | datetime64 | Month-end dates (e.g., 2026-01-31) |
 | `cash` | float64 | Immediately spendable cash (checking + MMF) |
 | `liquid_assets` | float64 | Tradable assets (≤5 business days) |
-| `illiquid_assets` | float64 | Non-tradable assets (property, private equity) |
+| `illiquid_assets` | float64 | Non-tradable assets (property, private equity) - mapped from property_value when available |
 | `liabilities` | float64 | All debt balances |
 | `inflows` | float64 | Post-tax income + dividends + rents received |
 | `outflows` | float64 | Consumption + rent paid + maintenance + insurance |
-| `taxes` | float64 | Tax payments |
-| `fees` | float64 | Fee payments |
+| `taxes` | float64 | Tax payments (currently defaults to 0) |
+| `fees` | float64 | Fee payments (currently defaults to 0) |
 
 ### Derived Columns
 
@@ -349,3 +349,16 @@ print(runway_df.head())
 ```
 
 This Entity system provides a robust foundation for financial scenario analysis, comparison, and visualization while maintaining clean, consistent data structures throughout the FinBrickLab ecosystem.
+
+## Multi-Currency (FX) Behavior
+
+**Entity.compare() validates currencies but does not perform FX conversion.**
+All scenario DataFrames must already be expressed in `Entity.base_currency`.
+If currencies differ and you did not normalize them, `Entity.compare()` raises `ValueError`.
+
+Example manual preprocessing:
+```python
+from finbricklab.fx import FXConverter
+fx = FXConverter(base="EUR", rates={(("USD","EUR")): 0.92})
+# Convert each scenario frame to EUR before passing to Entity
+```
