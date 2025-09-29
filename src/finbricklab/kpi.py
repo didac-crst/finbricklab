@@ -310,13 +310,21 @@ def breakeven_month(
         Month number (1-based) where scenario first matches or exceeds baseline,
         or None if no breakeven occurs
     """
-    # Ensure both DataFrames are sorted by date
-    scenario_sorted = scenario_df.sort_values(date_col)
-    baseline_sorted = baseline_df.sort_values(date_col)
+    # Align by date using inner join to handle mismatched calendars
+    merged = pd.merge(
+        scenario_df[[date_col, net_worth_col]],
+        baseline_df[[date_col, net_worth_col]],
+        on=date_col,
+        how="inner",
+        suffixes=("_scenario", "_baseline"),
+    )
+
+    if merged.empty:
+        return None
 
     # Calculate advantage (scenario - baseline)
     advantage = (
-        scenario_sorted[net_worth_col].values - baseline_sorted[net_worth_col].values
+        merged[f"{net_worth_col}_scenario"] - merged[f"{net_worth_col}_baseline"]
     )
 
     # Find first month where advantage >= 0
