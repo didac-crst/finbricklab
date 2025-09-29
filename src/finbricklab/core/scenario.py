@@ -718,6 +718,77 @@ class Scenario:
         # Use the stored results from the last run
         validate_run(self._last_results, self.bricks, mode=mode, tol=tol)
 
+    def to_canonical_frame(self) -> pd.DataFrame:
+        """
+        Convert scenario results to canonical schema for Entity comparison.
+
+        Returns a DataFrame with the canonical monthly schema required by Entity:
+        - date (month-end dates)
+        - cash, liquid_assets, illiquid_assets, liabilities
+        - inflows, outflows, taxes, fees
+        - Computed: total_assets, net_worth
+
+        Returns:
+            DataFrame with canonical columns and month-end date index
+
+        Raises:
+            RuntimeError: If no scenario has been run yet
+        """
+        if self._last_totals is None:
+            raise RuntimeError(
+                "No scenario has been run yet. Call scenario.run() first."
+            )
+
+        # Start with the totals DataFrame
+        df = self._last_totals.copy()
+
+        # Ensure we have month-end dates
+        if not isinstance(df.index, pd.PeriodIndex):
+            # Convert to PeriodIndex if needed
+            df.index = pd.to_datetime(df.index).to_period("M")
+
+        # Convert PeriodIndex to month-end Timestamps
+        df = df.to_timestamp("M")
+
+        # Map current columns to canonical schema
+        canonical_df = pd.DataFrame(index=df.index)
+
+        # Required columns - map from current schema
+        canonical_df["date"] = df.index
+
+        # Cash and asset mapping
+        canonical_df["cash"] = df.get("cash", 0.0)
+        canonical_df["liquid_assets"] = df.get(
+            "non_cash", 0.0
+        )  # Map non_cash to liquid_assets for now
+        canonical_df["illiquid_assets"] = 0.0  # Not currently tracked separately
+
+        # Liabilities
+        canonical_df["liabilities"] = df.get("liabilities", 0.0)
+
+        # Cash flows
+        canonical_df["inflows"] = df.get("cash_in", 0.0)
+        canonical_df["outflows"] = df.get("cash_out", 0.0)
+
+        # Fees and taxes (not currently tracked separately)
+        canonical_df["taxes"] = 0.0
+        canonical_df["fees"] = 0.0
+
+        # Compute derived columns
+        canonical_df["total_assets"] = (
+            canonical_df["cash"]
+            + canonical_df["liquid_assets"]
+            + canonical_df["illiquid_assets"]
+        )
+        canonical_df["net_worth"] = (
+            canonical_df["total_assets"] - canonical_df["liabilities"]
+        )
+
+        # Reset index to have date as a column
+        canonical_df = canonical_df.reset_index(drop=True)
+
+        return canonical_df
+
     def _resolve_mortgage_links(self) -> None:
         """
         Resolve mortgage links and validate settlement buckets.

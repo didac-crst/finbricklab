@@ -1,10 +1,10 @@
 # FinBrickLab
 
-*A modular, testable engine to model personal‑finance scenarios as composable **bricks**.*
+*A modular, testable engine to model personal‑finance scenarios as composable **bricks** with multi-scenario **Entity** comparisons.*
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
 
-> Define **assets**, **liabilities**, and **flows** as independent bricks, wire them into a **Scenario**, and simulate month‑by‑month with deterministic math. Use the lean **CLI** to run JSON specs or the **Python API** for full control.
+> Define **assets**, **liabilities**, and **flows** as independent bricks, wire them into **Scenarios**, group scenarios into **Entities** for comparison, and simulate month‑by‑month with deterministic math. Use the lean **CLI** to run JSON specs, the **Python API** for full control, or **Entity comparisons** for multi-scenario analysis with rich visualizations.
 
 ---
 
@@ -13,12 +13,15 @@
 * [Why FinBrickLab](#why-finbricklab)
 * [Core Ideas](#core-ideas)
 * [Architecture](#architecture)
+* [Entity System](#entity-system)
 * [Install](#install)
 * [Quickstart (Python API)](#quickstart-python-api)
+* [Quickstart (Entity Comparisons)](#quickstart-entity-comparisons)
 * [Quickstart (CLI)](#quickstart-cli)
 * [Scenario JSON (minimal spec)](#scenario-json-minimal-spec)
 * [Strategy Catalog](#strategy-catalog)
 * [Outputs](#outputs)
+* [Visualization](#visualization)
 * [Validation & Errors](#validation--errors)
 * [Extending](#extending)
 * [Development](#development)
@@ -34,8 +37,10 @@
 Most "buy vs. rent" and personal‑finance tools are rigid spreadsheets. FinBrickLab is a small, composable engine you can test and version like real software:
 
 * **Composability** — each instrument is an independent brick.
+* **Multi-scenario comparison** — group scenarios into Entities for benchmarking.
 * **Determinism** — month‑granular timeline, repeatable runs.
 * **Testability** — unit tests for math invariants + E2E scenarios.
+* **Rich visualizations** — interactive charts for scenario analysis.
 * **Portability** — minimal runtime deps; CLI and Python API.
 
 If you're an engineer/analyst who hates arbitrary rules of thumb, this is for you.
@@ -52,6 +57,7 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
   * Flow → `IFlowStrategy`
 * **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`).
 * **Scenario**: orchestrates bricks, routes cash, aggregates totals, exports results.
+* **Entity**: groups multiple scenarios for comparison, benchmarking, and visualization.
 * **Context**: timeline + shared configuration available in `prepare()` and `simulate()`.
 * **MacroBrick**: composite structure grouping heterogeneous bricks into named views for analysis and presentation.
 
@@ -68,34 +74,146 @@ Example: If `house` appears in both `primary_residence` and `property_portfolio`
 ## Architecture
 
 ```mermaid
+flowchart TD
+  subgraph "Entity Level"
+    E[Entity]:::entity
+    E --> S1[Scenario 1]
+    E --> S2[Scenario 2]
+    E --> S3[Scenario N]
+  end
+
+  subgraph "Scenario Level"
+    S1 --> B1[FinBrick]
+    S1 --> B2[FinBrick]
+    S1 --> B3[FinBrick]
+    S2 --> B4[FinBrick]
+    S2 --> B5[FinBrick]
+  end
+
+  subgraph "Strategy Level"
+    B1 --> ST1[a.cash]
+    B2 --> ST2[a.property_discrete]
+    B3 --> ST3[l.mortgage.annuity]
+    B4 --> ST4[a.etf_unitized]
+    B5 --> ST5[f.income.fixed]
+  end
+
+  subgraph "Data Flow"
+    ST1 --> D1[Cash Flows]
+    ST2 --> D2[Asset Values]
+    ST3 --> D3[Debt Balances]
+    ST4 --> D4[ETF Holdings]
+    ST5 --> D5[Income Streams]
+
+    D1 --> DF[Canonical Schema]
+    D2 --> DF
+    D3 --> DF
+    D4 --> DF
+    D5 --> DF
+
+    DF --> V[Visualizations]
+    DF --> K[KPIs & Analysis]
+  end
+
+  classDef entity fill:#4a90e2,stroke:#2c5aa0,stroke-width:3px,color:#fff;
+  classDef scenario fill:#7ed321,stroke:#5ba517,stroke-width:2px,color:#fff;
+  classDef strategy fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
+  classDef data fill:#bd10e0,stroke:#9013fe,stroke-width:2px,color:#fff;
+```
+
+### System Hierarchy
+
+```mermaid
+graph TB
+  subgraph "Entity System"
+    E[Entity<br/>Multi-scenario comparison<br/>Benchmarking & KPIs]:::entity
+  end
+
+  subgraph "Scenario Level"
+    S[Scenario<br/>Brick orchestration<br/>Cash routing<br/>Aggregation]:::scenario
+  end
+
+  subgraph "MacroBrick Level"
+    MB[MacroBrick<br/>Category grouping<br/>Roll-up analysis]:::macrobrick
+  end
+
+  subgraph "FinBrick Level"
+    FB[FinBrick<br/>Individual instruments<br/>Strategy execution]:::finbrick
+  end
+
+  E --> S
+  S --> MB
+  MB --> FB
+
+  classDef entity fill:#4a90e2,stroke:#2c5aa0,stroke-width:3px,color:#fff;
+  classDef scenario fill:#7ed321,stroke:#5ba517,stroke-width:2px,color:#fff;
+  classDef macrobrick fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
+  classDef finbrick fill:#bd10e0,stroke:#9013fe,stroke-width:2px,color:#fff;
+```
+
+---
+
+## Entity System
+
+The Entity system enables multi-scenario comparison and benchmarking with a canonical schema for consistent analysis.
+
+### Key Features
+
+- **Multi-scenario comparison**: Compare multiple scenarios side-by-side
+- **Benchmarking**: Define baseline scenarios for breakeven analysis
+- **Consistent schema**: All scenarios emit data in the same canonical format
+- **Rich visualizations**: Interactive charts for scenario analysis
+- **KPI calculations**: Built-in metrics like liquidity runway, breakeven analysis, and fee/tax summaries
+
+### Canonical Schema
+
+All scenarios emit standardized monthly data:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `date` | datetime64 | Month-end dates |
+| `cash` | float64 | Immediately spendable cash |
+| `liquid_assets` | float64 | Tradable assets (≤5 business days) |
+| `illiquid_assets` | float64 | Non-tradable assets (property, private equity) |
+| `liabilities` | float64 | All debt balances |
+| `inflows` | float64 | Post-tax income + dividends + rents |
+| `outflows` | float64 | Consumption + rent + maintenance + insurance |
+| `taxes` | float64 | Tax payments |
+| `fees` | float64 | Fee payments |
+| `total_assets` | float64 | `cash + liquid_assets + illiquid_assets` |
+| `net_worth` | float64 | `total_assets - liabilities` |
+
+### Visualization Workflow
+
+```mermaid
 flowchart LR
-  subgraph Strategies
-    A[a.cash]:::asset
-    P[a.property_discrete]:::asset
-    E[a.etf_unitized]:::asset
-    M[l.mortgage.annuity]:::liability
-    FI[f.income.fixed]:::flow
-    FE[f.expense.fixed]:::flow
+  subgraph "Data Sources"
+    S1[Scenario 1]:::scenario
+    S2[Scenario 2]:::scenario
+    S3[Scenario N]:::scenario
   end
 
-  subgraph Scenario
-    S1[wire & validate]
-    S2[prepare]
-    S3[simulate]
-    S4[route cash]
-    S5[aggregate & export]
+  subgraph "Entity Processing"
+    E[Entity]:::entity
+    E --> CF[Canonical Frame]
+    CF --> KPI[KPI Calculations]
   end
 
-  A-->S3
-  P-->S3
-  E-->S3
-  M-->S3
-  FI-->S3
-  FE-->S3
+  subgraph "Visualizations"
+    KPI --> V1[Net Worth Charts]
+    KPI --> V2[Asset Composition]
+    KPI --> V3[Liquidity Runway]
+    KPI --> V4[Breakeven Analysis]
+    KPI --> V5[Fee & Tax Summary]
+  end
 
-  classDef asset fill:#eef,stroke:#88a;
-  classDef liability fill:#fee,stroke:#a88;
-  classDef flow fill:#efe,stroke:#8a8;
+  S1 --> E
+  S2 --> E
+  S3 --> E
+
+  classDef entity fill:#4a90e2,stroke:#2c5aa0,stroke-width:3px,color:#fff;
+  classDef scenario fill:#7ed321,stroke:#5ba517,stroke-width:2px,color:#fff;
+  classDef visualization fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
 ```
 
 ---
@@ -105,8 +223,15 @@ flowchart LR
 ```bash
 # from source (dev)
 poetry install
+
+# with visualization support (Plotly charts)
+poetry install --extras viz
+
 # or plain pip (editable)
 pip install -e .
+
+# with visualization support
+pip install -e .[viz]
 ```
 
 ---
@@ -161,6 +286,72 @@ totals = results["totals"]
 print("Final cash:", totals.iloc[-1]["cash"])  # .iloc for explicit row indexing
 print("Final assets:", totals.iloc[-1]["assets"])
 print("Final liabilities:", totals.iloc[-1]["liabilities"])
+```
+
+---
+
+## Quickstart (Entity Comparisons)
+
+```python
+from datetime import date
+from finbricklab.core.entity import Entity
+from finbricklab.core.scenario import Scenario
+from finbricklab.core.bricks import ABrick, LBrick
+from finbricklab.core.kinds import K
+from finbricklab.charts import net_worth_vs_time, asset_composition_small_multiples
+
+# Create different scenarios
+def create_conservative_scenario():
+    cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
+                  spec={"initial_balance": 50000.0})
+    etf = ABrick(id="etf", name="ETF", kind=K.A_ETF_UNITIZED,
+                 spec={"price0": 100.0, "drift_pa": 0.05, "initial_value": 30000.0})
+    return Scenario(id="conservative", name="Conservative", bricks=[cash, etf])
+
+def create_aggressive_scenario():
+    cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
+                  spec={"initial_balance": 20000.0})
+    house = ABrick(id="house", name="House", kind=K.A_PROPERTY_DISCRETE,
+                   spec={"initial_value": 400000.0, "appreciation_pa": 0.03, "fees_pct": 0.05})
+    mortgage = LBrick(id="mortgage", name="Mortgage", kind=K.L_MORT_ANN,
+                      spec={"principal": 320000.0, "rate_pa": 0.035, "term_months": 360})
+    return Scenario(id="aggressive", name="Aggressive", bricks=[cash, house, mortgage])
+
+# Create and run scenarios
+scenario1 = create_conservative_scenario()
+scenario2 = create_aggressive_scenario()
+
+scenario1.run(start=date(2026, 1, 1), months=36)
+scenario2.run(start=date(2026, 1, 1), months=36)
+
+# Create entity for comparison
+entity = Entity(
+    id="my_entity",
+    name="My Financial Entity",
+    scenarios=[scenario1, scenario2],
+    benchmarks={"baseline": "conservative"}
+)
+
+# Compare scenarios
+comparison_df = entity.compare(["conservative", "aggressive"])
+print(f"Comparison data shape: {comparison_df.shape}")
+
+# Create visualizations
+fig1, _ = net_worth_vs_time(comparison_df)
+fig1.show()
+
+fig2, _ = asset_composition_small_multiples(comparison_df)
+fig2.show()
+
+# Analyze breakeven
+breakeven_df = entity.breakeven_table("conservative")
+print("Breakeven analysis:")
+print(breakeven_df)
+
+# Check liquidity runway
+runway_df = entity.liquidity_runway()
+print("Liquidity runway (first 6 months):")
+print(runway_df.head())
 ```
 
 ---
@@ -247,6 +438,62 @@ A **Scenario run** returns a structure that includes:
 
 ---
 
+## Visualization
+
+FinBrickLab provides rich interactive visualizations through the Entity system and chart functions.
+
+### Installation
+
+```bash
+# Install with visualization support
+poetry install --extras viz
+# or
+pip install -e .[viz]
+```
+
+### Available Charts
+
+#### Entity-Level Charts
+- **Net Worth Over Time**: Compare net worth across scenarios
+- **Asset Composition**: Small multiples showing cash/liquid/illiquid assets
+- **Liabilities Amortization**: Debt reduction over time
+- **Liquidity Runway**: Heatmap showing months of buffer
+- **Cumulative Fees & Taxes**: Cost comparison at different horizons
+- **Net Worth Drawdown**: Risk analysis across scenarios
+
+#### Scenario-Level Charts
+- **Cashflow Waterfall**: Annual income → expenses breakdown
+- **Owner Equity vs Property Value**: Real estate analysis
+- **LTV & DSTI Over Time**: Risk metrics evolution
+- **Contribution vs Market Growth**: Performance attribution
+
+### Chart Usage
+
+```python
+from finbricklab.charts import net_worth_vs_time, asset_composition_small_multiples
+
+# Get comparison data from entity
+comparison_df = entity.compare(["scenario1", "scenario2"])
+
+# Create charts
+fig1, data1 = net_worth_vs_time(comparison_df)
+fig2, data2 = asset_composition_small_multiples(comparison_df)
+
+# Display or save
+fig1.show()
+fig2.write_html("asset_composition.html")
+```
+
+### Chart Features
+
+- **Interactive**: Hover details, zoom, pan
+- **Exportable**: HTML, PNG, PDF, SVG formats
+- **Consistent styling**: Professional financial chart appearance
+- **Small multiples**: Compare multiple scenarios effectively
+- **Threshold indicators**: Visual cues for risk levels
+
+---
+
 ## Validation & Errors
 
 * **Structural** (during wiring/prepare): e.g., missing links, invalid kinds, bad windows.
@@ -316,11 +563,21 @@ pre-commit run --all-files
 finbricklab/
 ├── src/finbricklab/
 │   ├── core/                # bricks, scenario, context, interfaces, results
+│   │   ├── entity.py        # Entity class for multi-scenario comparison
+│   │   ├── scenario.py      # Scenario orchestration + canonical schema
+│   │   └── ...              # other core modules
 │   ├── strategies/          # asset/liability/flow strategies + registry
+│   ├── charts.py            # visualization functions (requires plotly)
 │   └── cli.py               # finbrick CLI entry point
 ├── tests/                   # unit & integration tests
+│   ├── test_entity_*.py     # Entity system tests
+│   └── ...                  # other test modules
+├── scripts/                 # utility scripts
+│   └── check_forbidden_tokens.py  # CI token guard
+├── docs/                    # documentation
+│   └── ENTITY_AND_CANONICAL_SCHEMA.md  # Entity system docs
 ├── examples/                # examples (not packaged)
-├── pyproject.toml
+├── pyproject.toml           # dependencies + optional [viz] extras
 ├── README.md (this file)
 ├── LICENSE (Apache-2.0)
 └── NOTICE
@@ -330,10 +587,24 @@ finbricklab/
 
 ## Roadmap
 
+### Completed ✅
+* **Entity System**: Multi-scenario comparison and benchmarking
+* **Canonical Schema**: Standardized data format for all scenarios
+* **Rich Visualizations**: Interactive Plotly charts for analysis
+* **KPI Calculations**: Liquidity runway, breakeven analysis, fee/tax summaries
+
+### In Progress 🚧
+* **MacroBrick Enhancements**: Category-based grouping and analysis
+* **Additional KPI Utilities**: DSTI, LTV, fee drag calculations
+* **Extended Chart Library**: More scenario and FinBrick-level visualizations
+
+### Planned 📋
 * Broader strategy set (bonds, variable‑rate mortgages, DCA/SDCA flows)
 * Richer validation & JSON schema docs
 * Deterministic export snapshots + baseline comparisons
 * Documentation site (MkDocs) with tutorials
+* Monte Carlo simulations with Entity benchmarking
+* Real-time data integration for market prices
 
 ---
 

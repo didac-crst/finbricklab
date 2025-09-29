@@ -11,6 +11,8 @@ Key Features:
 - **Composable**: Link bricks together for complex interdependencies
 - **Extensible**: Add new behaviors by registering strategies, no code changes required
 - **Explicit**: Cash flows are explicitly routed, no hidden assumptions
+- **Multi-scenario Comparison**: Group scenarios into Entities for benchmarking
+- **Rich Visualizations**: Interactive charts for scenario analysis
 
 Architecture Overview:
 - **FinBrickABC**: Abstract base class for all financial instruments
@@ -18,6 +20,8 @@ Architecture Overview:
 - **Strategy Interfaces**: Protocols for valuation, scheduling, and flow strategies
 - **Registry System**: Maps kind strings to strategy implementations
 - **Scenario Engine**: Orchestrates simulation and cash flow routing
+- **Entity System**: Multi-scenario comparison with canonical schema
+- **Chart Library**: Interactive visualizations with Plotly integration
 
 Quick Start:
     ```python
@@ -105,6 +109,29 @@ from .core import (
     wire_strategies,
 )
 
+# Import Entity system
+from .core.entity import Entity
+
+# Import chart functions (optional - requires plotly)
+try:
+    from .charts import (
+        asset_composition_small_multiples,
+        cashflow_waterfall,
+        contribution_vs_market_growth,
+        cumulative_fees_taxes,
+        liabilities_amortization,
+        liquidity_runway_heatmap,
+        ltv_dsti_over_time,
+        net_worth_drawdown,
+        net_worth_vs_time,
+        owner_equity_vs_property_mortgage,
+        save_chart,
+    )
+
+    CHARTS_AVAILABLE = True
+except ImportError:
+    CHARTS_AVAILABLE = False
+
 # Define what gets imported with "from finbricklab import *"
 __all__ = [
     # Core classes
@@ -116,6 +143,8 @@ __all__ = [
     "ScenarioContext",
     "BrickOutput",
     "Event",
+    # Entity system
+    "Entity",
     # Utility functions
     "month_range",
     "wire_strategies",
@@ -146,3 +175,21 @@ __all__ = [
     "__author__",
     "__description__",
 ]
+
+# Add chart functions to __all__ if available
+if CHARTS_AVAILABLE:
+    __all__.extend(
+        [
+            "net_worth_vs_time",
+            "asset_composition_small_multiples",
+            "liabilities_amortization",
+            "liquidity_runway_heatmap",
+            "cumulative_fees_taxes",
+            "net_worth_drawdown",
+            "cashflow_waterfall",
+            "owner_equity_vs_property_mortgage",
+            "ltv_dsti_over_time",
+            "contribution_vs_market_growth",
+            "save_chart",
+        ]
+    )
