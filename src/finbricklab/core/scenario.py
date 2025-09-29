@@ -878,9 +878,9 @@ class Scenario:
                         months=ref_spec.fix_rate_months - 1
                     )
                 else:
-                    # Fallback to brick end
+                    # Fallback to ref_brick end
                     fix_end = ref_start + pd.DateOffset(
-                        months=(getattr(brick, "duration_m", 12) or 12) - 1
+                        months=(getattr(ref_brick, "duration_m", 12) or 12) - 1
                     )
 
                 calculated_start = fix_end + pd.DateOffset(months=start_link.offset_m)
@@ -1158,7 +1158,7 @@ def validate_run(
     # Liabilities monotonicity: liabilities should not increase after initial draws
     liabilities = totals["liabilities"].values
     if len(liabilities) > 1 and not np.all(np.diff(liabilities[1:]) <= tol):
-        fails.append("liabilities increased after t0")
+        fails.append("liabilities increased after initial draws")
 
     # 4) Purchase settlement validation (if applicable)
     purchase_ok = True
@@ -1275,15 +1275,15 @@ def validate_run(
                 brick = b
                 break
 
-            if brick and hasattr(brick, "kind") and brick.kind == K.A_ETF_UNITIZED:
-                asset_value = output["asset_value"]
-                # We can't directly check units, but we can check for negative asset values
-                if (asset_value < -tol).any():
-                    t_idx = int(np.where(asset_value < -tol)[0][0])
-                    val = float(asset_value[t_idx])
-                    fails.append(
-                        f"ETF units negative: '{brick_id}' has negative asset value €{val:,.2f} at month {t_idx}"
-                    )
+        if brick and hasattr(brick, "kind") and brick.kind == K.A_ETF_UNITIZED:
+            asset_value = output["asset_value"]
+            # We can't directly check units, but we can check for negative asset values
+            if (asset_value < -tol).any():
+                t_idx = int(np.where(asset_value < -tol)[0][0])
+                val = float(asset_value[t_idx])
+                fails.append(
+                    f"ETF units negative: '{brick_id}' has negative asset value €{val:,.2f} at month {t_idx}"
+                )
 
     # 8) Income escalator monotonicity (when annual_step_pct >= 0)
     for brick_id, output in outputs.items():
@@ -1294,17 +1294,17 @@ def validate_run(
                 brick = b
                 break
 
-            if brick and hasattr(brick, "kind") and brick.kind == K.F_INCOME_FIXED:
-                annual_step_pct = float((brick.spec or {}).get("annual_step_pct", 0.0))
-                if annual_step_pct >= 0:
-                    cash_in = output["cash_in"]
-                    # Get activation mask to only check within active periods
-                    mask = active_mask(
-                        res["totals"].index,
-                        brick.start_date,
-                        brick.end_date,
-                        brick.duration_m,
-                    )
+        if brick and hasattr(brick, "kind") and brick.kind == K.F_INCOME_FIXED:
+            annual_step_pct = float((brick.spec or {}).get("annual_step_pct", 0.0))
+            if annual_step_pct >= 0:
+                cash_in = output["cash_in"]
+                # Get activation mask to only check within active periods
+                mask = active_mask(
+                    res["totals"].index,
+                    brick.start_date,
+                    brick.end_date,
+                    brick.duration_m,
+                )
 
                 # Check that income is non-decreasing within active periods
                 for t in range(1, len(cash_in)):
@@ -1338,7 +1338,7 @@ def validate_run(
                 # Only validate if there's a significant stock change
                 if abs(d_assets - d_debt) > 0.01:
                     if abs((d_assets - d_debt) - flows_t) > 0.01:
-                        raise ValueError(
+                        fails.append(
                             f"[{b.id}] Window-end equity mismatch at {res['totals'].index[t_stop]}: "
                             f"Δstocks={d_assets - d_debt:.2f} vs flows={flows_t:.2f}. "
                             "Missing sale/payoff or misordered terminal ops?"
@@ -1438,15 +1438,13 @@ def export_run_json(
     validation_results = {}
     try:
         # Capture validation output
+        import contextlib
         import io
-        import sys
 
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            validate_run(res, mode="warn", tol=1e-6)
 
-        validate_run(res, mode="warn", tol=1e-6)
-
-        sys.stdout = old_stdout
         validation_output = buffer.getvalue()
 
         # Parse validation results

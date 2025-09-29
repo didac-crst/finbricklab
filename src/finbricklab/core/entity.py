@@ -322,5 +322,6 @@ class Entity:
         if not breakeven_mask.any():
             return None
 
-        # Return 1-indexed month number
-        return int(breakeven_mask.idxmax()) + 1
+        # Return 1-indexed month number (use position, not label)
+        pos = int(np.argmax(breakeven_mask.to_numpy()))
+        return pos + 1

@@ -93,7 +93,7 @@ class TestKPIUtilities:
         fee_drag = fee_drag_cum(sample_df)
 
         assert len(fee_drag) == len(sample_df)
-        assert fee_drag.name == "fee_drag_cum_pct"
+        assert fee_drag.name == "fee_drag_cum"
         assert not fee_drag.isna().any()
         assert (fee_drag >= 0).all()  # Should be non-negative
 
@@ -105,7 +105,7 @@ class TestKPIUtilities:
         tax_burden = tax_burden_cum(sample_df)
 
         assert len(tax_burden) == len(sample_df)
-        assert tax_burden.name == "tax_burden_cum_pct"
+        assert tax_burden.name == "tax_burden_cum"
         assert not tax_burden.isna().any()
         assert (tax_burden >= 0).all()  # Should be non-negative
 

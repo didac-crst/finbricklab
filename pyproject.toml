@@ -37,6 +37,8 @@ ruff = "^0.1.0"
 mypy = "^1.5.0"
 pre-commit = "^3.4.0"
 
+[tool.poetry.scripts]
+finbrick = "finbricklab.cli:main"
 
 [build-system]
 requires = ["poetry-core"]
@@ -87,28 +89,61 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.11"
-# Temporarily disable MyPy for core engine PR
-ignore_errors = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+strict_equality = true
 
-# Third-party libs without full stubs
 [[tool.mypy.overrides]]
-module = ["plotly", "plotly.*", "kaleido"]
+module = [
+    "numpy.*",
+    "pandas.*",
+    "matplotlib.*",
+    "plotly.*",
+    "kaleido.*",
+]
 ignore_missing_imports = true
 
-# Core engine: temporarily relaxed for initial PR
 [[tool.mypy.overrides]]
-module = ["finbricklab.core.*", "finbricklab.kpi", "finbricklab.fx"]
+module = [
+    "tests.*",
+]
 disallow_untyped_defs = false
-check_untyped_defs = false
 disallow_incomplete_defs = false
-no_implicit_reexport = false
-strict_optional = false
+warn_no_return = false
+warn_unreachable = false
 
-# Tests: keep signal, reduce friction
+# Core engine: allow some flexibility for complex scenarios
 [[tool.mypy.overrides]]
-module = ["tests.*"]
-disallow_untyped_defs = false
-check_untyped_defs = false
+module = [
+    "finbricklab.core.scenario",
+    "finbricklab.core.bricks",
+    "finbricklab.core.validation",
+    "finbricklab.core.utils",
+]
+disable_error_code = [
+    "assignment",     # Some None assignments for initialization
+    "attr-defined",   # Dynamic attribute access in strategies
+    "union-attr",     # Registry can be None in some contexts
+    "var-annotated",  # Some complex variables need runtime inference
+    "no-redef",       # Function redefinitions in some cases
+    "literal-required", # Dynamic key access in TypedDict
+    "typeddict-item", # Missing/extra keys in output construction
+    "typeddict-unknown-key", # Dynamic key construction
+    "valid-type",     # Some complex type expressions
+    "arg-type",       # Some argument type mismatches in complex flows
+    "list-item",      # List item type mismatches in collections
+]
+
+# CLI: allow more flexibility for user interface
+[[tool.mypy.overrides]]
+module = [
+    "finbricklab.cli",
+]
+disable_error_code = [
+    "assignment",     # CLI argument handling
+    "union-attr",     # Registry can be None
+    "arg-type",       # Some CLI argument type mismatches
+]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

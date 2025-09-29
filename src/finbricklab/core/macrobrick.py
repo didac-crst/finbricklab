@@ -47,34 +47,59 @@ class MacroBrick:
         Raises:
             ConfigError: If cycle detected or unknown member ID found
         """
+        from .errors import ConfigError
+
         flat: list[str] = []
-        seen: set[str] = set()
+        macros_seen: set[
+            str
+        ] = set()  # Track visited macros (can be revisited in different paths)
+        bricks_seen: set[str] = set()  # Track visited bricks (prevent duplicates)
 
-        def dfs(node_id: str):
-            if node_id in seen:
-                from .errors import ConfigError
-
+        def dfs_macro(macro_id: str, stack: set[str]):
+            """DFS for macro expansion with proper cycle detection."""
+            # Check for cycle in current path
+            if macro_id in stack:
                 raise ConfigError(
-                    f"Cycle detected in MacroBrick membership at '{node_id}'."
-                )
-            seen.add(node_id)
-
-            if registry.is_macrobrick(node_id):
-                # Recursively expand nested MacroBrick
-                for member_id in registry.get_macrobrick(node_id).members:
-                    dfs(member_id)
-            elif registry.is_brick(node_id):
-                # Found a brick - add to flat list
-                flat.append(node_id)
-            else:
-                from .errors import ConfigError
-
-                raise ConfigError(
-                    f"Unknown member id '{node_id}' in MacroBrick '{self.id}'."
+                    f"Cycle detected in MacroBrick membership: {' -> '.join(stack)} -> {macro_id}"
                 )
 
+            # Skip if already processed this macro
+            if macro_id in macros_seen:
+                return
+
+            macros_seen.add(macro_id)
+            stack.add(macro_id)
+
+            try:
+                macro = registry.get_macrobrick(macro_id)
+                for member_id in macro.members:
+                    if registry.is_macrobrick(member_id):
+                        dfs_macro(member_id, stack)
+                    elif registry.is_brick(member_id):
+                        add_brick(member_id)
+                    else:
+                        raise ConfigError(
+                            f"Unknown member id '{member_id}' in MacroBrick '{macro_id}'."
+                        )
+            finally:
+                stack.remove(macro_id)
+
+        def add_brick(brick_id: str):
+            """Add brick to flat list if not already present."""
+            if brick_id not in bricks_seen:
+                bricks_seen.add(brick_id)
+                flat.append(brick_id)
+
+        # Process each member of this MacroBrick
         for member_id in self.members:
-            dfs(member_id)
+            if registry.is_macrobrick(member_id):
+                dfs_macro(member_id, set())
+            elif registry.is_brick(member_id):
+                add_brick(member_id)
+            else:
+                raise ConfigError(
+                    f"Unknown member id '{member_id}' in MacroBrick '{self.id}'."
+                )
 
         return flat
 
