@@ -42,6 +42,9 @@ pre-commit = "^3.4.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.poetry.scripts]
+finbrick = "finbricklab.cli:main"
+
 [[tool.poetry.packages]]
 include = "finbricklab"
 from = "src"
