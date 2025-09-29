@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date
 
 import numpy as np
+
 from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.events import Event
