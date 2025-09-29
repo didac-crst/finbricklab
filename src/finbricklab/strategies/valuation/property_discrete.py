@@ -23,7 +23,7 @@ class ValuationPropertyDiscrete(IValuationStrategy):
     the specified price and fees, then appreciates at a constant annual rate.
 
     Required Parameters:
-        - price: Purchase price of the property
+        - initial_value: Purchase price of the property
         - fees_pct: Transaction fees as percentage of price (e.g., 0.095 for 9.5%)
         - appreciation_pa: Annual appreciation rate (e.g., 0.02 for 2%)
 

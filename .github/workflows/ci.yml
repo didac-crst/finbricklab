@@ -43,42 +43,19 @@ jobs:
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction --no-root
 
-    - name: Install project (if source exists)
-      run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          poetry install --no-interaction
-        else
-          echo "No source code found, skipping package installation"
-        fi
+    - name: Install project
+      run: poetry install --no-interaction
 
-    - name: Run linting (if source exists)
+    - name: Run linting
       run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          poetry run ruff check .
-          poetry run black --check .
-        else
-          echo "No source code found, skipping linting"
-        fi
+        poetry run ruff check .
+        poetry run black --check .
 
-    - name: Run type checking (if source exists)
-      run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          poetry run mypy src/
-        else
-          echo "No source code found, skipping type checking"
-        fi
+    - name: Run type checking
+      run: poetry run mypy src/
 
-    - name: Run tests (if source and tests exist)
-      run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          if find tests/ -name "*.py" -type f | grep -q .; then
-            poetry run pytest --cov=src/finbricklab --cov-report=xml
-          else
-            echo "No test files found, skipping tests (expected for core engine PR)"
-          fi
-        else
-          echo "No source code found, skipping tests"
-        fi
+    - name: Run tests
+      run: poetry run pytest --cov=src/finbricklab --cov-report=xml
 
     - name: Upload coverage to Codecov
       if: ${{ hashFiles('coverage.xml') != '' }}
@@ -111,19 +88,10 @@ jobs:
     - name: Install dependencies
       run: poetry install --no-interaction --no-root
 
-    - name: Build package (if source exists)
-      run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          poetry build
-        else
-          echo "No source code found, skipping build"
-        fi
+    - name: Build package
+      run: poetry build
 
-    - name: Check package (if source exists)
+    - name: Check package
       run: |
-        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
-          pip install twine
-          twine check dist/*
-        else
-          echo "No source code found, skipping package check"
-        fi
+        pip install twine
+        twine check dist/*

@@ -12,6 +12,7 @@ All chart functions return (figure, tidy_dataframe_used) for consistency.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 # Plotly imports with graceful fallback
@@ -186,18 +187,17 @@ def liquidity_runway_heatmap(
         height=400,
     )
 
-    # Add threshold lines
-    fig.add_hline(
-        y=-0.5, line_dash="dash", line_color="red", annotation_text="< 3 months"
-    )
-    fig.add_hline(
-        y=-0.5, line_dash="dash", line_color="orange", annotation_text="3-6 months"
-    )
-    fig.add_hline(
-        y=-0.5, line_dash="dash", line_color="yellow", annotation_text="6-12 months"
-    )
-    fig.add_hline(
-        y=-0.5, line_dash="dash", line_color="green", annotation_text="> 12 months"
+    # Add threshold annotations (no overlapping lines)
+    fig.add_annotation(
+        x=0.02,
+        y=0.98,
+        xref="paper",
+        yref="paper",
+        text="< 3 months: Red<br/>3-6 months: Orange<br/>6-12 months: Yellow<br/>> 12 months: Green",
+        showarrow=False,
+        bgcolor="white",
+        bordercolor="black",
+        borderwidth=1,
     )
 
     return fig, runway_data
@@ -275,10 +275,13 @@ def net_worth_drawdown(tidy: pd.DataFrame) -> tuple[go.Figure, pd.DataFrame]:
 
         # Calculate running maximum and drawdown
         scenario_data["peak"] = scenario_data["net_worth"].cummax()
-        scenario_data["drawdown"] = (
+        # Guard against division by zero
+        scenario_data["drawdown"] = np.where(
+            scenario_data["peak"] > 0,
             (scenario_data["net_worth"] - scenario_data["peak"])
             / scenario_data["peak"]
-            * 100
+            * 100,
+            0.0,
         )
 
         drawdown_data.append(scenario_data)
@@ -918,19 +921,7 @@ def holdings_cost_basis(
         vertical_spacing=0.1,
     )
 
-    # Holdings value
-    fig.add_trace(
-        go.Scatter(
-            x=holdings_df["date"],
-            y=holdings_df["market_value"],
-            name="Market Value",
-            line={"color": "blue"},
-            fill="tonexty",
-        ),
-        row=1,
-        col=1,
-    )
-
+    # Holdings value - add Cost Basis first (fill="tozeroy")
     fig.add_trace(
         go.Scatter(
             x=holdings_df["date"],
@@ -938,6 +929,19 @@ def holdings_cost_basis(
             name="Cost Basis",
             line={"color": "red"},
             fill="tozeroy",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Then Market Value (fill="tonexty" to Cost Basis)
+    fig.add_trace(
+        go.Scatter(
+            x=holdings_df["date"],
+            y=holdings_df["market_value"],
+            name="Market Value",
+            line={"color": "blue"},
+            fill="tonexty",
         ),
         row=1,
         col=1,

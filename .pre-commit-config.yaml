@@ -24,19 +24,19 @@ repos:
     hooks:
       - id: mypy
 
-  # - repo: local
-  #   hooks:
-  #     - id: pytest
-  #       name: pytest
-  #       entry: poetry run pytest
-  #       language: system
-  #       pass_filenames: false
-  #       always_run: true
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: poetry run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  #     - id: check-forbidden-tokens
-  #       name: Check for forbidden tokens
-  #       entry: python scripts/check_forbidden_tokens.py
-  #       args: [--exclude, scripts/check_forbidden_tokens.py, --exclude, .pre-commit-config.yaml]
-  #       language: system
-  #       pass_filenames: false
-  #       always_run: true
+      - id: check-forbidden-tokens
+        name: Check for forbidden tokens
+        entry: python scripts/check_forbidden_tokens.py
+        args: [--exclude, scripts/check_forbidden_tokens.py, --exclude, .pre-commit-config.yaml]
+        language: system
+        pass_filenames: false
+        always_run: true
