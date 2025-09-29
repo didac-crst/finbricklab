@@ -112,6 +112,9 @@ from .core import (
 # Import Entity system
 from .core.entity import Entity
 
+# Import validation reports
+from .core.validation import DisjointReport, ValidationReport
+
 # Import FX utilities
 from .fx import FXConverter, create_fx_converter, validate_entity_currencies
 
