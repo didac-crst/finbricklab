@@ -7,7 +7,7 @@ based on their 'kind' discriminator.
 
 Strategy Categories:
 - Valuation Strategies: Handle asset valuation and cash flow generation
-- Schedule Strategies: Handle liability payment schedules and balance tracking  
+- Schedule Strategies: Handle liability payment schedules and balance tracking
 - Flow Strategies: Handle cash flow events like income, expenses, and transfers
 
 Registry System:
@@ -15,20 +15,20 @@ The module automatically registers all default strategies in the global registri
 making them available for use by bricks with matching kind discriminators.
 """
 
-from .valuation import (
-    ValuationCash,
-    ValuationPropertyDiscrete,
-    ValuationETFUnitized,
+from .flow import (
+    FlowExpenseFixed,
+    FlowIncomeFixed,
+    FlowTransferLumpSum,
 )
+from .registry import register_defaults
 from .schedule import (
     ScheduleMortgageAnnuity,
 )
-from .flow import (
-    FlowTransferLumpSum,
-    FlowIncomeFixed,
-    FlowExpenseFixed,
+from .valuation import (
+    ValuationCash,
+    ValuationETFUnitized,
+    ValuationPropertyDiscrete,
 )
-from .registry import register_defaults
 
 # Register all default strategies when module is imported
 register_defaults()
@@ -36,17 +36,14 @@ register_defaults()
 __all__ = [
     # Valuation strategies
     "ValuationCash",
-    "ValuationPropertyDiscrete", 
+    "ValuationPropertyDiscrete",
     "ValuationETFUnitized",
-    
     # Schedule strategies
     "ScheduleMortgageAnnuity",
-    
     # Flow strategies
     "FlowTransferLumpSum",
     "FlowIncomeFixed",
     "FlowExpenseFixed",
-    
     # Registry
     "register_defaults",
 ]

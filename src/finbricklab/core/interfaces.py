@@ -4,13 +4,15 @@ Defines the contracts that all strategies must satisfy.
 """
 
 from __future__ import annotations
-from typing import Protocol, TYPE_CHECKING, runtime_checkable
+
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
 from .context import ScenarioContext
 from .results import BrickOutput
 
 if TYPE_CHECKING:
     # Only imported for type checking to avoid runtime cycles
-    from .bricks import ABrick, LBrick, FBrick
+    from .bricks import ABrick, FBrick, LBrick
 
 
 @runtime_checkable
@@ -20,14 +22,14 @@ class IValuationStrategy(Protocol):
     Responsibilities: produce asset values over time and any internal cash flows.
     """
 
-    def prepare(self, brick: "ABrick", ctx: ScenarioContext) -> None:
+    def prepare(self, brick: ABrick, ctx: ScenarioContext) -> None:
         """
         Validate inputs, compute derived params, and initialize any internal state.
         Called exactly once before simulation.
         """
         ...
 
-    def simulate(self, brick: "ABrick", ctx: ScenarioContext) -> BrickOutput:
+    def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Run the full-period simulation for this asset brick.
 
@@ -49,11 +51,11 @@ class IScheduleStrategy(Protocol):
     Responsibilities: produce debt balances and payment schedules over time.
     """
 
-    def prepare(self, brick: "LBrick", ctx: ScenarioContext) -> None:
+    def prepare(self, brick: LBrick, ctx: ScenarioContext) -> None:
         """Validate inputs and initialize internal state prior to simulate()."""
         ...
 
-    def simulate(self, brick: "LBrick", ctx: ScenarioContext) -> BrickOutput:
+    def simulate(self, brick: LBrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Run the full-period schedule simulation.
 
@@ -71,11 +73,11 @@ class IFlowStrategy(Protocol):
     Responsibilities: generate external cash inflows/outflows over time.
     """
 
-    def prepare(self, brick: "FBrick", ctx: ScenarioContext) -> None:
+    def prepare(self, brick: FBrick, ctx: ScenarioContext) -> None:
         """Validate inputs and initialize internal state prior to simulate()."""
         ...
 
-    def simulate(self, brick: "FBrick", ctx: ScenarioContext) -> BrickOutput:
+    def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Run the full-period flow simulation.
 

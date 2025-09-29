@@ -57,8 +57,8 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
 
 ## How Totals Work
 
-**Per-MacroBrick view**: sums all executed member bricks of that MacroBrick.  
-**Portfolio totals**: sum unique bricks from selection (union).  
+**Per-MacroBrick view**: sums all executed member bricks of that MacroBrick.
+**Portfolio totals**: sum unique bricks from selection (union).
 **Summing multiple MacroBrick rows can overstate due to overlap → use portfolio total.**
 
 Example: If `house` appears in both `primary_residence` and `property_portfolio` MacroBricks, the portfolio total includes `house` once, but summing both MacroBrick totals would count `house` twice.

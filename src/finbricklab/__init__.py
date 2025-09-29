@@ -24,20 +24,20 @@ Quick Start:
     from datetime import date
     from finbricklab import Scenario, ABrick, LBrick, FBrick
     import finbricklab.strategies  # Registers default strategies
-    
+
     # Create financial bricks
     cash = ABrick(id="cash", name="Main Cash", kind="a.cash",
                   spec={"initial_balance": 0.0, "interest_pa": 0.02})
-    
+
     house = ABrick(id="house", name="Property", kind="a.property_discrete",
                    spec={"initial_value": 420_000, "fees_pct": 0.095, "appreciation_pa": 0.02})
-    
+
     mortgage = LBrick(id="mortgage", name="Home Loan", kind="l.mortgage.annuity",
                       links={"principal": {"from_house": "house"}},
                       spec={"rate_pa": 0.034, "term_months": 300})
-    
+
     # Create and run scenario
-    scenario = Scenario(id="demo", name="House Purchase", 
+    scenario = Scenario(id="demo", name="House Purchase",
                        bricks=[cash, house, mortgage])
     results = scenario.run(start=date(2026, 1, 1), months=360)
     ```
@@ -45,12 +45,12 @@ Quick Start:
 Available Strategies:
     Assets:
         - 'a.cash': Cash account with interest
-        - 'a.property_discrete': Real estate with appreciation  
+        - 'a.property_discrete': Real estate with appreciation
         - 'a.etf_unitized': ETF investment with unitized pricing
-        
+
     Liabilities:
         - 'l.mortgage.annuity': Fixed-rate mortgage with annuity payments
-        
+
     Flows:
         - 'f.transfer.lumpsum': One-time lump sum transfer
         - 'f.income.fixed': Fixed recurring income
@@ -61,7 +61,7 @@ Extending the System:
     1. Create a strategy class implementing the appropriate interface
     2. Register it in the appropriate registry with a new kind string
     3. Use the new kind when creating bricks
-    
+
     No changes to existing code required!
 
 License:
@@ -74,86 +74,75 @@ __author__ = "FinBrickLab Team"
 __description__ = "Strategy-Driven Brick Architecture for Financial Scenarios"
 
 # Import core components for easy access
-from .core import (
-    FinBrickABC,
-    ABrick,
-    LBrick, 
-    FBrick,
-    Scenario,
-    ScenarioContext,
-    BrickOutput,
-    Event,
-    month_range,
-    wire_strategies,
-    validate_run,
-    export_run_json,
-    export_ledger_csv,
-    ValuationRegistry,
-    ScheduleRegistry,
-    FlowRegistry,
-    StartLink,
-    PrincipalLink,
-    MacroBrick,
-    Registry
-)
+import finbricklab.strategies
 
 # Import strategy interfaces
-from .core import (
-    IValuationStrategy,
-    IScheduleStrategy,
-    IFlowStrategy
-)
-
 # Import kinds and strategies modules
-from .core import kinds
-import finbricklab.strategies
+from .core import (
+    ABrick,
+    BrickOutput,
+    Event,
+    FBrick,
+    FinBrickABC,
+    FlowRegistry,
+    IFlowStrategy,
+    IScheduleStrategy,
+    IValuationStrategy,
+    LBrick,
+    MacroBrick,
+    PrincipalLink,
+    Registry,
+    Scenario,
+    ScenarioContext,
+    ScheduleRegistry,
+    StartLink,
+    ValuationRegistry,
+    export_ledger_csv,
+    export_run_json,
+    kinds,
+    month_range,
+    validate_run,
+    wire_strategies,
+)
 
 # Define what gets imported with "from finbricklab import *"
 __all__ = [
     # Core classes
     "FinBrickABC",
-    "ABrick", 
+    "ABrick",
     "LBrick",
     "FBrick",
     "Scenario",
     "ScenarioContext",
     "BrickOutput",
     "Event",
-    
     # Utility functions
     "month_range",
     "wire_strategies",
     "validate_run",
     "export_run_json",
     "export_ledger_csv",
-    
     # Strategy interfaces
     "IValuationStrategy",
-    "IScheduleStrategy", 
+    "IScheduleStrategy",
     "IFlowStrategy",
-    
     # Registries
     "ValuationRegistry",
     "ScheduleRegistry",
     "FlowRegistry",
-    
     # Link classes
     "StartLink",
     "PrincipalLink",
-    
     # MacroBrick and Registry
     "MacroBrick",
     "Registry",
-    
     # Validation
     "ValidationReport",
     "DisjointReport",
-    
     # Kind constants
     "kinds",
-    
     # Version info
     "__version__",
     "__author__",
-    "__description__"
+    "__description__",
 ]

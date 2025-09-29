@@ -3,23 +3,25 @@ ETF investment valuation strategy.
 """
 
 from __future__ import annotations
+
 import numpy as np
-from finbricklab.core.interfaces import IValuationStrategy
+
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
-from finbricklab.core.results import BrickOutput
 from finbricklab.core.events import Event
+from finbricklab.core.interfaces import IValuationStrategy
+from finbricklab.core.results import BrickOutput
 from finbricklab.core.utils import active_mask
 
 
 class ValuationETFUnitized(IValuationStrategy):
     """
     ETF investment valuation strategy (kind: 'a.invest.etf').
-    
+
     This strategy models a unitized investment (like an ETF) with constant
     price drift, optional dividend yield, and support for purchasing and
     selling shares through various mechanisms.
-    
+
     Key Features:
         - Initial holdings (pre-owned units with no cash impact)
         - One-shot buy at start (buy_at_start by amount or units)
@@ -28,7 +30,7 @@ class ValuationETFUnitized(IValuationStrategy):
         - Systematic DCA-out (SDCA) for regular withdrawals
         - Dividend reinvestment or cash distribution
         - Configurable event logging
-        
+
     Parameters:
         - initial_units: Number of units held at start (default: 0.0)
         - price0: Initial price per unit (default: 100.0)
@@ -41,7 +43,7 @@ class ValuationETFUnitized(IValuationStrategy):
         - sdca: Systematic DCA-out configuration for regular withdrawals
         - round_units_to: Round units to N decimal places (optional)
         - events_level: Event verbosity "none"|"major"|"all" (default: "major")
-        
+
     Monthly Processing Order:
         1. Dividends (reinvest or cash)
         2. DCA buys (buy_at_start + monthly DCA)
@@ -49,13 +51,13 @@ class ValuationETFUnitized(IValuationStrategy):
         4. SDCA sells
         5. Round units
     """
-    
+
     def prepare(self, brick: ABrick, ctx: ScenarioContext) -> None:
         """
         Prepare the ETF valuation strategy.
-        
+
         Sets up default parameters and validates the configuration.
-        
+
         Args:
             brick: The ETF investment brick
             ctx: The simulation context
@@ -66,12 +68,12 @@ class ValuationETFUnitized(IValuationStrategy):
         s.setdefault("drift_pa", 0.03)
         s.setdefault("div_yield_pa", 0.0)
         s.setdefault("reinvest_dividends", False)
-        s.setdefault("buy_at_start", None)      # {"amount": >0} or {"units": >0}
-        s.setdefault("dca", None)               # {"mode": "amount"|"units", ...}
-        s.setdefault("sell", [])                # [{"t": "YYYY-MM", "amount": X} or {"units": Y}]
-        s.setdefault("sdca", None)              # {"mode": "amount"|"units", ...}
+        s.setdefault("buy_at_start", None)  # {"amount": >0} or {"units": >0}
+        s.setdefault("dca", None)  # {"mode": "amount"|"units", ...}
+        s.setdefault("sell", [])  # [{"t": "YYYY-MM", "amount": X} or {"units": Y}]
+        s.setdefault("sdca", None)  # {"mode": "amount"|"units", ...}
         s.setdefault("round_units_to", None)
-        s.setdefault("events_level", "major")   # "none"|"major"|"all"
+        s.setdefault("events_level", "major")  # "none"|"major"|"all"
 
         # Validate DCA configuration
         dca = s["dca"]
@@ -82,7 +84,7 @@ class ValuationETFUnitized(IValuationStrategy):
                 assert dca.get("amount", 0) >= 0, "dca.amount must be >= 0"
             else:
                 assert dca.get("units", 0) >= 0, "dca.units must be >= 0"
-            
+
             # Normalize offsets
             off = int(dca.get("start_offset_m", 0))
             if off < 0:
@@ -94,17 +96,21 @@ class ValuationETFUnitized(IValuationStrategy):
         # Validate buy_at_start configuration
         if s["buy_at_start"]:
             bas = s["buy_at_start"]
-            assert ("amount" in bas) ^ ("units" in bas), "buy_at_start: provide exactly one of {'amount','units'}"
-            if "amount" in bas: 
+            assert ("amount" in bas) ^ (
+                "units" in bas
+            ), "buy_at_start: provide exactly one of {'amount','units'}"
+            if "amount" in bas:
                 assert bas["amount"] >= 0, "buy_at_start.amount must be >= 0"
-            if "units" in bas:  
+            if "units" in bas:
                 assert bas["units"] >= 0, "buy_at_start.units must be >= 0"
 
         # Validate sell configuration
         sell_directives = s["sell"]
         for sell_spec in sell_directives:
             assert "t" in sell_spec, "sell directive must include 't' (date)"
-            assert ("amount" in sell_spec) ^ ("units" in sell_spec), "sell directive: provide exactly one of {'amount','units'}"
+            assert ("amount" in sell_spec) ^ (
+                "units" in sell_spec
+            ), "sell directive: provide exactly one of {'amount','units'}"
             if "amount" in sell_spec:
                 assert sell_spec["amount"] >= 0, "sell.amount must be >= 0"
             if "units" in sell_spec:
@@ -119,7 +125,7 @@ class ValuationETFUnitized(IValuationStrategy):
                 assert sdca.get("amount", 0) >= 0, "sdca.amount must be >= 0"
             else:
                 assert sdca.get("units", 0) >= 0, "sdca.units must be >= 0"
-            
+
             # Normalize offsets
             off = int(sdca.get("start_offset_m", 0))
             if off < 0:
@@ -130,30 +136,30 @@ class ValuationETFUnitized(IValuationStrategy):
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Simulate the ETF investment over the time period.
-        
+
         Handles initial holdings, one-shot purchases, DCA contributions,
         dividend payments/reinvestment, and price appreciation.
-        
+
         Args:
             brick: The ETF investment brick
             ctx: The simulation context
-            
+
         Returns:
             BrickOutput with cash flows, asset value, and events
         """
         T = len(ctx.t_index)
         s = brick.spec
-        cash_in  = np.zeros(T)    # dividends (if not reinvested)
-        cash_out = np.zeros(T)    # purchases
-        units    = np.zeros(T)
-        price    = np.zeros(T)
-        events   = []
+        cash_in = np.zeros(T)  # dividends (if not reinvested)
+        cash_out = np.zeros(T)  # purchases
+        units = np.zeros(T)
+        price = np.zeros(T)
+        events = []
 
         # Price path calculation
-        r_m = (1 + float(s["drift_pa"])) ** (1/12) - 1
+        r_m = (1 + float(s["drift_pa"])) ** (1 / 12) - 1
         price[0] = float(s["price0"])
         for t in range(1, T):
-            price[t] = price[t-1] * (1 + r_m)
+            price[t] = price[t - 1] * (1 + r_m)
 
         # Initial holdings (pre-owned, no cash impact)
         units[0] = float(s["initial_units"])
@@ -167,18 +173,28 @@ class ValuationETFUnitized(IValuationStrategy):
                 units[0] += add_u
                 cash_out[0] += amt
                 if s.get("events_level") in ("major", "all"):
-                    events.append(Event(ctx.t_index[0], "buy_start",
-                                        f"ETF buy at start: €{amt:,.2f}",
-                                        {"amount": amt, "units": add_u, "price": price[0]}))
+                    events.append(
+                        Event(
+                            ctx.t_index[0],
+                            "buy_start",
+                            f"ETF buy at start: €{amt:,.2f}",
+                            {"amount": amt, "units": add_u, "price": price[0]},
+                        )
+                    )
             elif "units" in buy0 and buy0["units"] > 0:
                 u = float(buy0["units"])
                 amt = u * price[0]
                 units[0] += u
                 cash_out[0] += amt
                 if s.get("events_level") in ("major", "all"):
-                    events.append(Event(ctx.t_index[0], "buy_start",
-                                        f"ETF buy at start: {u:,.6f}u",
-                                        {"amount": amt, "units": u, "price": price[0]}))
+                    events.append(
+                        Event(
+                            ctx.t_index[0],
+                            "buy_start",
+                            f"ETF buy at start: {u:,.6f}u",
+                            {"amount": amt, "units": u, "price": price[0]},
+                        )
+                    )
 
         # Extract configuration for monthly loop
         divm = float(s["div_yield_pa"]) / 12.0
@@ -191,7 +207,7 @@ class ValuationETFUnitized(IValuationStrategy):
         for t in range(T):
             # Carry forward units
             if t > 0:
-                units[t] = units[t-1]
+                units[t] = units[t - 1]
 
             # Dividends BEFORE DCA (based on units at start of month)
             if divm > 0:
@@ -200,15 +216,25 @@ class ValuationETFUnitized(IValuationStrategy):
                     add_u = dv / price[t]
                     units[t] += add_u
                     if ev_lvl in ("major", "all"):
-                        events.append(Event(ctx.t_index[t], "div_reinvest",
-                                            f"Dividends reinvested: €{dv:,.2f}",
-                                            {"amount": dv, "units": add_u, "price": price[t]}))
+                        events.append(
+                            Event(
+                                ctx.t_index[t],
+                                "div_reinvest",
+                                f"Dividends reinvested: €{dv:,.2f}",
+                                {"amount": dv, "units": add_u, "price": price[t]},
+                            )
+                        )
                 else:
                     cash_in[t] += dv
                     if ev_lvl in ("major", "all") and dv > 0:
-                        events.append(Event(ctx.t_index[t], "div_cash",
-                                            f"Dividends to cash: €{dv:,.2f}",
-                                            {"amount": dv, "price": price[t]}))
+                        events.append(
+                            Event(
+                                ctx.t_index[t],
+                                "div_cash",
+                                f"Dividends to cash: €{dv:,.2f}",
+                                {"amount": dv, "price": price[t]},
+                            )
+                        )
 
             # DCA AFTER dividends
             if dca is not None:
@@ -218,15 +244,26 @@ class ValuationETFUnitized(IValuationStrategy):
                 if m_rel >= 0 and (months is None or m_rel < int(months)):
                     if dca["mode"] == "amount":
                         step_blocks = max(0, m_rel // 12)
-                        amt = float(dca["amount"]) * ((1 + float(dca.get("annual_step_pct", 0.0))) ** step_blocks)
+                        amt = float(dca["amount"]) * (
+                            (1 + float(dca.get("annual_step_pct", 0.0))) ** step_blocks
+                        )
                         if amt > 0:
                             add_u = amt / price[t]
                             units[t] += add_u
                             cash_out[t] += amt
                             if ev_lvl == "all":
-                                events.append(Event(ctx.t_index[t], "dca_amount",
-                                                    f"DCA (amount): €{amt:,.2f}",
-                                                    {"amount": amt, "units": add_u, "price": price[t]}))
+                                events.append(
+                                    Event(
+                                        ctx.t_index[t],
+                                        "dca_amount",
+                                        f"DCA (amount): €{amt:,.2f}",
+                                        {
+                                            "amount": amt,
+                                            "units": add_u,
+                                            "price": price[t],
+                                        },
+                                    )
+                                )
                     else:  # units mode
                         u = float(dca["units"])
                         if u > 0:
@@ -234,15 +271,20 @@ class ValuationETFUnitized(IValuationStrategy):
                             units[t] += u
                             cash_out[t] += amt
                             if ev_lvl == "all":
-                                events.append(Event(ctx.t_index[t], "dca_units",
-                                                    f"DCA (units): {u:,.6f}u",
-                                                    {"amount": amt, "units": u, "price": price[t]}))
+                                events.append(
+                                    Event(
+                                        ctx.t_index[t],
+                                        "dca_units",
+                                        f"DCA (units): {u:,.6f}u",
+                                        {"amount": amt, "units": u, "price": price[t]},
+                                    )
+                                )
 
             # SELLS AFTER DCA (one-shot and SDCA)
             # One-shot sells
             sell_directives = s.get("sell", [])
             for sell_spec in sell_directives:
-                sell_date = np.datetime64(sell_spec["t"], 'M')
+                sell_date = np.datetime64(sell_spec["t"], "M")
                 if ctx.t_index[t] == sell_date:
                     if "amount" in sell_spec:
                         # Sell by cash target
@@ -250,14 +292,23 @@ class ValuationETFUnitized(IValuationStrategy):
                     else:
                         # Sell by units
                         sell_units = min(units[t], sell_spec["units"])
-                    
+
                     if sell_units > 0:
                         units[t] -= sell_units
                         cash_in[t] += sell_units * price[t]
                         if ev_lvl in ("major", "all"):
-                            events.append(Event(ctx.t_index[t], "sell",
-                                                f"Sell {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
-                                                {"units": sell_units, "amount": sell_units * price[t], "price": price[t]}))
+                            events.append(
+                                Event(
+                                    ctx.t_index[t],
+                                    "sell",
+                                    f"Sell {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
+                                    {
+                                        "units": sell_units,
+                                        "amount": sell_units * price[t],
+                                        "price": price[t],
+                                    },
+                                )
+                            )
 
             # SDCA (Systematic DCA-out)
             sdca = s.get("sdca")
@@ -271,14 +322,23 @@ class ValuationETFUnitized(IValuationStrategy):
                         sell_units = min(units[t], amt / price[t])
                     else:  # units mode
                         sell_units = min(units[t], float(sdca["units"]))
-                    
+
                     if sell_units > 0:
                         units[t] -= sell_units
                         cash_in[t] += sell_units * price[t]
                         if ev_lvl == "all":
-                            events.append(Event(ctx.t_index[t], "sdca",
-                                                f"SDCA: {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
-                                                {"units": sell_units, "amount": sell_units * price[t], "price": price[t]}))
+                            events.append(
+                                Event(
+                                    ctx.t_index[t],
+                                    "sdca",
+                                    f"SDCA: {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
+                                    {
+                                        "units": sell_units,
+                                        "amount": sell_units * price[t],
+                                        "price": price[t],
+                                    },
+                                )
+                            )
 
             # Round units after all operations for the month
             if round_to is not None:
@@ -288,28 +348,35 @@ class ValuationETFUnitized(IValuationStrategy):
         asset_value = units * price
 
         # Auto-dispose on window end (equity-neutral)
-        mask = active_mask(ctx.t_index, brick.start_date, brick.end_date, brick.duration_m)
+        mask = active_mask(
+            ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
+        )
         dispose = bool(brick.spec.get("liquidate_on_window_end", True))  # DEFAULT: True
         fees_pct = float(brick.spec.get("sell_fees_pct", 0.0))
-        
+
         if dispose and mask.any():
             t_stop = int(np.where(mask)[0].max())
             gross = asset_value[t_stop]
             fees = gross * fees_pct
             proceeds = gross - fees
-            
-            cash_in[t_stop] += proceeds      # book sale
-            asset_value[t_stop] = 0.0        # explicit zero on the sale month
+
+            cash_in[t_stop] += proceeds  # book sale
+            asset_value[t_stop] = 0.0  # explicit zero on the sale month
             # Set all future values to 0 (ETF is liquidated)
-            asset_value[t_stop+1:] = 0.0
-            events.append(Event(ctx.t_index[t_stop], "asset_dispose",
-                                f"ETF liquidated for €{proceeds:,.2f}",
-                                {"gross": gross, "fees": fees, "fees_pct": fees_pct}))
+            asset_value[t_stop + 1 :] = 0.0
+            events.append(
+                Event(
+                    ctx.t_index[t_stop],
+                    "asset_dispose",
+                    f"ETF liquidated for €{proceeds:,.2f}",
+                    {"gross": gross, "fees": fees, "fees_pct": fees_pct},
+                )
+            )
 
         return BrickOutput(
             cash_in=cash_in,
             cash_out=cash_out,
             asset_value=asset_value,
             debt_balance=np.zeros(T),
-            events=events
+            events=events,
         )
