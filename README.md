@@ -53,6 +53,15 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
 * **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`).
 * **Scenario**: orchestrates bricks, routes cash, aggregates totals, exports results.
 * **Context**: timeline + shared configuration available in `prepare()` and `simulate()`.
+* **MacroBrick**: composite structure grouping heterogeneous bricks into named views for analysis and presentation.
+
+## How Totals Work
+
+**Per-MacroBrick view**: sums all executed member bricks of that MacroBrick.  
+**Portfolio totals**: sum unique bricks from selection (union).  
+**Summing multiple MacroBrick rows can overstate due to overlap → use portfolio total.**
+
+Example: If `house` appears in both `primary_residence` and `property_portfolio` MacroBricks, the portfolio total includes `house` once, but summing both MacroBrick totals would count `house` twice.
 
 ---
 

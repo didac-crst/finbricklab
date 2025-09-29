@@ -3,7 +3,7 @@ Scenario engine for orchestrating financial simulations.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, List
 from datetime import date
 import numpy as np
@@ -21,7 +21,16 @@ from .links import StartLink, PrincipalLink
 from .specs import LMortgageSpec
 from .errors import ConfigError
 from .kinds import K
+from .registry import Registry
+from .macrobrick import MacroBrick
 
+
+@dataclass
+class ScenarioConfig:
+    """Configuration options for scenario execution."""
+    warn_on_overlap: bool = True
+    include_struct_results: bool = True
+    structs_filter: Optional[set[str]] = None
 
 @dataclass
 class Scenario:
@@ -29,7 +38,7 @@ class Scenario:
     Scenario engine for orchestrating financial simulations.
     
     This class represents a complete financial scenario containing multiple
-    financial bricks. It orchestrates the simulation process by:
+    financial bricks and optional MacroBricks. It orchestrates the simulation process by:
     1. Wiring strategies to bricks based on their kind discriminators
     2. Preparing all bricks for simulation
     3. Simulating all bricks in the correct order
@@ -40,7 +49,9 @@ class Scenario:
         id: Unique identifier for the scenario
         name: Human-readable name for the scenario
         bricks: List of all financial bricks in the scenario
+        macrobricks: List of all MacroBricks in the scenario (optional)
         currency: Base currency for the scenario (default: 'EUR')
+        config: Configuration options for scenario execution
         
     Note:
         The scenario expects exactly one cash account brick (kind='a.cash')
@@ -49,56 +60,408 @@ class Scenario:
     id: str
     name: str
     bricks: List[FinBrickABC]
+    macrobricks: List[MacroBrick] = field(default_factory=list)
     currency: str = "EUR"
+    config: ScenarioConfig = field(default_factory=ScenarioConfig)
     settlement_default_cash_id: Optional[str] = None  # Default cash account for settlement shortfalls
     _last_totals: Optional[pd.DataFrame] = None
     _last_results: Optional[dict] = None
+    _registry: Optional[Registry] = None
 
-    def run(self, start: date, months: int, include_cash: bool = True) -> dict:
+    def __post_init__(self):
+        """Initialize the registry after dataclass construction."""
+        if self._registry is None:
+            self._registry = self._build_registry()
+
+    def _build_registry(self) -> Registry:
+        """Build the registry from bricks and macrobricks."""
+        bricks_dict = {brick.id: brick for brick in self.bricks}
+        macrobricks_dict = {mb.id: mb for mb in self.macrobricks}
+        return Registry(bricks_dict, macrobricks_dict)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Scenario":
+        """
+        Create a Scenario from a dictionary specification.
+        
+        Args:
+            data: Dictionary containing scenario specification with keys:
+                - id: Scenario ID
+                - name: Scenario name
+                - bricks: List of brick specifications
+                - structs: List of MacroBrick specifications (optional)
+                - currency: Base currency (optional, default: 'EUR')
+                
+        Returns:
+            Configured Scenario instance
+        """
+        # Parse bricks
+        bricks = []
+        for brick_cfg in data.get("bricks", []):
+            kind = brick_cfg.get("kind", "")
+            if kind.startswith("a."):
+                bricks.append(ABrick(**brick_cfg))
+            elif kind.startswith("l."):
+                bricks.append(LBrick(**brick_cfg))
+            elif kind.startswith("f."):
+                from .bricks import FBrick
+                bricks.append(FBrick(**brick_cfg))
+            else:
+                raise ConfigError(f"Unknown brick kind: {kind}")
+        
+        # Parse MacroBricks
+        macrobricks = []
+        for struct_cfg in data.get("structs", []):
+            macrobricks.append(MacroBrick(**struct_cfg))
+        
+        return cls(
+            id=data.get("id", "scenario"),
+            name=data.get("name", "Unnamed Scenario"),
+            bricks=bricks,
+            macrobricks=macrobricks,
+            currency=data.get("currency", "EUR")
+        )
+
+    def assert_disjoint(self, label: str, macrobrick_ids: List[str]) -> None:
+        """
+        Assert that the specified MacroBricks are disjoint (no shared bricks).
+        
+        Args:
+            label: Label for the assertion (for error messages)
+            macrobrick_ids: List of MacroBrick IDs to check
+            
+        Raises:
+            ConfigError: If any MacroBricks share bricks
+        """
+        if len(macrobrick_ids) < 2:
+            return  # Nothing to check
+            
+        # Build sets of member bricks for each MacroBrick
+        member_sets = {}
+        for mb_id in macrobrick_ids:
+            if not self._registry.is_macrobrick(mb_id):
+                raise ConfigError(f"MacroBrick '{mb_id}' not found in registry")
+            member_sets[mb_id] = self._registry.get_struct_flat_members(mb_id)
+        
+        # Check for intersections
+        for i, mb1_id in enumerate(macrobrick_ids):
+            for mb2_id in macrobrick_ids[i+1:]:
+                intersection = member_sets[mb1_id] & member_sets[mb2_id]
+                if intersection:
+                    raise ConfigError(
+                        f"MacroBricks '{mb1_id}' and '{mb2_id}' in {label} are not disjoint. "
+                        f"Shared bricks: {sorted(intersection)}"
+                    )
+
+    def check_disjoint(self, macrobrick_ids: List[str]) -> "DisjointReport":
+        """
+        Check if the specified MacroBricks are disjoint (no shared bricks).
+        
+        Args:
+            macrobrick_ids: List of MacroBrick IDs to check
+            
+        Returns:
+            DisjointReport with results and details
+        """
+        from .validation import DisjointReport
+        
+        if len(macrobrick_ids) < 2:
+            return DisjointReport(is_disjoint=True, conflicts=[])
+            
+        # Build sets of member bricks for each MacroBrick
+        member_sets = {}
+        for mb_id in macrobrick_ids:
+            if not self._registry.is_macrobrick(mb_id):
+                return DisjointReport(
+                    is_disjoint=False, 
+                    conflicts=[f"MacroBrick '{mb_id}' not found in registry"]
+                )
+            member_sets[mb_id] = self._registry.get_struct_flat_members(mb_id)
+        
+        # Check for intersections
+        conflicts = []
+        for i, mb1_id in enumerate(macrobrick_ids):
+            for mb2_id in macrobrick_ids[i+1:]:
+                intersection = member_sets[mb1_id] & member_sets[mb2_id]
+                if intersection:
+                    conflicts.append({
+                        "macrobrick1": mb1_id,
+                        "macrobrick2": mb2_id,
+                        "shared_bricks": sorted(intersection)
+                    })
+        
+        return DisjointReport(is_disjoint=len(conflicts) == 0, conflicts=conflicts)
+
+    def run(self, start: date, months: int, selection: Optional[List[str]] = None, include_cash: bool = True) -> dict:
         """
         Run the complete financial scenario simulation.
         
         This method orchestrates the entire simulation process:
-        1. Creates the time index for the simulation period
-        2. Wires strategies to bricks based on their kind discriminators
-        3. Prepares all bricks for simulation
-        4. Simulates all non-cash bricks and routes their cash flows
-        5. Simulates the cash account with all routed flows
-        6. Aggregates results into summary statistics
+        1. Resolves the execution set from selection (bricks and/or MacroBricks)
+        2. Creates the time index for the simulation period
+        3. Wires strategies to bricks based on their kind discriminators
+        4. Prepares all bricks for simulation
+        5. Simulates all non-cash bricks and routes their cash flows
+        6. Simulates the cash account with all routed flows
+        7. Aggregates results into summary statistics
         
         Args:
             start: The starting date for the simulation
             months: Number of months to simulate
+            selection: Optional list of brick IDs and/or MacroBrick IDs to execute.
+                      If None, executes all bricks in the scenario.
+            include_cash: Whether to include cash account in aggregated results
             
         Returns:
             Dictionary containing:
                 - 'outputs': Dict mapping brick IDs to their individual BrickOutput results
+                - 'by_struct': Dict mapping MacroBrick IDs to their aggregated BrickOutput results
                 - 'totals': DataFrame with aggregated monthly totals (cash flows, assets, debt, equity)
                 
         Raises:
             AssertionError: If there is not exactly one cash account brick (kind='a.cash')
+            ConfigError: If selection contains unknown IDs or invalid MacroBrick references
             
         Note:
             The simulation assumes exactly one cash account to receive all routed flows.
             Cash flows from all other bricks are automatically routed to this account.
+            If MacroBricks share bricks, execution is deduplicated at the scenario level.
         """
+        # Resolve execution set from selection
+        brick_ids, overlaps = self._resolve_execution_set(selection)
+        
+        # Build dependency graph and compute deterministic execution order
+        edges = self._build_dependency_graph(brick_ids)
+        execution_order = self._topological_order(brick_ids, edges)
+        
         # Initialize simulation context
         t_index, ctx = self._initialize_simulation(start, months)
         
         # Prepare bricks for simulation
         self._prepare_simulation(ctx)
         
-        # Simulate all bricks and route cash flows
-        outputs = self._simulate_bricks(ctx, t_index)
+        # Simulate selected bricks and route cash flows (in deterministic order)
+        outputs = self._simulate_bricks(ctx, t_index, execution_order)
         
         # Aggregate results into summary statistics
         totals = self._aggregate_results(outputs, t_index, include_cash)
         
+        # Build MacroBrick aggregates
+        by_struct = self._build_struct_aggregates(outputs, brick_ids)
+        
         # Store for convenience methods
         self._last_totals = totals
-        self._last_results = {"outputs": outputs, "totals": totals, "views": ScenarioResults(totals), "_scenario_bricks": self.bricks}
+        self._last_results = {
+            "outputs": outputs, 
+            "by_struct": by_struct,
+            "totals": totals, 
+            "views": ScenarioResults(totals), 
+            "_scenario_bricks": self.bricks,
+            "meta": {
+                "execution_order": execution_order,
+                "overlaps": overlaps
+            }
+        }
         
         return self._last_results
+
+    def _resolve_execution_set(self, selection: Optional[List[str]]) -> tuple[set[str], Dict[str, Dict[str, any]]]:
+        """
+        Resolve selection to a unique set of brick IDs for execution.
+        
+        Args:
+            selection: List of brick IDs and/or MacroBrick IDs, or None for all bricks
+            
+        Returns:
+            Tuple of (execution_set, overlaps_report) where:
+            - execution_set: Set of unique brick IDs to execute
+            - overlaps_report: Dict mapping brick_id to overlap info for current selection
+            
+        Raises:
+            ConfigError: If selection contains unknown IDs
+        """
+        if selection is None:
+            # Default: execute all bricks
+            return set(brick.id for brick in self.bricks), {}
+        
+        exec_set: set[str] = set()
+        overlaps: Dict[str, List[str]] = {}
+        
+        for sel_id in selection:
+            if self._registry.is_macrobrick(sel_id):
+                # Expand MacroBrick to its member bricks (using cached expansion)
+                members = self._registry.get_struct_flat_members(sel_id)
+                
+                for brick_id in members:
+                    exec_set.add(brick_id)
+                    overlaps.setdefault(brick_id, []).append(sel_id)
+                    
+            elif self._registry.is_brick(sel_id):
+                # Direct brick selection
+                exec_set.add(sel_id)
+            else:
+                raise ConfigError(f"Unknown selection id: '{sel_id}'")
+        
+        # Build structured overlap report for current selection
+        overlaps_report: Dict[str, Dict[str, any]] = {}
+        for brick_id, owners in overlaps.items():
+            if len(owners) > 1:
+                overlaps_report[brick_id] = {
+                    "macrobricks": sorted(owners),
+                    "count": len(owners)
+                }
+        
+        # Warn about overlaps if configured to do so
+        if self.config.warn_on_overlap and overlaps_report:
+            import logging
+            logger = logging.getLogger(__name__)
+            for brick_id, info in overlaps_report.items():
+                logger.warning(
+                    "Brick '%s' is shared across MacroBricks: %s. "
+                    "Execution is deduplicated at scenario level.",
+                    brick_id, ", ".join(info["macrobricks"])
+                )
+        
+        return exec_set, overlaps_report
+
+    def _build_dependency_graph(self, brick_ids: set[str]) -> Dict[str, set[str]]:
+        """
+        Build dependency graph from brick links.
+        
+        Args:
+            brick_ids: Set of brick IDs to analyze
+            
+        Returns:
+            Dictionary mapping brick_id to set of dependencies
+        """
+        edges: Dict[str, set[str]] = {}
+        
+        for brick in self.bricks:
+            if brick.id not in brick_ids:
+                continue
+                
+            edges[brick.id] = set()
+            
+            # Check for dependency links
+            if hasattr(brick, 'links') and brick.links:
+                for link_type, link_data in brick.links.items():
+                    if isinstance(link_data, dict):
+                        # Handle PrincipalLink, StartLink, etc.
+                        if 'from_house' in link_data:
+                            dep_id = link_data['from_house']
+                            if dep_id in brick_ids:
+                                edges[brick.id].add(dep_id)
+                        elif 'on_end_of' in link_data:
+                            dep_id = link_data['on_end_of']
+                            if dep_id in brick_ids:
+                                edges[brick.id].add(dep_id)
+                        elif 'remaining_of' in link_data:
+                            dep_id = link_data['remaining_of']
+                            if dep_id in brick_ids:
+                                edges[brick.id].add(dep_id)
+                    elif isinstance(link_data, str):
+                        # Simple string reference
+                        if link_data in brick_ids:
+                            edges[brick.id].add(link_data)
+        
+        return edges
+
+    def _topological_order(self, brick_ids: set[str], edges: Dict[str, set[str]]) -> List[str]:
+        """
+        Compute topological order of bricks by dependencies, fallback to stable ID sort.
+        
+        Args:
+            brick_ids: Set of brick IDs to order
+            edges: Dependency graph (brick_id -> set of dependencies)
+            
+        Returns:
+            List of brick IDs in execution order
+        """
+        from collections import deque, defaultdict
+        
+        indeg = defaultdict(int)
+        adj = defaultdict(set)
+        
+        # Build adjacency list and in-degree count
+        for brick_id in brick_ids:
+            for dep_id in edges.get(brick_id, set()):
+                adj[dep_id].add(brick_id)
+                indeg[brick_id] += 1
+        
+        # Start with bricks that have no dependencies
+        q = deque(sorted([b for b in brick_ids if indeg[b] == 0]))
+        order = []
+        
+        while q:
+            u = q.popleft()
+            order.append(u)
+            for v in sorted(adj[u]):  # Stable sort
+                indeg[v] -= 1
+                if indeg[v] == 0:
+                    q.append(v)
+        
+        # Check if we processed all bricks (no cycles)
+        if len(order) != len(brick_ids):
+            # Cycle detected in dependencies; fallback to deterministic ID sort
+            return sorted(brick_ids)
+        
+        return order
+
+    def _build_struct_aggregates(self, outputs: Dict[str, BrickOutput], brick_ids: set[str]) -> Dict[str, BrickOutput]:
+        """
+        Build MacroBrick aggregates from individual brick outputs.
+        
+        Args:
+            outputs: Dictionary of brick outputs from simulation
+            brick_ids: Set of brick IDs that were executed
+            
+        Returns:
+            Dictionary mapping MacroBrick IDs to their aggregated BrickOutput
+        """
+        if not self.config.include_struct_results:
+            return {}
+            
+        by_struct: Dict[str, BrickOutput] = {}
+        
+        for struct_id, macrobrick in self._registry.iter_macrobricks():
+            # Apply structs filter if configured
+            if self.config.structs_filter is not None and struct_id not in self.config.structs_filter:
+                continue
+                
+            # Get the member bricks for this MacroBrick (using cached expansion)
+            member_bricks = self._registry.get_struct_flat_members(struct_id)
+            
+            # Only include bricks that were actually executed
+            executed_members = member_bricks & brick_ids
+            
+            if not executed_members:
+                # Skip MacroBricks with no executed members
+                continue
+                
+            # Create empty aggregate
+            agg = self._create_empty_output(len(outputs[list(outputs.keys())[0]]["cash_in"]))
+            
+            # Sum outputs from all executed member bricks
+            for brick_id in executed_members:
+                if brick_id in outputs:
+                    brick_output = outputs[brick_id]
+                    for key in agg.keys():
+                        if key in brick_output:
+                            agg[key] += brick_output[key]
+            
+            by_struct[struct_id] = agg
+            
+        return by_struct
+
+    def _create_empty_output(self, length: int) -> BrickOutput:
+        """Create an empty BrickOutput with the specified length."""
+        return {
+            "cash_in": np.zeros(length),
+            "cash_out": np.zeros(length),
+            "asset_value": np.zeros(length),
+            "debt_balance": np.zeros(length),
+            "equity": np.zeros(length),
+        }
     
     def _initialize_simulation(self, start: date, months: int) -> tuple[np.ndarray, ScenarioContext]:
         """Initialize the simulation context and resolve mortgage links."""
@@ -120,21 +483,23 @@ class Scenario:
         for b in self.bricks: 
             b.prepare(ctx)
     
-    def _simulate_bricks(self, ctx: ScenarioContext, t_index: np.ndarray) -> Dict[str, BrickOutput]:
+    def _simulate_bricks(self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: List[str]) -> Dict[str, BrickOutput]:
         """Simulate all bricks and route cash flows to cash account."""
         outputs: Dict[str, BrickOutput] = {}
         
-        # Find the cash account brick
-        cash_ids = [b.id for b in self.bricks if isinstance(b, ABrick) and b.kind == "a.cash"]
-        assert len(cash_ids) == 1, "Scenario expects exactly one cash account brick (kind='a.cash')"
+        # Find the cash account brick (must be in selection)
+        cash_ids = [b.id for b in self.bricks if isinstance(b, ABrick) and b.kind == "a.cash" and b.id in execution_order]
+        assert len(cash_ids) == 1, "Scenario expects exactly one cash account brick (kind='a.cash') in selection"
         cash_id = cash_ids[0]
         
         # Accumulate cash flows from all non-cash bricks
         routed_in = np.zeros(len(t_index))
         routed_out = np.zeros(len(t_index))
         
-        # Simulate all non-cash bricks
+        # Simulate all non-cash bricks in execution order
         for b in self.bricks:
+            if b.id not in execution_order:
+                continue  # Skip bricks not in selection
             if b.id == cash_id:
                 continue  # Skip cash account for now
             

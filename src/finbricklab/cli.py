@@ -16,23 +16,137 @@ def _load_json(path: str) -> dict:
         return json.load(f)
 
 
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy arrays, datetime64, pandas DataFrames, and ScenarioResults."""
+    def default(self, obj):
+        import numpy as np
+        import pandas as pd
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.datetime64):
+            return str(obj)
+        elif isinstance(obj, pd.DataFrame):
+            return obj.to_dict('records')
+        elif isinstance(obj, pd.Series):
+            return obj.to_dict()
+        elif hasattr(obj, '__dict__'):
+            # Handle custom objects by converting to dict
+            return obj.__dict__
+        return super().default(obj)
+
 def _save_json(path: str, data: dict) -> None:
     """Save data as JSON to file path."""
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, cls=NumpyEncoder)
+
+
+def _print_execution_summary(res: dict, selection: list[str] = None) -> None:
+    """Print execution summary to stdout."""
+    meta = res.get("meta", {})
+    execution_order = meta.get("execution_order", [])
+    overlaps = meta.get("overlaps", {})
+    
+    # Count bricks and MacroBricks in selection
+    brick_count = len(execution_order)
+    macrobrick_count = 0
+    if selection:
+        macrobrick_count = sum(1 for sel_id in selection if sel_id in res.get("by_struct", {}))
+    
+    # Build summary message
+    summary_parts = [f"Executing {brick_count} bricks"]
+    if macrobrick_count > 0:
+        summary_parts.append(f"(deduped) from {macrobrick_count} MacroBricks")
+    
+    if selection:
+        summary_parts.append(f"[{','.join(selection)}]")
+    
+    if overlaps:
+        overlap_bricks = list(overlaps.keys())
+        summary_parts.append(f"; overlaps: {','.join(overlap_bricks)}")
+    
+    print(" ".join(summary_parts))
+
+
+def cmd_list_macrobricks(args) -> int:
+    """List MacroBricks with their flat member lists and overlaps."""
+    try:
+        cfg = _load_json(args.input)
+        scn = Scenario.from_dict(cfg)
+        
+        if args.json:
+            # JSON output
+            output = {}
+            for struct_id, macrobrick in scn._registry.iter_macrobricks():
+                members = list(scn._registry.get_struct_flat_members(struct_id))
+                output[struct_id] = {
+                    "name": macrobrick.name,
+                    "members": members,
+                    "tags": macrobrick.tags
+                }
+            
+            # Add overlaps info
+            overlaps = {}
+            for struct_id, macrobrick in scn._registry.iter_macrobricks():
+                members = scn._registry.get_struct_flat_members(struct_id)
+                for brick_id in members:
+                    # Find which other MacroBricks contain this brick
+                    other_owners = []
+                    for other_id, other_mb in scn._registry.iter_macrobricks():
+                        if other_id != struct_id and brick_id in scn._registry.get_struct_flat_members(other_id):
+                            other_owners.append(other_id)
+                    if other_owners:
+                        overlaps[brick_id] = sorted(other_owners)
+            
+            if overlaps:
+                output["_overlaps"] = overlaps
+            
+            json.dump(output, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+        else:
+            # Human-readable output
+            for struct_id, macrobrick in scn._registry.iter_macrobricks():
+                members = list(scn._registry.get_struct_flat_members(struct_id))
+                print(f"{struct_id}: {macrobrick.name}")
+                print(f"  Members: {', '.join(members)}")
+                if macrobrick.tags:
+                    print(f"  Tags: {', '.join(macrobrick.tags)}")
+                print()
+            
+            # Show overlaps
+            overlaps = {}
+            for struct_id, macrobrick in scn._registry.iter_macrobricks():
+                members = scn._registry.get_struct_flat_members(struct_id)
+                for brick_id in members:
+                    other_owners = []
+                    for other_id, other_mb in scn._registry.iter_macrobricks():
+                        if other_id != struct_id and brick_id in scn._registry.get_struct_flat_members(other_id):
+                            other_owners.append(other_id)
+                    if other_owners:
+                        overlaps[brick_id] = sorted(other_owners)
+            
+            if overlaps:
+                print("Overlaps:")
+                for brick_id, owners in overlaps.items():
+                    print(f"  {brick_id}*: {', '.join(owners)}")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Error listing MacroBricks: {e}", file=sys.stderr)
+        return 1
 
 
 def cmd_example(_) -> int:
-    """Print a minimal working scenario JSON."""
+    """Print a minimal working scenario JSON with MacroBricks."""
     example = {
         "id": "demo",
-        "name": "CLI Demo",
+        "name": "CLI Demo with MacroBricks",
         "bricks": [
             {
                 "id": "cash",
-                "name": "Cash Account",
+                "name": "Main Cash Account",
                 "kind": "a.cash",
-                "spec": {"initial_balance": 1000.0, "interest_pa": 0.02}
+                "spec": {"initial_balance": 10000.0, "interest_pa": 0.02}
             },
             {
                 "id": "house",
@@ -40,9 +154,59 @@ def cmd_example(_) -> int:
                 "kind": "a.property_discrete",
                 "spec": {
                     "initial_value": 400000.0,
+                    "fees_pct": 0.05,
                     "appreciation_pa": 0.03,
                     "sell_on_window_end": False
                 }
+            },
+            {
+                "id": "mortgage",
+                "name": "Home Loan",
+                "kind": "l.mortgage.annuity",
+                "links": {
+                    "principal": {"from_house": "house"}
+                },
+                "spec": {
+                    "rate_pa": 0.034,
+                    "term_months": 300
+                }
+            },
+            {
+                "id": "rental_prop",
+                "name": "Rental Property",
+                "kind": "a.property_discrete",
+                "spec": {
+                    "initial_value": 250000.0,
+                    "fees_pct": 0.05,
+                    "appreciation_pa": 0.025,
+                    "sell_on_window_end": False
+                }
+            },
+            {
+                "id": "rental_mortgage",
+                "name": "Rental Property Loan",
+                "kind": "l.mortgage.annuity",
+                "links": {
+                    "principal": {"from_house": "rental_prop"}
+                },
+                "spec": {
+                    "rate_pa": 0.038,
+                    "term_months": 240
+                }
+            }
+        ],
+        "structs": [
+            {
+                "id": "primary_residence",
+                "name": "Primary Residence Package",
+                "members": ["house", "mortgage"],
+                "tags": ["primary", "residence"]
+            },
+            {
+                "id": "rental_investment",
+                "name": "Rental Investment",
+                "members": ["rental_prop", "rental_mortgage"],
+                "tags": ["rental", "investment"]
             }
         ]
     }
@@ -56,37 +220,21 @@ def cmd_run(args) -> int:
     try:
         cfg = _load_json(args.input)
         
-        # Convert dict to Scenario object
-        bricks = []
-        for brick_cfg in cfg.get("bricks", []):
-            brick_class = None
-            if brick_cfg["kind"].startswith("a."):
-                brick_class = ABrick
-            elif brick_cfg["kind"].startswith("l."):
-                brick_class = LBrick
-            elif brick_cfg["kind"].startswith("f."):
-                brick_class = FBrick
-            else:
-                print(f"Error: Unknown brick kind '{brick_cfg['kind']}'", file=sys.stderr)
-                return 1
-                
-            bricks.append(brick_class(**brick_cfg))
-        
-        scn = Scenario(
-            id=cfg.get("id", "scenario"),
-            name=cfg.get("name", "Unnamed Scenario"),
-            bricks=bricks
-        )
+        # Create scenario using from_dict method
+        scn = Scenario.from_dict(cfg)
         
         # Run simulation
         start_date = date.fromisoformat(args.start)
-        res = scn.run(start=start_date, months=args.months)
+        selection = args.select if args.select else None
+        res = scn.run(start=start_date, months=args.months, selection=selection)
+        
+        # Print execution summary
+        _print_execution_summary(res, selection)
         
         # Export results
-        out = scn.export_run_json(res)
-        _save_json(args.output, out)
+        _save_json(args.output, res)
         
-        print(f"Scenario completed successfully. Results saved to {args.output}")
+        print(f"Results saved to {args.output}")
         return 0
         
     except Exception as e:
@@ -99,38 +247,38 @@ def cmd_validate(args) -> int:
     try:
         cfg = _load_json(args.input)
         
-        # Convert dict to Scenario object (same logic as cmd_run)
-        bricks = []
-        for brick_cfg in cfg.get("bricks", []):
-            brick_class = None
-            if brick_cfg["kind"].startswith("a."):
-                brick_class = ABrick
-            elif brick_cfg["kind"].startswith("l."):
-                brick_class = LBrick
-            elif brick_cfg["kind"].startswith("f."):
-                brick_class = FBrick
-            else:
-                print(f"Error: Unknown brick kind '{brick_cfg['kind']}'", file=sys.stderr)
-                return 1
-                
-            bricks.append(brick_class(**brick_cfg))
-        
-        scn = Scenario(
-            id=cfg.get("id", "scenario"),
-            name=cfg.get("name", "Unnamed Scenario"),
-            bricks=bricks
-        )
+        # Create scenario using from_dict method
+        scn = Scenario.from_dict(cfg)
         
         # Validate configuration
-        if args.warn:
-            # Just check if we can create the scenario without errors
-            print("Scenario configuration appears valid (warn mode)")
-        else:
-            # Run a minimal validation
-            scn.validate_run({}, mode="error")
-            print("Scenario configuration is valid")
-        
-        return 0
+        try:
+            # Get validation report from registry
+            report = scn._registry.validate()
+            
+            if args.format == "json":
+                # JSON output
+                json.dump(report.to_dict(), sys.stdout, indent=2)
+                sys.stdout.write("\n")
+            else:
+                # Human-readable output
+                print(str(report))
+            
+            return report.get_exit_code()
+            
+        except Exception as e:
+            if args.format == "json":
+                error_report = {
+                    "has_errors": True,
+                    "has_warnings": False,
+                    "is_valid": False,
+                    "exit_code": 1,
+                    "error": str(e)
+                }
+                json.dump(error_report, sys.stdout, indent=2)
+                sys.stdout.write("\n")
+            else:
+                print(f"❌ Validation failed: {e}")
+            return 1
         
     except Exception as e:
         if args.warn:
@@ -169,6 +317,15 @@ def main() -> None:
     run_parser.add_argument("-o", "--output", required=True, help="Output results JSON file")
     run_parser.add_argument("--start", default="2026-01-01", help="Start date (YYYY-MM-DD)")
     run_parser.add_argument("--months", type=int, default=12, help="Number of months to simulate")
+    run_parser.add_argument("--select", nargs="*", help="Select specific bricks and/or MacroBricks to execute")
+    run_parser.epilog = """
+Aggregation Semantics:
+  • Per-MacroBrick view: sums all executed member bricks of that MacroBrick
+  • Portfolio totals: sum unique bricks from selection (union)
+  • Summing multiple MacroBrick rows can overstate due to overlap → use portfolio total
+  • Execution order: topological sort by dependencies, fallback to stable ID sort
+  • Overlaps: reported in results.meta["overlaps"] for current selection
+    """
     run_parser.set_defaults(func=cmd_run)
     
     # Validate command
@@ -178,7 +335,17 @@ def main() -> None:
     )
     validate_parser.add_argument("-i", "--input", required=True, help="Input scenario JSON file")
     validate_parser.add_argument("--warn", action="store_true", help="Warn instead of error on issues")
+    validate_parser.add_argument("--format", choices=["human", "json"], default="human", help="Output format")
     validate_parser.set_defaults(func=cmd_validate)
+    
+    # List MacroBricks command
+    list_parser = subparsers.add_parser(
+        "list-macrobricks",
+        help="List MacroBricks with their members and overlaps"
+    )
+    list_parser.add_argument("-i", "--input", required=True, help="Input scenario JSON file")
+    list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    list_parser.set_defaults(func=cmd_list_macrobricks)
     
     # Parse arguments and execute
     args = parser.parse_args()

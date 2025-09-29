@@ -92,7 +92,9 @@ from .core import (
     ScheduleRegistry,
     FlowRegistry,
     StartLink,
-    PrincipalLink
+    PrincipalLink,
+    MacroBrick,
+    Registry
 )
 
 # Import strategy interfaces
@@ -138,6 +140,14 @@ __all__ = [
     # Link classes
     "StartLink",
     "PrincipalLink",
+    
+    # MacroBrick and Registry
+    "MacroBrick",
+    "Registry",
+    
+    # Validation
+    "ValidationReport",
+    "DisjointReport",
     
     # Kind constants
     "kinds",

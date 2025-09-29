@@ -13,6 +13,9 @@ from .context import ScenarioContext
 from .interfaces import IValuationStrategy, IScheduleStrategy, IFlowStrategy
 from .bricks import FinBrickABC, ABrick, LBrick, FBrick, ValuationRegistry, ScheduleRegistry, FlowRegistry, wire_strategies
 from .scenario import Scenario, validate_run, export_run_json, export_ledger_csv
+from .macrobrick import MacroBrick
+from .registry import Registry
+from .validation import ValidationReport, DisjointReport
 from .utils import month_range, active_mask, _apply_window_equity_neutral, resolve_prepayments_to_month_idx
 
 __all__ = [
@@ -60,6 +63,14 @@ __all__ = [
     "validate_run",
     "export_run_json",
     "export_ledger_csv",
+    
+    # MacroBrick and Registry
+    "MacroBrick",
+    "Registry",
+    
+    # Validation
+    "ValidationReport",
+    "DisjointReport",
     
     # Utils
     "month_range",
