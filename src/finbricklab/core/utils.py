@@ -59,15 +59,22 @@ def active_mask(
     else:
         t_index_dt = t_index
 
+    # Ensure t_index_dt is monthly precision
+    if t_index_dt.dtype != "datetime64[M]":
+        if isinstance(t_index_dt, pd.DatetimeIndex):
+            t_index_dt = t_index_dt.to_numpy().astype("datetime64[M]")
+        else:
+            t_index_dt = t_index_dt.astype("datetime64[M]")
+
     # Normalize start date
     if start_date is not None:
-        start = np.datetime64(start_date, "M")
+        start_m = np.datetime64(start_date, "M")
     else:
-        start = t_index_dt[0]
+        start_m = t_index_dt[0]
 
-    # Determine end date
+    # Determine end date with inclusive logic
     if end_date is not None:
-        end = np.datetime64(end_date, "M")
+        end_m = np.datetime64(end_date, "M")  # inclusive
         # Warn if both end_date and duration_m are provided
         if duration_m is not None:
             print(
@@ -76,11 +83,16 @@ def active_mask(
     elif duration_m is not None:
         if duration_m < 1:
             raise ValueError("duration_m must be >= 1")
-        end = start + np.timedelta64(duration_m - 1, "M")  # inclusive
+        # duration_m counts the start month; duration_m=1 => same month
+        y, m = int(str(start_m)[:4]), int(str(start_m)[5:7])
+        span = max(1, int(duration_m))
+        y2 = y + (m - 1 + (span - 1)) // 12
+        m2 = (m - 1 + (span - 1)) % 12 + 1
+        end_m = np.datetime64(f"{y2:04d}-{m2:02d}", "M")
     else:
-        end = t_index_dt[-1]
+        end_m = t_index_dt[-1]
 
-    return (t_index_dt >= start) & (t_index_dt <= end)
+    return (t_index_dt >= start_m) & (t_index_dt <= end_m)
 
 
 def _apply_window_equity_neutral(out, mask):

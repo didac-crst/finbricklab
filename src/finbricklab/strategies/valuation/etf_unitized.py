@@ -66,6 +66,8 @@ class ValuationETFUnitized(IValuationStrategy):
         s.setdefault("initial_units", 0.0)
         s.setdefault("price0", 100.0)
         s.setdefault("drift_pa", 0.03)
+        s.setdefault("volatility_pa", 0.0)
+        s.setdefault("seed", 0)
         s.setdefault("div_yield_pa", 0.0)
         s.setdefault("reinvest_dividends", False)
         s.setdefault("buy_at_start", None)  # {"amount": >0} or {"units": >0}
@@ -155,11 +157,19 @@ class ValuationETFUnitized(IValuationStrategy):
         price = np.zeros(T)
         events = []
 
-        # Price path calculation
-        r_m = (1 + float(s["drift_pa"])) ** (1 / 12) - 1
+        # Price path calculation with volatility
         price[0] = float(s["price0"])
+        mu = float(s["drift_pa"])
+        sigma = float(s["volatility_pa"])
+        rng = np.random.default_rng(int(s["seed"]))
+
         for t in range(1, T):
-            price[t] = price[t - 1] * (1 + r_m)
+            if sigma > 0:
+                z = rng.standard_normal()
+                ret = (mu / 12.0) + (sigma / np.sqrt(12.0)) * z
+            else:
+                ret = mu / 12.0
+            price[t] = price[t - 1] * np.exp(ret)
 
         # Initial holdings (pre-owned, no cash impact)
         units[0] = float(s["initial_units"])

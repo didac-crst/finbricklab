@@ -176,27 +176,34 @@ class TestActivationWindows:
         # Month 1: no asset value (not active)
         assert asset_value[0] == 0, "Month 1 should have no asset value"
 
-        # Months 2-5: asset should have value
+        # Months 2-4: asset should have value
         assert asset_value[1] > 0, "Month 2 should have asset value"
         assert asset_value[2] > 0, "Month 3 should have asset value"
         assert asset_value[3] > 0, "Month 4 should have asset value"
-        assert asset_value[4] > 0, "Month 5 should have asset value"
+
+        # Month 5: asset sold at end of window, so end-of-month value is 0
+        assert asset_value[4] == 0, "Month 5 should have 0 asset value after sale"
+
+        # Check that sale proceeds were received in month 5
+        cash_output = results["outputs"]["asset"]
+        cash_in = cash_output["cash_in"]
+        assert cash_in[4] > 0, "Month 5 should have cash inflow from asset sale"
 
         # Month 6+: asset value should be 0 (window ended, auto-sold)
         assert asset_value[5] == 0, "Month 6 should have no asset value (sold)"
         assert asset_value[6] == 0, "Month 7 should have no asset value (sold)"
         assert asset_value[7] == 0, "Month 8 should have no asset value (sold)"
 
-        # Check that auto-sell generates cash flow in month 5
-        cash_out = asset_output["cash_out"]
-        assert cash_out[4] > 0, "Month 5 should have cash outflow from sale"
+        # Check that auto-sell generates cash inflow in month 5 (proceeds from sale)
+        # Note: sales generate cash_in (proceeds), not cash_out (costs)
 
-        # Other months should have no cash flows
-        assert cash_out[0] == 0, "Month 1 should have no cash flows"
-        assert cash_out[1] == 0, "Month 2 should have no cash flows"
-        assert cash_out[2] == 0, "Month 3 should have no cash flows"
-        assert cash_out[3] == 0, "Month 4 should have no cash flows"
-        assert cash_out[5] == 0, "Month 6 should have no cash flows"
+        # Check cash flows - property purchase happens when it becomes active
+        cash_out = asset_output["cash_out"]
+        assert cash_out[0] == 0, "Month 1 should have no cash flows (not active)"
+        assert cash_out[1] > 0, "Month 2 should have cash outflow (property purchase)"
+        assert cash_out[2] == 0, "Month 3 should have no additional cash flows"
+        assert cash_out[3] == 0, "Month 4 should have no additional cash flows"
+        assert cash_out[5] == 0, "Month 6 should have no cash flows (sold)"
 
     def test_multiple_overlapping_windows(self):
         """Test multiple bricks with overlapping activation windows."""
@@ -305,17 +312,18 @@ class TestActivationWindows:
         events = asset_output["events"]
 
         # Should have exactly one window_end event
-        window_end_events = [e for e in events if e["type"] == "window_end"]
+        window_end_events = [e for e in events if e.kind == "window_end"]
         assert len(window_end_events) == 1, "Should have exactly one window_end event"
 
         event = window_end_events[0]
-        assert event["description"] == "Brick 'Temporary Asset' window ended"
-        assert "brick_id" in event["data"]
-        assert event["data"]["brick_id"] == "asset"
+        assert event.message == "Brick 'Temporary Asset' window ended"
+        assert "brick_id" in event.meta
+        assert event.meta["brick_id"] == "asset"
 
-        # Event should occur in month 4 (after 3-month duration)
-        event_time = event["time"]
-        expected_time = np.datetime64("2026-05", "M")  # Month 4 (0-indexed)
+        # Event should occur in month 3 (April 2026) - last month of 3-month duration
+        # start=2026-02-01, duration_m=3 => Feb, Mar, Apr are active
+        event_time = event.t
+        expected_time = np.datetime64("2026-04", "M")  # April 2026 (last active month)
         assert (
             event_time == expected_time
         ), f"Event time {event_time} != expected {expected_time}"

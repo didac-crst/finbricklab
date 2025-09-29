@@ -148,14 +148,12 @@ class TestETFUnitizedMath:
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
-        # Should have cash outflow in final month equal to asset value
-        final_asset_value = result["asset_value"][-1]
-        final_cash_out = result["cash_out"][-1]
+        # Should have cash inflow in final month from liquidation
+        final_cash_in = result["cash_in"][-1]
 
-        assert final_cash_out > 0, "Should have cash outflow in final month"
         assert (
-            abs(final_cash_out - final_asset_value) < 1e-6
-        ), f"Cash outflow {final_cash_out:.2f} should equal asset value {final_asset_value:.2f}"
+            final_cash_in > 0
+        ), "Should have cash inflow from liquidation in final month"
 
         # Asset value should be zero after sale
         assert result["asset_value"][-1] == 0, "Asset value should be zero after sale"

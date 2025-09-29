@@ -71,17 +71,13 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         Raises:
             AssertionError: If required parameters are missing or auto-calculation fails
         """
-        # Enforce exactly one of spec.principal or links.principal
+        # Check for conflicting principal specifications BEFORE resolving from links
         has_spec_principal = _get_spec_value(brick.spec, "principal") is not None
         has_link_principal = bool((brick.links or {}).get("principal"))
 
         if has_spec_principal and has_link_principal:
             raise AssertionError(
                 "Provide either spec.principal or links.principal, not both."
-            )
-        if not has_spec_principal and not has_link_principal:
-            raise AssertionError(
-                "Missing principal: specify spec.principal or links.principal (PrincipalLink)."
             )
 
         if has_spec_principal:
@@ -90,6 +86,10 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         else:
             # Calculate principal from PrincipalLink
             principal_link_data = (brick.links or {}).get("principal")
+            if principal_link_data is None:
+                raise AssertionError(
+                    "Missing principal: specify spec.principal or links.principal (PrincipalLink)."
+                )
             principal_link = PrincipalLink(**principal_link_data)
 
             if principal_link.from_house:
@@ -117,6 +117,7 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
                 principal = price - down + fees_financed
                 brick.spec["principal"] = principal
                 brick.spec["_derived"] = {
+                    "price": price,
                     "initial_value": price,
                     "down_payment": down,
                     "fees": fees,
@@ -126,12 +127,23 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
                 # Direct nominal amount
                 brick.spec["principal"] = principal_link.nominal
             elif principal_link.remaining_of:
-                # This will be handled by settlement buckets during simulation
-                brick.spec["_deferred_principal"] = True
+                # Not implemented yet; don't inject a bogus placeholder.
+                from finbricklab.core.errors import ConfigError
+
+                raise ConfigError(
+                    "links.principal.remaining_of is not implemented yet. "
+                    "Use links.principal.from_house or principal nominal."
+                )
             else:
                 raise AssertionError(
                     "PrincipalLink must specify from_house, nominal, or remaining_of"
                 )
+
+        # Ensure we have a principal after resolution
+        if _get_spec_value(brick.spec, "principal") is None:
+            raise AssertionError(
+                "Missing principal: specify spec.principal or links.principal (PrincipalLink)."
+            )
 
         # Validate required parameters
         rate_pa = _get_spec_value(brick.spec, "rate_pa")
@@ -153,7 +165,7 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
 
         # Validate principal is available
         principal = _get_spec_value(brick.spec, "principal")
-        if principal is None and not brick.spec.get("_deferred_principal", False):
+        if principal is None:
             raise AssertionError(
                 "Principal not available - check links or provide explicitly"
             )
@@ -183,10 +195,6 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
 
         # Extract parameters
         principal = float(_get_spec_value(brick.spec, "principal", 0))
-        if principal == 0 and brick.spec.get("_deferred_principal", False):
-            # For deferred principals (remaining_of), use a placeholder
-            # This will be resolved by settlement buckets in a future implementation
-            principal = 100000  # Placeholder amount
         rate_pa = float(_get_spec_value(brick.spec, "rate_pa", 0))
         n_total = int(_get_spec_value(brick.spec, "term_months", 300))
         offset = int(_get_spec_value(brick.spec, "first_payment_offset", 1))

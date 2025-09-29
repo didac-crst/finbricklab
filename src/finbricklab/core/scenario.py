@@ -743,8 +743,8 @@ class Scenario:
         # Resolve start dates
         self._resolve_start_dates(brick_registry)
 
-        # Resolve principals
-        self._resolve_principals(brick_registry)
+        # Resolve principals - handled by individual strategies now
+        # self._resolve_principals(brick_registry)
 
         # Validate settlement buckets
         self._validate_settlement_buckets(brick_registry)
