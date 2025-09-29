@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11, 3.12]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+
+    - name: Install project (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          poetry install --no-interaction
+        else
+          echo "No source code found, skipping package installation"
+        fi
+
+    - name: Run linting (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          poetry run ruff check .
+          poetry run black --check .
+        else
+          echo "No source code found, skipping linting"
+        fi
+
+    - name: Run type checking (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          poetry run mypy src/
+        else
+          echo "No source code found, skipping type checking"
+        fi
+
+    - name: Run tests (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          poetry run pytest --cov=src/finbricklab --cov-report=xml
+        else
+          echo "No source code found, skipping tests"
+        fi
+
+    - name: Upload coverage to Codecov
+      if: ${{ hashFiles('coverage.xml') != '' }}
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        # token: ${{ secrets.CODECOV_TOKEN }}  # required if the Codecov App is not installed for this org/repo
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction --no-root
+
+    - name: Build package (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          poetry build
+        else
+          echo "No source code found, skipping build"
+        fi
+
+    - name: Check package (if source exists)
+      run: |
+        if [ -d "src/finbricklab" ] && [ "$(ls -A src/finbricklab)" ]; then
+          pip install twine
+          twine check dist/*
+        else
+          echo "No source code found, skipping package check"
+        fi

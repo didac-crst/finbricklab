@@ -1,0 +1,34 @@
+# .coderabbit.yaml
+reviews:
+  profile: "chill"                       # lighter tone / less nitpicky
+  high_level_summary: true
+  high_level_summary_in_walkthrough: false
+  changed_files_summary: true            # set to false if you want it hidden
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+
+  review_status: true
+  commit_status: true
+  fail_commit_status: false              # don't fail the check if posting comments glitches
+
+  # Keep noise down: exclude docs/media/notebooks/build artifacts from review scope
+  path_filters:
+    - "!docs/**"
+    - "!examples/**"
+    - "!**/*.png"
+    - "!**/*.svg"
+    - "!**/*.ipynb"
+    - "!**/*.lock"
+    - "!**/.coverage*"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.pytest_cache/**"
+
+  # Optional guidance for areas we keep
+  path_instructions:
+    - path: "tests/**"
+      instructions: "Be concise; prioritize failures/flakiness over style nits."

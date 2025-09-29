@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.1.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: pytest
+  #       entry: poetry run pytest
+  #       language: system
+  #       pass_filenames: false
+  #       always_run: true
+
+  #     - id: check-forbidden-tokens
+  #       name: Check for forbidden tokens
+  #       entry: python scripts/check_forbidden_tokens.py
+  #       args: [--exclude, scripts/check_forbidden_tokens.py, --exclude, .pre-commit-config.yaml]
+  #       language: system
+  #       pass_filenames: false
+  #       always_run: true
