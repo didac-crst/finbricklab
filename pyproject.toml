@@ -37,8 +37,6 @@ ruff = "^0.1.0"
 mypy = "^1.5.0"
 pre-commit = "^3.4.0"
 
-[tool.poetry.scripts]
-finbrick = "finbricklab.cli:main"
 
 [build-system]
 requires = ["poetry-core"]
