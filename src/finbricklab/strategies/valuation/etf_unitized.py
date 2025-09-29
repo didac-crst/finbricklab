@@ -5,6 +5,7 @@ ETF investment valuation strategy.
 from __future__ import annotations
 
 import numpy as np
+
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.events import Event
