@@ -1,0 +1,3 @@
+# `finbricklab.fx`
+
+::: finbricklab.fx

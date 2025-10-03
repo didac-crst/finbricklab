@@ -45,7 +45,6 @@ mkdocs = "^1.5"
 mkdocs-material = "^9.4"
 mkdocstrings = { version = "^0.23", extras = ["python"] }
 mkdocs-gen-files = "^0.5"
-mkdocs-literate-nav = "^0.5"
 mkdocs-autorefs = "^0.5"
 interrogate = "^1.6"
 griffe = "^0.36"

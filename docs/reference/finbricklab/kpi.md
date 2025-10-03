@@ -1,0 +1,3 @@
+# `finbricklab.kpi`
+
+::: finbricklab.kpi

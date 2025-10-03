@@ -1,0 +1,3 @@
+# `finbricklab.charts`
+
+::: finbricklab.charts

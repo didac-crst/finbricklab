@@ -1,0 +1,82 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  # 1) Build the site (non-strict) and upload artifact for deploy & PR previews
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: "1.8.3"
+
+      - run: poetry install --only docs
+
+      # Regular build -> fewer CI flakes initially
+      - run: poetry run mkdocs build --site-dir site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  # 2) Non-blocking strict check so warnings are visible in PRs
+  strict-check:
+    runs-on: ubuntu-latest
+    needs: build
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: abatilo/actions-poetry@v3
+        with: { poetry-version: "1.8.3" }
+      - run: poetry install --only docs
+      - name: MkDocs strict build (non-blocking)
+        run: poetry run mkdocs build --strict --site-dir site
+
+  # 3) Deploy to GitHub Pages on push to main
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # 4) PR preview for same-repo PRs (not forks)
+  preview:
+    needs: build
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
