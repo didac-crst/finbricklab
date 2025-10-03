@@ -4,6 +4,7 @@ site_url: https://didac-crst.github.io/finbricklab/
 repo_url: https://github.com/didac-crst/finbricklab
 repo_name: didac-crst/finbricklab
 edit_uri: edit/main/docs/
+strict: false
 
 theme:
   name: material
@@ -49,5 +50,7 @@ nav:
       - Examples: EXAMPLES.md
       - Strategies: STRATEGIES.md
       - Entity & Canonical Schema: ENTITY_AND_CANONICAL_SCHEMA.md
+      - Contributing: CONTRIBUTING.md
   - Reference:
       - Overview: reference/index.md
+      - API Reference: API_REFERENCE.md

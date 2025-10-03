@@ -1,3 +1,0 @@
-# `finbricklab.cli`
-
-::: finbricklab.cli
