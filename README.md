@@ -405,6 +405,13 @@ scenario = entity.create_scenario(
 
 # Run scenario
 results = scenario.run(start=date(2026, 1, 1), months=12)
+
+# Or run directly through entity
+results = entity.run_scenario(
+    "base_case",
+    start=date(2026, 1, 1),
+    months=12,
+)
 ```
 
 ### Key Benefits

@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import date
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -646,6 +647,119 @@ class Entity:
         """Assert that an ID is unique across the catalog."""
         if id_ in self._bricks or id_ in self._macrobricks:
             raise ValueError(f"ID '{id_}' already exists in catalog")
+
+    def run_scenario(
+        self,
+        scenario_id: str,
+        *,
+        start: date,
+        months: int,
+        selection: list[str] | None = None,
+        include_cash: bool = True,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """
+        Run a scenario by ID via the Entity catalog.
+
+        Parameters
+        ----------
+        scenario_id : str
+            The ID of the scenario previously created in this Entity.
+        start : date
+            Simulation start date.
+        months : int
+            Number of months to simulate.
+        selection : list[str] | None
+            Optional subset selection of brick and/or MacroBrick IDs. If None,
+            the scenario's full selection is used.
+        include_cash : bool
+            Whether to include cash bricks in the simulation.
+        **kwargs : Any
+            Forwarded to Scenario.run(...). Keep stable signature upstream.
+
+        Returns
+        -------
+        dict[str, Any]
+            Whatever Scenario.run(...) returns (results dict / RunResult).
+
+        Raises
+        ------
+        ValueError
+            If the scenario ID is not found in this Entity.
+        ScenarioValidationError
+            If Scenario-level validation fails (propagated).
+        """
+        scen = self.get_scenario(scenario_id)
+        if scen is None:
+            available = ", ".join(self.list_scenarios()[:10])
+            more = "..." if len(self.list_scenarios()) > 10 else ""
+            raise ValueError(
+                f"Scenario '{scenario_id}' not found in Entity '{self.id}'. "
+                f"Available: [{available}{more}]"
+            )
+
+        return scen.run(
+            start=start,
+            months=months,
+            selection=selection,
+            include_cash=include_cash,
+            **kwargs,
+        )
+
+    def run_many(
+        self,
+        scenario_ids: Iterable[str],
+        *,
+        start: date,
+        months: int,
+        selection: list[str] | None = None,
+        include_cash: bool = True,
+        **kwargs: Any,
+    ) -> dict[str, dict[str, Any]]:
+        """
+        Run multiple scenarios and return a mapping {scenario_id: results}.
+        
+        Raises on first missing scenario_id; consider try/except in caller if you want partial results.
+
+        Parameters
+        ----------
+        scenario_ids : Iterable[str]
+            The IDs of scenarios to run.
+        start : date
+            Simulation start date.
+        months : int
+            Number of months to simulate.
+        selection : list[str] | None
+            Optional subset selection of brick and/or MacroBrick IDs. If None,
+            the scenario's full selection is used.
+        include_cash : bool
+            Whether to include cash bricks in the simulation.
+        **kwargs : Any
+            Forwarded to Scenario.run(...).
+
+        Returns
+        -------
+        dict[str, dict[str, Any]]
+            Mapping of scenario_id to results dict.
+
+        Raises
+        ------
+        ValueError
+            If any scenario ID is not found in this Entity.
+        ScenarioValidationError
+            If Scenario-level validation fails (propagated).
+        """
+        out: dict[str, dict[str, Any]] = {}
+        for sid in scenario_ids:
+            out[sid] = self.run_scenario(
+                sid,
+                start=start,
+                months=months,
+                selection=selection,
+                include_cash=include_cash,
+                **kwargs,
+            )
+        return out
 
     @staticmethod
     def _normalize_links(links: dict | RouteLink | None) -> dict[str, Any] | None:
