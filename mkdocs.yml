@@ -22,6 +22,8 @@ plugins:
   - gen-files:
       scripts:
         - docs/gen_ref_nav.py
+  - include-markdown:
+      encoding: utf-8
   - mkdocstrings:
       handlers:
         python:
