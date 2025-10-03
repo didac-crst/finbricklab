@@ -14,21 +14,39 @@ from finbricklab.core.results import BrickOutput
 
 class ValuationCash(IValuationStrategy):
     """
-    Cash account valuation strategy (kind: 'a.cash').
+    Cash account valuation strategy for modeling liquid cash holdings.
 
     This strategy models a simple cash account that receives external cash flows
     and earns interest on the balance. The balance is computed by accumulating
     all routed cash flows plus interest earned each month.
 
-    Required Parameters:
+    **Use Cases:**
+    - Checking accounts, savings accounts, money market accounts
+    - Base currency holdings in multi-currency scenarios
+    - Settlement accounts for cash flow routing
+
+    **Required Parameters:**
         - initial_balance: Starting cash balance (default: 0.0)
         - interest_pa: Annual interest rate (default: 0.0)
 
-    External Parameters (set by scenario engine):
+    **External Parameters (set by scenario engine):**
         - external_in: Monthly cash inflows from other bricks
         - external_out: Monthly cash outflows to other bricks
 
-    Note:
+    **Example:**
+        ```python
+        cash_account = ABrick(
+            id="checking",
+            name="Checking Account",
+            kind="a.cash",
+            spec={
+                "initial_balance": 5000.0,
+                "interest_pa": 0.02  # 2% annual interest
+            }
+        )
+        ```
+
+    **Note:**
         Supports scenarios with one or multiple cash accounts. The Scenario engine must
         populate `spec.external_in` and `spec.external_out` per cash brick; they are not
         derived here.

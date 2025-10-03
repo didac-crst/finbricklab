@@ -46,11 +46,36 @@ def net_worth_vs_time(tidy: pd.DataFrame) -> tuple[go.Figure, pd.DataFrame]:
     """
     Plot net worth over time for multiple scenarios.
 
-    Args:
+    This chart shows the evolution of net worth (assets - liabilities) across
+    different scenarios, making it easy to compare long-term financial outcomes.
+
+    **Use Cases:**
+    - Compare different investment strategies over time
+    - Analyze the impact of major life decisions (buy vs rent, job changes)
+    - Benchmark scenarios against each other
+    - Identify inflection points in wealth accumulation
+
+    **Args:**
         tidy: DataFrame from Entity.compare() with scenario_id, scenario_name columns
 
-    Returns:
+    **Returns:**
         Tuple of (plotly_figure, tidy_dataframe_used)
+
+    **Example:**
+        ```python
+        from finbricklab import Entity, net_worth_vs_time
+
+        entity = Entity(id="person", name="John Doe")
+        # ... add scenarios to entity
+
+        comparison_df = entity.compare()
+        fig, data = net_worth_vs_time(comparison_df)
+        fig.show()
+        ```
+
+    **See Also:**
+        - :func:`asset_composition_small_multiples`: For detailed asset breakdown
+        - :func:`liability_composition_small_multiples`: For liability analysis
     """
     _check_plotly()
 

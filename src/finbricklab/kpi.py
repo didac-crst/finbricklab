@@ -20,19 +20,48 @@ def liquidity_runway(
     outflows_col: str = "outflows",
 ) -> pd.Series:
     """
-    Calculate liquidity runway in months.
+    Calculate liquidity runway in months based on essential expenses.
 
-    Liquidity runway = cash / rolling_average(essential_outflows, lookback_months)
+    This KPI measures how long you can survive on current cash reserves,
+    considering only essential expenses. It's a key financial health indicator
+    for emergency planning and cash flow management.
 
-    Args:
-        df: DataFrame with canonical schema
-        lookback_months: Number of months to look back for essential outflows
-        essential_share: Share of outflows considered essential (default 0.6)
-        cash_col: Column name for cash balance
-        outflows_col: Column name for outflows
+    **Formula:**
+        liquidity_runway = cash / rolling_average(essential_outflows, lookback_months)
 
-    Returns:
-        Series with liquidity runway in months per row
+    **Use Cases:**
+    - Emergency fund planning and monitoring
+    - Job loss scenario analysis
+    - Cash flow stress testing
+    - Investment timing decisions
+
+    **Args:**
+        df: DataFrame with canonical schema containing monthly data
+        lookback_months: Number of months to look back for essential outflows (default: 6)
+        essential_share: Share of outflows considered essential (default: 0.6 = 60%)
+        cash_col: Column name for cash balance (default: "cash")
+        outflows_col: Column name for total outflows (default: "outflows")
+
+    **Returns:**
+        Series with liquidity runway in months (float values)
+
+    **Example:**
+        ```python
+        from finbricklab import Entity, liquidity_runway
+
+        entity = Entity(id="person", name="John Doe")
+        # ... add scenarios to entity
+
+        comparison_df = entity.compare()
+        runway = liquidity_runway(comparison_df)
+
+        print(f"Current liquidity runway: {runway.iloc[-1]:.1f} months")
+        ```
+
+    **Interpretation:**
+        - 0-3 months: Critical - immediate action needed
+        - 3-6 months: Adequate for most situations
+        - 6+ months: Strong liquidity position
     """
     cash = df[cash_col]
     outflows = df[outflows_col]
