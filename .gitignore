@@ -71,6 +71,10 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Generated HTML files
+*.html
+examples/notebooks/*.html
+
 # PyBuilder
 target/
 
