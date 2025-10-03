@@ -112,6 +112,9 @@ from .core import (
 # Import Entity system
 from .core.entity import Entity
 
+# Import custom exceptions
+from .core.exceptions import ScenarioValidationError
+
 # Import validation reports
 from .core.validation import DisjointReport, ValidationReport
 
@@ -207,6 +210,8 @@ __all__ = [
     # Validation
     "ValidationReport",
     "DisjointReport",
+    # Exceptions
+    "ScenarioValidationError",
     # Kind constants
     "kinds",
     # Version info

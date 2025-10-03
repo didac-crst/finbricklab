@@ -350,6 +350,91 @@ If `links.route` is omitted, flows default to `scenario.settlement_default_cash_
 
 ---
 
+## Entity-Centric Builder
+
+The Entity class now serves as both a catalog and builder, making it the central orchestrator for creating financial scenarios:
+
+```python
+from datetime import date
+import finbricklab.strategies  # Ensure strategies are registered
+
+from finbricklab import Entity
+from finbricklab.core.kinds import K
+
+# Create entity as the central builder
+entity = Entity(id="person", name="John Doe")
+
+# Build bricks through entity methods
+entity.new_ABrick(
+    id="checking",
+    name="Checking Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 5000.0, "interest_pa": 0.02}
+)
+
+entity.new_ABrick(
+    id="savings",
+    name="Savings Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 10000.0, "interest_pa": 0.03}
+)
+
+entity.new_FBrick(
+    id="salary",
+    name="Monthly Salary",
+    kind=K.F_INCOME_FIXED,
+    spec={"amount_monthly": 6000.0},
+    links={"route": {"to": "checking"}}
+)
+
+# Create MacroBrick for portfolio organization
+entity.new_MacroBrick(
+    id="liquid_assets",
+    name="Liquid Assets",
+    member_ids=["checking", "savings"]
+)
+
+# Create scenarios by referencing brick IDs
+scenario = entity.create_scenario(
+    id="base_case",
+    name="Base Case Scenario",
+    brick_ids=["salary"],            # Direct brick references
+    macrobrick_ids=["liquid_assets"], # MacroBrick expansion
+    settlement_default_cash_id="checking"
+)
+
+# Run scenario
+results = scenario.run(start=date(2026, 1, 1), months=12)
+```
+
+### Key Benefits
+
+- **Single Entry Point**: Entity becomes the central builder and catalog
+- **ID-Based References**: Clean separation between structure and implementation
+- **Automatic Validation**: Built-in validation with detailed error messages
+- **Deep Copy Isolation**: Scenarios are independent, preventing state bleed
+- **MacroBrick Support**: Organize bricks hierarchically and reuse across scenarios
+
+### Error Handling
+
+The builder provides detailed error information through `ScenarioValidationError`:
+
+```python
+from finbricklab import ScenarioValidationError
+
+try:
+    entity.create_scenario(
+        id="invalid",
+        name="Invalid Scenario",
+        brick_ids=["nonexistent_brick"]
+    )
+except ScenarioValidationError as e:
+    print(f"Scenario {e.scenario_id} failed: {e}")
+    print(f"Problem IDs: {e.problem_ids}")
+```
+
+---
+
 ## Quickstart (Entity Comparisons)
 
 ```python
