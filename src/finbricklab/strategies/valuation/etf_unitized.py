@@ -34,13 +34,18 @@ class ValuationETFUnitized(IValuationStrategy):
     Spec
     ----
         initial_units: Number of units held at start (default: 0.0)
+        initial_amount: User-friendly alternative to initial_units (converted to units using price0)
         price0: Initial price per unit (default: 100.0)
         drift_pa: Annual price drift rate (default: 0.03 for 3%)
         div_yield_pa: Annual dividend yield (default: 0.0)
         reinvest_dividends: Whether to reinvest dividends (default: False)
         buy_at_start: One-shot purchase {"amount": X} or {"units": Y}
         dca: DCA configuration with mode, amount/units, timing, and step-up
-        sell: List of one-shot sells [{"t": "YYYY-MM", "amount": X} or {"units": Y}]
+        sell: List of one-shot sells with user-friendly options:
+            - {"date": date(2026, 10, 1), "amount": 500.0}  # Sell €500 worth
+            - {"date": date(2026, 10, 1), "percentage": 0.5}  # Sell 50% of holdings
+            - {"date": date(2026, 10, 1), "units": 10.0}  # Sell 10 units
+            - {"t": "2026-10", "amount": 500.0}  # Legacy format still supported
         sdca: Systematic DCA-out configuration for regular withdrawals
         round_units_to: Round units to N decimal places (optional)
         events_level: Event verbosity "none"|"major"|"all" (default: "major")
@@ -64,7 +69,17 @@ class ValuationETFUnitized(IValuationStrategy):
             ctx: The simulation context
         """
         s = brick.spec
-        s.setdefault("initial_units", 0.0)
+        
+        # Handle user-friendly initial_amount parameter
+        if "initial_amount" in s and "initial_units" not in s:
+            # Convert initial_amount to initial_units
+            price0 = s.get("price0", 100.0)
+            s["initial_units"] = s["initial_amount"] / price0
+            # Remove the user-friendly parameter to avoid confusion
+            del s["initial_amount"]
+        else:
+            s.setdefault("initial_units", 0.0)
+        
         s.setdefault("price0", 100.0)
         s.setdefault("drift_pa", 0.03)
         s.setdefault("volatility_pa", 0.0)
@@ -107,13 +122,37 @@ class ValuationETFUnitized(IValuationStrategy):
             if "units" in bas:
                 assert bas["units"] >= 0, "buy_at_start.units must be >= 0"
 
-        # Validate sell configuration
+        # Validate and normalize sell configuration
         sell_directives = s["sell"]
         for sell_spec in sell_directives:
-            assert "t" in sell_spec, "sell directive must include 't' (date)"
-            assert ("amount" in sell_spec) ^ (
-                "units" in sell_spec
-            ), "sell directive: provide exactly one of {'amount','units'}"
+            # Handle user-friendly date parameter
+            if "date" in sell_spec and "t" not in sell_spec:
+                from datetime import date
+                if isinstance(sell_spec["date"], date):
+                    # Convert Python date to numpy datetime64
+                    import numpy as np
+                    sell_spec["t"] = np.datetime64(sell_spec["date"].strftime("%Y-%m"))
+                else:
+                    sell_spec["t"] = sell_spec["date"]
+                # Remove the user-friendly parameter
+                del sell_spec["date"]
+            
+            assert "t" in sell_spec, "sell directive must include 't' (date) or 'date'"
+            
+            # Handle user-friendly percentage parameter
+            if "percentage" in sell_spec:
+                percentage = sell_spec["percentage"]
+                assert 0 <= percentage <= 1, "sell.percentage must be between 0 and 1"
+                # Convert percentage to a special marker that will be resolved at runtime
+                sell_spec["_percentage"] = percentage
+                # Remove the user-friendly parameter
+                del sell_spec["percentage"]
+            
+            # Validate that we have exactly one of the supported parameters
+            valid_params = ["amount", "units", "_percentage"]
+            param_count = sum(1 for param in valid_params if param in sell_spec)
+            assert param_count == 1, f"sell directive: provide exactly one of {valid_params}"
+            
             if "amount" in sell_spec:
                 assert sell_spec["amount"] >= 0, "sell.amount must be >= 0"
             if "units" in sell_spec:
@@ -300,6 +339,9 @@ class ValuationETFUnitized(IValuationStrategy):
                     if "amount" in sell_spec:
                         # Sell by cash target
                         sell_units = min(units[t], sell_spec["amount"] / price[t])
+                    elif "_percentage" in sell_spec:
+                        # Sell by percentage of current holdings
+                        sell_units = units[t] * sell_spec["_percentage"]
                     else:
                         # Sell by units
                         sell_units = min(units[t], sell_spec["units"])
@@ -362,7 +404,7 @@ class ValuationETFUnitized(IValuationStrategy):
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
-        dispose = bool(brick.spec.get("liquidate_on_window_end", True))  # DEFAULT: True
+        dispose = bool(brick.spec.get("liquidate_on_window_end", False))  # DEFAULT: False
         fees_pct = float(brick.spec.get("sell_fees_pct", 0.0))
 
         if dispose and mask.any():
