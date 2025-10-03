@@ -31,7 +31,8 @@ class ValuationETFUnitized(IValuationStrategy):
         - Dividend reinvestment or cash distribution
         - Configurable event logging
 
-    Configuration Parameters:
+    Spec
+    ----
         initial_units: Number of units held at start (default: 0.0)
         price0: Initial price per unit (default: 100.0)
         drift_pa: Annual price drift rate (default: 0.03 for 3%)

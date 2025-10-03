@@ -72,7 +72,8 @@ instance/
 docs/_build/
 
 # Generated HTML files
-*.html
+site/
+docs/_build/
 examples/notebooks/*.html
 
 # PyBuilder
