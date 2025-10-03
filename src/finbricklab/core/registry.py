@@ -181,7 +181,7 @@ class Registry:
 
         if conflicts:
             report.id_conflicts.extend(
-                [f"ID conflict: '{id}'" for id in sorted(conflicts)]
+                [f"ID conflict: '{conflict_id}'" for conflict_id in sorted(conflicts)]
             )
             # Still raise for backward compatibility
             raise ConfigError(

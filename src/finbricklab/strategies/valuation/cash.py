@@ -4,6 +4,8 @@ Cash account valuation strategy.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from finbricklab.core.bricks import ABrick
@@ -67,6 +69,16 @@ class ValuationCash(IValuationStrategy):
         brick.spec.setdefault("external_in", np.zeros(len(ctx.t_index)))
         brick.spec.setdefault("external_out", np.zeros(len(ctx.t_index)))
 
+        # Coerce and validate external arrays
+        T = len(ctx.t_index)
+        for key in ("external_in", "external_out"):
+            arr = np.asarray(brick.spec[key], dtype=float)
+            if len(arr) != T:
+                raise ValueError(
+                    f"{brick.id}: '{key}' length {len(arr)} != t_index length {T}"
+                )
+            brick.spec[key] = arr
+
         # Set liquidity policy defaults
         brick.spec.setdefault(
             "overdraft_limit", 0.0
@@ -80,8 +92,9 @@ class ValuationCash(IValuationStrategy):
         # Warn if min_buffer > initial_balance (policy breach, not config error)
         initial_balance = brick.spec.get("initial_balance", 0.0)
         if brick.spec["min_buffer"] > initial_balance:
-            print(
-                f"[WARN] {brick.id}: min_buffer ({brick.spec['min_buffer']:,.2f}) > initial_balance ({initial_balance:,.2f})."
+            warnings.warn(
+                f"{brick.id}: min_buffer ({brick.spec['min_buffer']:,.2f}) > initial_balance ({initial_balance:,.2f}).",
+                stacklevel=2,
             )
 
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:

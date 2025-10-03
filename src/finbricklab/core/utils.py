@@ -4,6 +4,7 @@ Utility functions for FinBrickLab.
 
 from __future__ import annotations
 
+import warnings
 from datetime import date
 
 import numpy as np
@@ -125,18 +126,16 @@ def active_mask(
         end_m = np.datetime64(end_date, "M")  # inclusive
         # Warn if both end_date and duration_m are provided
         if duration_m is not None:
-            print(
-                f"[WARN] Both end_date and duration_m provided; using end_date {end_date}"
+            warnings.warn(
+                f"Both end_date and duration_m provided; using end_date {end_date}",
+                stacklevel=2,
             )
     elif duration_m is not None:
         if duration_m < 1:
             raise ValueError("duration_m must be >= 1")
         # duration_m counts the start month; duration_m=1 => same month
-        y, m = int(str(start_m)[:4]), int(str(start_m)[5:7])
-        span = max(1, int(duration_m))
-        y2 = y + (m - 1 + (span - 1)) // 12
-        m2 = (m - 1 + (span - 1)) % 12 + 1
-        end_m = np.datetime64(f"{y2:04d}-{m2:02d}", "M")
+        span = int(duration_m)
+        end_m = start_m + np.timedelta64(span - 1, "M")
     else:
         end_m = t_index_dt[-1]
 
