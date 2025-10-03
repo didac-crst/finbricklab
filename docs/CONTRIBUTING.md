@@ -279,7 +279,7 @@ def my_new_chart(tidy: pd.DataFrame, scenario_name: str = None) -> tuple[go.Figu
     """Description of chart functionality."""
 ```
 
-# docs/EXAMPLES.md
+Add to docs/EXAMPLES.md:
 
 ## My New Chart Example
 
