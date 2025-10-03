@@ -423,7 +423,7 @@ class TestScenarioIntegration:
         assert scenario.macrobricks[0].members == ["house"]
 
     def test_scenario_cash_account_requirement(self):
-        """Test that scenario requires exactly one cash account in selection."""
+        """Test that scenario requires at least one cash account in selection."""
         house = ABrick(
             id="house",
             name="House",
@@ -449,9 +449,7 @@ class TestScenarioIntegration:
         )
 
         # Should fail because no cash account in selection
-        with pytest.raises(
-            AssertionError, match="Scenario expects exactly one cash account brick"
-        ):
+        with pytest.raises(AssertionError, match="At least one cash account"):
             scenario.run(start=date(2026, 1, 1), months=12, selection=["primary"])
 
 

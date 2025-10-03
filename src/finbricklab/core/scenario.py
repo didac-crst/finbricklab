@@ -62,8 +62,9 @@ class Scenario:
         config: Configuration options for scenario execution
 
     Note:
-        The scenario expects exactly one cash account brick (kind='a.cash')
-        to receive all routed cash flows from other bricks.
+        The scenario supports one or more cash account bricks (kind='{K.A_CASH}')
+        to receive routed cash flows from other bricks. Use links.route to control
+        cash flow routing to specific accounts.
     """
 
     id: str
@@ -75,6 +76,7 @@ class Scenario:
     settlement_default_cash_id: str | None = (
         None  # Default cash account for settlement shortfalls
     )
+    validate_routing: bool = True  # Validate cash flow routing balance
     _last_totals: pd.DataFrame | None = None
     _last_results: dict | None = None
     _registry: Registry | None = None
@@ -239,13 +241,14 @@ class Scenario:
                 - 'totals': DataFrame with aggregated monthly totals (cash flows, assets, debt, equity)
 
         Raises:
-            AssertionError: If there is not exactly one cash account brick (kind='a.cash')
+            AssertionError: If there are no cash account bricks (kind='{K.A_CASH}') in selection
             ConfigError: If selection contains unknown IDs or invalid MacroBrick references
 
         Note:
-            The simulation assumes exactly one cash account to receive all routed flows.
-            Cash flows from all other bricks are automatically routed to this account.
-            If MacroBricks share bricks, execution is deduplicated at the scenario level.
+            The simulation supports multiple cash accounts. Cash flows from other bricks
+            are routed based on links.route configuration, or to the default cash account
+            if no routing is specified. If MacroBricks share bricks, execution is
+            deduplicated at the scenario level.
         """
         # Resolve execution set from selection
         brick_ids, overlaps = self._resolve_execution_set(selection)
@@ -521,48 +524,131 @@ class Scenario:
     def _simulate_bricks(
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ) -> dict[str, BrickOutput]:
-        """Simulate all bricks and route cash flows to cash account."""
+        """Simulate all bricks and route cash flows to cash accounts."""
         outputs: dict[str, BrickOutput] = {}
 
-        # Find the cash account brick (must be in selection)
+        # Collect ALL cash accounts in the execution set
         cash_ids = [
             b.id
             for b in self.bricks
-            if isinstance(b, ABrick) and b.kind == "a.cash" and b.id in execution_order
+            if isinstance(b, ABrick) and b.kind == K.A_CASH and b.id in execution_order
         ]
-        assert (
-            len(cash_ids) == 1
-        ), "Scenario expects exactly one cash account brick (kind='a.cash') in selection"
-        cash_id = cash_ids[0]
+        if len(cash_ids) == 0:
+            raise AssertionError(
+                f"At least one cash account (kind='{K.A_CASH}') is required in the selection"
+            )
 
-        # Accumulate cash flows from all non-cash bricks
-        routed_in = np.zeros(len(t_index))
-        routed_out = np.zeros(len(t_index))
+        T = len(t_index)
 
-        # Simulate all non-cash bricks in execution order
-        for b in self.bricks:
-            if b.id not in execution_order:
-                continue  # Skip bricks not in selection
-            if b.id == cash_id:
-                continue  # Skip cash account for now
+        # Prepare external buffers per cash account
+        cash_buffers_in: dict[str, np.ndarray] = {cid: np.zeros(T) for cid in cash_ids}
+        cash_buffers_out: dict[str, np.ndarray] = {cid: np.zeros(T) for cid in cash_ids}
 
-            # Simulate this brick
+        def _pick_default_cash() -> str:
+            # Prefer explicit scenario default if set and present; otherwise first in selection
+            if (
+                self.settlement_default_cash_id
+                and self.settlement_default_cash_id in cash_ids
+            ):
+                return self.settlement_default_cash_id
+            return cash_ids[0]
+
+        def _normalize_map(mapping, direction: str) -> dict[str, float]:
+            """
+            Accepts str (single target), dict[str,float], or None.
+            Returns a normalized {cash_id: weight} mapping.
+            """
+            if mapping is None:
+                return {_pick_default_cash(): 1.0}
+            if isinstance(mapping, str):
+                if mapping not in cash_ids:
+                    raise ConfigError(
+                        f"links.route.{direction} references unknown cash id '{mapping}'"
+                    )
+                return {mapping: 1.0}
+            if isinstance(mapping, dict):
+                # validate and normalize
+                items = []
+                for k, v in mapping.items():
+                    if k not in cash_ids:
+                        raise ConfigError(
+                            f"links.route.{direction} references unknown cash id '{k}'"
+                        )
+                    w = float(v)
+                    if w < 0:
+                        raise ConfigError(
+                            f"links.route.{direction} weight for '{k}' must be >= 0"
+                        )
+                    items.append((k, w))
+                total = sum(w for _, w in items)
+                if total <= 0:
+                    # Degenerate → default 100% to default cash
+                    return {_pick_default_cash(): 1.0}
+                return {k: (w / total) for k, w in items}
+            raise ConfigError(f"Invalid links.route.{direction} type: {type(mapping)}")
+
+        # 1) Simulate non-cash bricks, route flows into buffers
+        for b in [ctx.registry[bid] for bid in execution_order]:
+            if isinstance(b, ABrick) and b.kind == K.A_CASH:
+                continue  # defer cash bricks
+
             brick_output = self._simulate_single_brick(b, ctx, t_index)
             outputs[b.id] = brick_output
 
-            # Accumulate cash flows for routing
-            routed_in += brick_output["cash_in"]
-            routed_out += brick_output["cash_out"]
+            # Resolve links.route (if any)
+            route = {}
+            if b.links and isinstance(b.links, dict):
+                route = b.links.get("route", {}) or {}
 
-        # Route accumulated cash flows to the cash account
-        cash_brick = ctx.registry[cash_id]
-        cash_brick.spec.setdefault("external_in", np.zeros(len(t_index)))
-        cash_brick.spec.setdefault("external_out", np.zeros(len(t_index)))
-        cash_brick.spec["external_in"] = routed_in
-        cash_brick.spec["external_out"] = routed_out
+            # Support both 'from' and 'from_' keys
+            to_map = _normalize_map(route.get("to"), "to")
+            from_map = _normalize_map(route.get("from", route.get("from_")), "from")
 
-        # Simulate the cash account with all routed flows
-        outputs[cash_id] = cash_brick.simulate(ctx)
+            # Distribute inflows
+            if "cash_in" in brick_output:
+                cin = brick_output["cash_in"]
+                if cin is not None:
+                    for cid, w in to_map.items():
+                        cash_buffers_in[cid] += cin * w
+
+            # Distribute outflows
+            if "cash_out" in brick_output:
+                cout = brick_output["cash_out"]
+                if cout is not None:
+                    for cid, w in from_map.items():
+                        cash_buffers_out[cid] += cout * w
+
+        # Validation: check routing balance
+        if self.validate_routing:
+            total_in = sum(buf.sum() for buf in cash_buffers_in.values())
+            total_out = sum(buf.sum() for buf in cash_buffers_out.values())
+            # Compute flow-emitted totals from non-cash outputs we just simulated
+            emitted_in = 0.0
+            emitted_out = 0.0
+            for _, o in outputs.items():
+                if "cash_in" in o and o["cash_in"] is not None:
+                    emitted_in += float(o["cash_in"].sum())
+                if "cash_out" in o and o["cash_out"] is not None:
+                    emitted_out += float(o["cash_out"].sum())
+            # Allow tiny FP slop
+            eps = 1e-8
+            if not (
+                abs(total_in - emitted_in) <= eps
+                and abs(total_out - emitted_out) <= eps
+            ):
+                raise AssertionError(
+                    f"Routing imbalance: routed_in={total_in:.6f} (emitted_in={emitted_in:.6f}), "
+                    f"routed_out={total_out:.6f} (emitted_out={emitted_out:.6f})"
+                )
+
+        # 2) Simulate each cash brick independently with its assigned buffers
+        for cid in cash_ids:
+            cash_brick = ctx.registry[cid]
+            cash_brick.spec.setdefault("external_in", np.zeros(T))
+            cash_brick.spec.setdefault("external_out", np.zeros(T))
+            cash_brick.spec["external_in"] = cash_buffers_in[cid]
+            cash_brick.spec["external_out"] = cash_buffers_out[cid]
+            outputs[cid] = cash_brick.simulate(ctx)
 
         return outputs
 

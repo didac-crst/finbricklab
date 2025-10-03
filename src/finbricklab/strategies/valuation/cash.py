@@ -29,8 +29,9 @@ class ValuationCash(IValuationStrategy):
         - external_out: Monthly cash outflows to other bricks
 
     Note:
-        This strategy is designed to be the central cash account that receives
-        all cash flows from other bricks in the scenario.
+        Supports scenarios with one or multiple cash accounts. The Scenario engine must
+        populate `spec.external_in` and `spec.external_out` per cash brick; they are not
+        derived here.
     """
 
     def prepare(self, brick: ABrick, ctx: ScenarioContext) -> None:

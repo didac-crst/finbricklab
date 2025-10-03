@@ -105,7 +105,7 @@ def asset_composition_small_multiples(
     fig.update_layout(
         legend_title="Asset Type",
         height=300
-        * len(tidy["scenario_name"].nunique()),  # Adjust height for multiple scenarios
+        * tidy["scenario_name"].nunique(),  # Adjust height for multiple scenarios
     )
 
     # Reverse legend order for better stacking

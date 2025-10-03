@@ -308,6 +308,46 @@ print("Final assets:", totals.iloc[-1]["assets"])
 print("Final liabilities:", totals.iloc[-1]["liabilities"])
 ```
 
+### Multi-cash routing
+
+You can hold multiple `a.cash` accounts in one Scenario and route flows to
+specific accounts using `links.route`:
+
+```python
+from finbricklab.core.kinds import K
+
+checking = ABrick(id="checking", name="Checking", kind=K.A_CASH, spec={"initial_balance": 500.0})
+savings  = ABrick(id="savings",  name="Savings",  kind=K.A_CASH, spec={"initial_balance": 5000.0})
+
+salary = FBrick(
+    id="salary",
+    name="Salary",
+    kind=K.F_INCOME_FIXED,
+    spec={"amount_monthly": 3000.0},
+    links={"route": {"to": {"checking": 0.7, "savings": 0.3}}},   # split cash_in
+)
+
+rent = FBrick(
+    id="rent",
+    name="Rent",
+    kind=K.F_EXPENSE_FIXED,
+    spec={"amount_monthly": 1200.0},
+    links={"route": {"from": "checking"}},                        # pay cash_out
+)
+
+scenario = Scenario(
+    id="multi-cash",
+    name="Multi-cash routing",
+    bricks=[checking, savings, salary, rent],
+    settlement_default_cash_id="checking"
+)
+
+results = scenario.run(start=date(2026, 1, 1), months=12)
+```
+
+If `links.route` is omitted, flows default to `scenario.settlement_default_cash_id`
+(or the first cash account in the selection).
+
 ---
 
 ## Quickstart (Entity Comparisons)
