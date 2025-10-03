@@ -50,4 +50,22 @@ nav:
       - Entity & Canonical Schema: ENTITY_AND_CANONICAL_SCHEMA.md
   - Reference:
       - Overview: reference/index.md
-      # The rest of Reference is auto-generated at build time
+      - Core:
+          - Bricks: reference/finbricklab/core/bricks.md
+          - Scenario: reference/finbricklab/core/scenario.md
+          - Entity: reference/finbricklab/core/entity.md
+          - Context: reference/finbricklab/core/context.md
+          - Results: reference/finbricklab/core/results.md
+      - Strategies:
+          - Valuation Cash: reference/finbricklab/strategies/valuation/cash.md
+          - Valuation ETF: reference/finbricklab/strategies/valuation/etf_unitized.md
+          - Valuation Property: reference/finbricklab/strategies/valuation/property_discrete.md
+          - Flow Income: reference/finbricklab/strategies/flow/income.md
+          - Flow Expense: reference/finbricklab/strategies/flow/expense.md
+          - Flow Transfer: reference/finbricklab/strategies/flow/transfer.md
+          - Schedule Mortgage: reference/finbricklab/strategies/schedule/mortgage_annuity.md
+      - Utilities:
+          - Charts: reference/finbricklab/charts.md
+          - CLI: reference/finbricklab/cli.md
+          - FX: reference/finbricklab/fx.md
+          - KPI: reference/finbricklab/kpi.md

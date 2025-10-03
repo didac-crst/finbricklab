@@ -1,7 +1,8 @@
-"""
-Strategy interface protocols for FinBrickLab.
+"""Strategy interface protocols for FinBrickLab.
+
 Defines the contracts that all strategies must satisfy.
 """
+# ruff: noqa: ANN101  # Protocol methods don't need self type annotations
 
 from __future__ import annotations
 
@@ -17,37 +18,36 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class IValuationStrategy(Protocol):
-    """
-    Contract for ASSET valuation strategies (family='a').
+    """Contract for ASSET valuation strategies (family='a').
+
     Responsibilities: produce asset values over time and any internal cash flows.
     """
 
     def prepare(self, brick: ABrick, ctx: ScenarioContext) -> None:
-        """
-        Validate inputs, compute derived params, and initialize any internal state.
+        """Validate inputs, compute derived params, and initialize any internal state.
+
         Called exactly once before simulation.
         """
         ...
 
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:
-        """
-        Run the full-period simulation for this asset brick.
+        """Run the full-period simulation for this asset brick.
 
         Returns:
             BrickOutput with fields:
-              - cash_in:    np.ndarray[T]
-              - cash_out:   np.ndarray[T]
-              - asset_value: np.ndarray[T]
-              - debt_balance: np.ndarray[T] (usually zeros for assets)
-              - events:     list[Event]
+                - cash_in:    np.ndarray[T]
+                - cash_out:   np.ndarray[T]
+                - asset_value: np.ndarray[T]
+                - debt_balance: np.ndarray[T] (usually zeros for assets)
+                - events:     list[Event]
         """
         ...
 
 
 @runtime_checkable
 class IScheduleStrategy(Protocol):
-    """
-    Contract for LIABILITY schedule strategies (family='l').
+    """Contract for LIABILITY schedule strategies (family='l').
+
     Responsibilities: produce debt balances and payment schedules over time.
     """
 
@@ -56,8 +56,7 @@ class IScheduleStrategy(Protocol):
         ...
 
     def simulate(self, brick: LBrick, ctx: ScenarioContext) -> BrickOutput:
-        """
-        Run the full-period schedule simulation.
+        """Run the full-period schedule simulation.
 
         Returns:
             BrickOutput (same schema). For liabilities, debt_balance is populated;
@@ -68,8 +67,8 @@ class IScheduleStrategy(Protocol):
 
 @runtime_checkable
 class IFlowStrategy(Protocol):
-    """
-    Contract for CASH FLOW strategies (family='f').
+    """Contract for CASH FLOW strategies (family='f').
+
     Responsibilities: generate external cash inflows/outflows over time.
     """
 
@@ -78,8 +77,7 @@ class IFlowStrategy(Protocol):
         ...
 
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
-        """
-        Run the full-period flow simulation.
+        """Run the full-period flow simulation.
 
         Returns:
             BrickOutput (same schema). For pure flows, asset_value/debt_balance are zeros.

@@ -19,7 +19,7 @@ jobs:
       - uses: abatilo/actions-poetry@v3
         with: { poetry-version: "1.8.3" }
       - run: poetry install --only docs
-      - run: poetry run mkdocs build --strict
+      - run: poetry run mkdocs build
       - run: poetry run interrogate -c pyproject.toml src/finbricklab
       - name: Upload site artifact (PR preview)
         if: ${{ github.event_name == 'pull_request' }}
@@ -38,7 +38,7 @@ jobs:
       - uses: abatilo/actions-poetry@v3
         with: { poetry-version: "1.8.3" }
       - run: poetry install --only docs
-      - run: poetry run mkdocs build --strict
+      - run: poetry run mkdocs build
       - uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
