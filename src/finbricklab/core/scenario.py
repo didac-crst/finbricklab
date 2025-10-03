@@ -8,6 +8,7 @@ import csv
 import json
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -751,7 +752,7 @@ class Scenario:
         # Finalize totals with proper identities and assertions
         return finalize_totals(totals)
 
-    def aggregate_totals(self, freq: str = "Q", **kwargs) -> pd.DataFrame:
+    def aggregate_totals(self, freq: str = "Q", **kwargs: Any) -> pd.DataFrame:
         """
         Convenience method to aggregate the last run's totals to different frequencies.
 

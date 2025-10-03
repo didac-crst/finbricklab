@@ -78,9 +78,24 @@ examples/notebooks/*.html
 # PyBuilder
 target/
 
-# Jupyter Notebook
-.ipynb
-.ipynb_checkpoints
+# Jupyter Notebooks
+*.ipynb
+**/.ipynb_checkpoints/
+
+# Python / tooling
+.venv/
+.cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+coverage.xml
+.pytype/
+
+# OS/editor
+.DS_Store
 
 # IPython
 profile_default/

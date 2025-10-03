@@ -1,0 +1,17 @@
+name: Docs Strict Check
+
+on:
+  pull_request:
+    branches: [ main, develop, '**' ]
+
+jobs:
+  strict-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: abatilo/actions-poetry@v3
+      - run: poetry install --with docs
+      - run: poetry run mkdocs build --strict --site-dir site

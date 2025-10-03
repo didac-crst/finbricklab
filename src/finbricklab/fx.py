@@ -7,7 +7,12 @@ Entity-level comparisons across scenarios with different base currencies.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
+
+if TYPE_CHECKING:
+    from finbricklab.core.entity import Entity
 
 
 class FXConverter:
@@ -172,7 +177,7 @@ def create_fx_converter(
     return FXConverter(base_currency, rates)
 
 
-def validate_entity_currencies(entity, scenarios: list) -> dict[str, str]:
+def validate_entity_currencies(entity: Entity, scenarios: list) -> dict[str, str]:
     """
     Validate that all scenarios can be compared within an Entity.
 
