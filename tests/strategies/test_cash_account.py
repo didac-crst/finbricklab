@@ -136,8 +136,8 @@ class TestValuationCash:
 
         strategy = ValuationCash()
 
-        # Should raise assertion error for negative overdraft limit
-        with pytest.raises(AssertionError, match="overdraft_limit must be >= 0"):
+        # Should raise ValueError for negative overdraft limit
+        with pytest.raises(ValueError, match="overdraft_limit must be >= 0"):
             strategy.prepare(brick, ctx)
 
     def test_cash_min_buffer_validation(self):
@@ -155,6 +155,6 @@ class TestValuationCash:
 
         strategy = ValuationCash()
 
-        # Should raise assertion error for negative min buffer
-        with pytest.raises(AssertionError, match="min_buffer must be >= 0"):
+        # Should raise ValueError for negative min buffer
+        with pytest.raises(ValueError, match="min_buffer must be >= 0"):
             strategy.prepare(brick, ctx)

@@ -4,6 +4,8 @@ Cash account valuation strategy.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from finbricklab.core.bricks import ABrick
@@ -14,21 +16,39 @@ from finbricklab.core.results import BrickOutput
 
 class ValuationCash(IValuationStrategy):
     """
-    Cash account valuation strategy (kind: 'a.cash').
+    Cash account valuation strategy for modeling liquid cash holdings.
 
     This strategy models a simple cash account that receives external cash flows
     and earns interest on the balance. The balance is computed by accumulating
     all routed cash flows plus interest earned each month.
 
-    Required Parameters:
+    **Use Cases:**
+    - Checking accounts, savings accounts, money market accounts
+    - Base currency holdings in multi-currency scenarios
+    - Settlement accounts for cash flow routing
+
+    **Required Parameters:**
         - initial_balance: Starting cash balance (default: 0.0)
         - interest_pa: Annual interest rate (default: 0.0)
 
-    External Parameters (set by scenario engine):
+    **External Parameters (set by scenario engine):**
         - external_in: Monthly cash inflows from other bricks
         - external_out: Monthly cash outflows to other bricks
 
-    Note:
+    **Example:**
+        ```python
+        cash_account = ABrick(
+            id="checking",
+            name="Checking Account",
+            kind="a.cash",
+            spec={
+                "initial_balance": 5000.0,
+                "interest_pa": 0.02  # 2% annual interest
+            }
+        )
+        ```
+
+    **Note:**
         Supports scenarios with one or multiple cash accounts. The Scenario engine must
         populate `spec.external_in` and `spec.external_out` per cash brick; they are not
         derived here.
@@ -49,6 +69,20 @@ class ValuationCash(IValuationStrategy):
         brick.spec.setdefault("external_in", np.zeros(len(ctx.t_index)))
         brick.spec.setdefault("external_out", np.zeros(len(ctx.t_index)))
 
+        # Coerce numerics to float for robustness
+        brick.spec["initial_balance"] = float(brick.spec["initial_balance"])
+        brick.spec["interest_pa"] = float(brick.spec["interest_pa"])
+
+        # Coerce and validate external arrays
+        T = len(ctx.t_index)
+        for key in ("external_in", "external_out"):
+            arr = np.asarray(brick.spec[key], dtype=float)
+            if len(arr) != T:
+                raise ValueError(
+                    f"{brick.id}: '{key}' length {len(arr)} != t_index length {T}"
+                )
+            brick.spec[key] = arr
+
         # Set liquidity policy defaults
         brick.spec.setdefault(
             "overdraft_limit", 0.0
@@ -56,14 +90,18 @@ class ValuationCash(IValuationStrategy):
         brick.spec.setdefault("min_buffer", 0.0)  # desired minimum cash balance (EUR)
 
         # Validate non-negative constraints
-        assert brick.spec["overdraft_limit"] >= 0, "overdraft_limit must be >= 0"
-        assert brick.spec["min_buffer"] >= 0, "min_buffer must be >= 0"
+        if brick.spec["overdraft_limit"] < 0:
+            raise ValueError("overdraft_limit must be >= 0")
+        if brick.spec["min_buffer"] < 0:
+            raise ValueError("min_buffer must be >= 0")
 
         # Warn if min_buffer > initial_balance (policy breach, not config error)
         initial_balance = brick.spec.get("initial_balance", 0.0)
         if brick.spec["min_buffer"] > initial_balance:
-            print(
-                f"[WARN] {brick.id}: min_buffer ({brick.spec['min_buffer']:,.2f}) > initial_balance ({initial_balance:,.2f})."
+            warnings.warn(
+                f"{brick.id}: min_buffer ({brick.spec['min_buffer']:,.2f}) > initial_balance ({initial_balance:,.2f}).",
+                category=UserWarning,
+                stacklevel=2,
             )
 
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:

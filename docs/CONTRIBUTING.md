@@ -269,27 +269,26 @@ def test_my_new_chart(self, sample_tidy_data):
 
 Add to API reference and examples:
 
-```markdown
-# docs/API_REFERENCE.md
-
+- docs/API_REFERENCE.md
+````markdown
 ### my_new_chart
 
 ```python
 def my_new_chart(tidy: pd.DataFrame, scenario_name: str = None) -> tuple[go.Figure, pd.DataFrame]:
     """Description of chart functionality."""
 ```
+````
 
-# docs/EXAMPLES.md
-
+- docs/EXAMPLES.md
+````markdown
 ## My New Chart Example
-
 ```python
 from finbricklab import my_new_chart
 
 fig, data = my_new_chart(comparison_df)
 fig.show()
 ```
-```
+````
 
 ---
 
