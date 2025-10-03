@@ -18,16 +18,32 @@ def month_range(start: date, months: int) -> np.ndarray:
     This utility function creates a numpy array of datetime64 objects representing
     consecutive months, which is used throughout the system for time-based simulations.
 
-    Args:
+    **Use Cases:**
+    - Creating time indices for scenario simulations
+    - Generating monthly date ranges for financial calculations
+    - Building time-based arrays for pandas DataFrames
+    - Setting up periodic evaluation schedules
+
+    **Args:**
         start: The starting date for the range
         months: Number of months to generate
 
-    Returns:
+    **Returns:**
         A numpy array of datetime64 objects representing monthly intervals
 
-    Example:
-        >>> month_range(date(2026, 1, 1), 12)
-        array(['2026-01', '2026-02', '2026-03', ..., '2026-12'], dtype='datetime64[M]')
+    **Example:**
+        ```python
+        from datetime import date
+        from finbricklab.core.utils import month_range
+
+        # Create a 12-month range starting January 2026
+        dates = month_range(date(2026, 1, 1), 12)
+        print(dates)
+        # Output: ['2026-01' '2026-02' '2026-03' ... '2026-12']
+
+        # Use with pandas DataFrame
+        df = pd.DataFrame(index=dates)
+        ```
     """
     s = np.datetime64(start, "M")
     return s + np.arange(months).astype("timedelta64[M]")
@@ -40,18 +56,46 @@ def active_mask(
     duration_m: int | None,
 ) -> np.ndarray:
     """
-    Create a boolean mask indicating when a brick is active.
+    Create a boolean mask indicating when a brick is active during simulation.
 
-    Args:
+    This function determines the active periods for a financial brick based on its
+    start date, end date, or duration. It's used throughout the system to handle
+    bricks that activate at different times during a scenario.
+
+    **Use Cases:**
+    - Implementing brick activation windows (e.g., house purchase in 2028)
+    - Handling temporary income sources (e.g., 2-year contract job)
+    - Modeling life events with specific start/end dates
+    - Creating time-based filtering for financial calculations
+
+    **Args:**
         t_index: Time index array (np.datetime64[M] or pd.PeriodIndex)
         start_date: When the brick becomes active (None = scenario start)
         end_date: When the brick becomes inactive (None = scenario end)
         duration_m: Duration in months (alternative to end_date)
 
-    Returns:
+    **Returns:**
         Boolean array where True indicates the brick is active
 
-    Note:
+    **Example:**
+        ```python
+        from datetime import date
+        from finbricklab.core.utils import active_mask, month_range
+
+        # Create a 24-month time index
+        t_index = month_range(date(2026, 1, 1), 24)
+
+        # Brick active from month 6 to month 18 (12 months duration)
+        mask = active_mask(t_index, start_date=None, end_date=None, duration_m=12)
+
+        # Brick active from specific start date
+        mask = active_mask(t_index, start_date=date(2026, 6, 1), end_date=None, duration_m=None)
+
+        # Use mask to filter data
+        active_data = data[mask]
+        ```
+
+    **Note:**
         - duration_m includes the start month (duration_m=12 means 12 months including start_date)
         - end_date takes precedence over duration_m if both are provided
         - Inactive periods are masked with False (will be zeroed in outputs)

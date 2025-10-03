@@ -18,9 +18,40 @@ class Registry:
     """
     Unified registry for bricks and MacroBricks with validation.
 
-    Provides lookup methods and validates the structure graph (no cycles,
-    all members exist) at construction time. Precomputes struct member expansions
-    for efficient access during scenario execution.
+    The Registry class provides centralized lookup and validation for all financial
+    instruments in a scenario. It ensures structural integrity (no cycles, all
+    references exist) and precomputes member expansions for efficient execution.
+
+    **Use Cases:**
+    - Centralized brick and MacroBrick lookup during scenario execution
+    - Validation of scenario structure before simulation
+    - Efficient expansion of MacroBrick members
+    - Dependency resolution and cycle detection
+
+    **Example Usage:**
+        ```python
+        from finbricklab.core.registry import Registry
+        from finbricklab.core.bricks import ABrick, FBrick
+
+        # Create individual bricks
+        cash = ABrick(id="cash", name="Savings", kind="a.cash", spec={"initial_balance": 10000})
+        salary = FBrick(id="salary", name="Salary", kind="f.income.fixed", spec={"amount_monthly": 3000})
+
+        # Create registry
+        registry = Registry(
+            bricks={"cash": cash, "salary": salary},
+            macrobricks={}
+        )
+
+        # Lookup bricks
+        brick = registry.get_brick("cash")
+        all_bricks = registry.bricks()
+        ```
+
+    **Key Features:**
+    - Provides lookup methods and validates the structure graph (no cycles, all members exist)
+    - Precomputes struct member expansions for efficient access during scenario execution
+    - Automatic validation on construction
     """
 
     def __init__(
