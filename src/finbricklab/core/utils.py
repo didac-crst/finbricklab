@@ -47,6 +47,8 @@ def month_range(start: date, months: int) -> np.ndarray:
         ```
     """
     s = np.datetime64(start, "M")
+    if months < 0:
+        raise ValueError("months must be >= 0")
     return s + np.arange(months).astype("timedelta64[M]")
 
 
@@ -115,6 +117,10 @@ def active_mask(
         else:
             t_index_dt = t_index_dt.astype("datetime64[M]")
 
+    # Ensure non-empty index
+    if len(t_index_dt) == 0:
+        raise ValueError("t_index cannot be empty")
+
     # Normalize start date
     if start_date is not None:
         start_m = np.datetime64(start_date, "M")
@@ -128,6 +134,7 @@ def active_mask(
         if duration_m is not None:
             warnings.warn(
                 f"Both end_date and duration_m provided; using end_date {end_date}",
+                category=UserWarning,
                 stacklevel=2,
             )
     elif duration_m is not None:
@@ -207,7 +214,14 @@ def resolve_prepayments_to_month_idx(
             if prepay["every"] == "year":
                 start_year = prepay.get("start_year", mortgage_start_date.year)
                 end_year = prepay.get("end_year", start_year + 10)
-                month = prepay["month"]
+                try:
+                    month = int(prepay["month"])
+                except (KeyError, TypeError, ValueError) as err:
+                    raise ValueError(
+                        "prepayment 'month' must be an integer in [1, 12]"
+                    ) from err
+                if not (1 <= month <= 12):
+                    raise ValueError("prepayment 'month' must be in [1, 12]")
 
                 for year in range(start_year, end_year + 1):
                     prepay_date = np.datetime64(f"{year}-{month:02d}", "M")

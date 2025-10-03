@@ -69,6 +69,10 @@ class ValuationCash(IValuationStrategy):
         brick.spec.setdefault("external_in", np.zeros(len(ctx.t_index)))
         brick.spec.setdefault("external_out", np.zeros(len(ctx.t_index)))
 
+        # Coerce numerics to float for robustness
+        brick.spec["initial_balance"] = float(brick.spec["initial_balance"])
+        brick.spec["interest_pa"] = float(brick.spec["interest_pa"])
+
         # Coerce and validate external arrays
         T = len(ctx.t_index)
         for key in ("external_in", "external_out"):
@@ -86,14 +90,17 @@ class ValuationCash(IValuationStrategy):
         brick.spec.setdefault("min_buffer", 0.0)  # desired minimum cash balance (EUR)
 
         # Validate non-negative constraints
-        assert brick.spec["overdraft_limit"] >= 0, "overdraft_limit must be >= 0"
-        assert brick.spec["min_buffer"] >= 0, "min_buffer must be >= 0"
+        if brick.spec["overdraft_limit"] < 0:
+            raise ValueError("overdraft_limit must be >= 0")
+        if brick.spec["min_buffer"] < 0:
+            raise ValueError("min_buffer must be >= 0")
 
         # Warn if min_buffer > initial_balance (policy breach, not config error)
         initial_balance = brick.spec.get("initial_balance", 0.0)
         if brick.spec["min_buffer"] > initial_balance:
             warnings.warn(
                 f"{brick.id}: min_buffer ({brick.spec['min_buffer']:,.2f}) > initial_balance ({initial_balance:,.2f}).",
+                category=UserWarning,
                 stacklevel=2,
             )
 
