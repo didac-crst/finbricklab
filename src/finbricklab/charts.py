@@ -794,9 +794,9 @@ def event_timeline(
     events_data = []
 
     # Add some mock events based on cashflow patterns
-    for i, row in scenario_data.iterrows():
-        if i > 0:  # Skip first row
-            prev_row = scenario_data.iloc[i - 1]
+    for idx, (_, row) in enumerate(scenario_data.iterrows()):
+        if idx > 0:  # Skip first row
+            prev_row = scenario_data.iloc[idx - 1]
 
             # Detect significant cashflow changes as "events"
             if abs(row["inflows"] - prev_row["inflows"]) > 100:
