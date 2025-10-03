@@ -6,6 +6,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+__all__ = [
+    "StartLink",
+    "PrincipalLink",
+    "RouteLink",
+]
+
 
 @dataclass
 class StartLink:
@@ -29,3 +35,24 @@ class PrincipalLink:
     share: float | None = None  # 0..1, for remaining_of - take this fraction
     nominal: float | None = None  # explicit amount or None
     fill_remaining: bool = False  # absorbs residual of the settlement bucket
+
+
+@dataclass
+class RouteLink:
+    """
+    Route cash flows to/from specific cash accounts.
+
+    links = {
+      "route": {
+        "to": "checking" | {"checking": 0.7, "savings": 0.3},
+        "from": "checking" | {"checking": 1.0}
+      }
+    }
+
+    Notes:
+      - If omitted, default cash is used.
+      - Dict weights are normalized; <=0 total falls back to default cash.
+    """
+
+    to: dict[str, float] | str | None = None
+    from_: dict[str, float] | str | None = None  # stored as 'from_' to avoid keyword

@@ -86,20 +86,19 @@ class TestEntityCharts:
         assert contribution_vs_market_growth is not None
         assert save_chart is not None
 
-    def test_chart_functions_without_plotly(self, sample_entity):
-        """Test that chart functions raise helpful errors when Plotly is not available."""
+    def test_chart_functions_with_plotly_available(self, sample_entity):
+        """Test that chart functions work when Plotly is available."""
         from finbricklab.charts import net_worth_vs_time
 
         # Get comparison data
         comparison_df = sample_entity.compare()
 
-        # Chart function should raise ImportError with helpful message
-        with pytest.raises(ImportError) as exc_info:
-            net_worth_vs_time(comparison_df)
+        # Chart function should work without raising ImportError
+        fig, data = net_worth_vs_time(comparison_df)
 
-        assert "Plotly is required" in str(exc_info.value)
-        assert "pip install plotly kaleido" in str(exc_info.value)
-        assert "poetry install --extras viz" in str(exc_info.value)
+        # Verify the function returns expected types
+        assert fig is not None
+        assert isinstance(data, pd.DataFrame)
 
     @pytest.mark.skip(
         reason="Complex mock test - chart functionality verified by import test"

@@ -70,12 +70,20 @@ def net_worth_vs_time(tidy: pd.DataFrame) -> tuple[go.Figure, pd.DataFrame]:
 
 def asset_composition_small_multiples(
     tidy: pd.DataFrame,
+    height_per_panel: int = 280,
+    max_height: int = 1400,
+    fixed_height: int | None = None,
 ) -> tuple[go.Figure, pd.DataFrame]:
     """
     Plot asset composition (cash/liquid/illiquid) as small multiples per scenario.
 
+    Height scales with number of scenarios unless `fixed_height` is set.
+
     Args:
         tidy: DataFrame from Entity.compare() with asset columns
+        height_per_panel: Height per scenario panel (default: 280)
+        max_height: Maximum total height (default: 1400)
+        fixed_height: Fixed height override (disables scaling)
 
     Returns:
         Tuple of (plotly_figure, tidy_dataframe_used)
@@ -102,10 +110,16 @@ def asset_composition_small_multiples(
         labels={"value": "Asset Value", "date": "Date", "asset_type": "Asset Type"},
     )
 
+    # Calculate height with scaling and clamping
+    scenarios = int(tidy["scenario_name"].nunique()) if "scenario_name" in tidy else 1
+    if fixed_height is not None:
+        height = int(fixed_height)
+    else:
+        height = min(max(300, height_per_panel * max(1, scenarios)), max_height)
+
     fig.update_layout(
         legend_title="Asset Type",
-        height=300
-        * len(tidy["scenario_name"].nunique()),  # Adjust height for multiple scenarios
+        height=height,
     )
 
     # Reverse legend order for better stacking
@@ -794,9 +808,9 @@ def event_timeline(
     events_data = []
 
     # Add some mock events based on cashflow patterns
-    for i, row in scenario_data.iterrows():
-        if i > 0:  # Skip first row
-            prev_row = scenario_data.iloc[i - 1]
+    for idx, (_, row) in enumerate(scenario_data.iterrows()):
+        if idx > 0:  # Skip first row
+            prev_row = scenario_data.iloc[idx - 1]
 
             # Detect significant cashflow changes as "events"
             if abs(row["inflows"] - prev_row["inflows"]) > 100:

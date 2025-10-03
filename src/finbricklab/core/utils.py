@@ -8,6 +8,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+from pandas import Index
 
 
 def month_range(start: date, months: int) -> np.ndarray:
@@ -33,7 +34,10 @@ def month_range(start: date, months: int) -> np.ndarray:
 
 
 def active_mask(
-    t_index, start_date: date | None, end_date: date | None, duration_m: int | None
+    t_index: Index | np.ndarray,
+    start_date: date | None,
+    end_date: date | None,
+    duration_m: int | None,
 ) -> np.ndarray:
     """
     Create a boolean mask indicating when a brick is active.

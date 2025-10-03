@@ -40,3 +40,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: interrogate
+        name: interrogate (docstring coverage)
+        entry: poetry run interrogate -c pyproject.toml src/finbricklab
+        language: system
+        pass_filenames: false
+        stages: [commit]

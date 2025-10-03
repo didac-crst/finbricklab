@@ -31,18 +31,19 @@ class ValuationETFUnitized(IValuationStrategy):
         - Dividend reinvestment or cash distribution
         - Configurable event logging
 
-    Parameters:
-        - initial_units: Number of units held at start (default: 0.0)
-        - price0: Initial price per unit (default: 100.0)
-        - drift_pa: Annual price drift rate (default: 0.03 for 3%)
-        - div_yield_pa: Annual dividend yield (default: 0.0)
-        - reinvest_dividends: Whether to reinvest dividends (default: False)
-        - buy_at_start: One-shot purchase {"amount": X} or {"units": Y}
-        - dca: DCA configuration with mode, amount/units, timing, and step-up
-        - sell: List of one-shot sells [{"t": "YYYY-MM", "amount": X} or {"units": Y}]
-        - sdca: Systematic DCA-out configuration for regular withdrawals
-        - round_units_to: Round units to N decimal places (optional)
-        - events_level: Event verbosity "none"|"major"|"all" (default: "major")
+    Spec
+    ----
+        initial_units: Number of units held at start (default: 0.0)
+        price0: Initial price per unit (default: 100.0)
+        drift_pa: Annual price drift rate (default: 0.03 for 3%)
+        div_yield_pa: Annual dividend yield (default: 0.0)
+        reinvest_dividends: Whether to reinvest dividends (default: False)
+        buy_at_start: One-shot purchase {"amount": X} or {"units": Y}
+        dca: DCA configuration with mode, amount/units, timing, and step-up
+        sell: List of one-shot sells [{"t": "YYYY-MM", "amount": X} or {"units": Y}]
+        sdca: Systematic DCA-out configuration for regular withdrawals
+        round_units_to: Round units to N decimal places (optional)
+        events_level: Event verbosity "none"|"major"|"all" (default: "major")
 
     Monthly Processing Order:
         1. Dividends (reinvest or cash)

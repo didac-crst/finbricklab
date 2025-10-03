@@ -23,8 +23,8 @@ classifiers = [
 python = "^3.11"
 numpy = "^1.24.0"
 pandas = "^2.0.0"
-plotly = {version = "^5.24.0", optional = true}
-kaleido = {version = "^0.2.1", optional = true}
+plotly = ">=6.1.1"
+kaleido = "^1.1.0"
 
 [tool.poetry.extras]
 viz = ["plotly", "kaleido"]
@@ -36,6 +36,18 @@ black = "^23.0.0"
 ruff = "^0.1.0"
 mypy = "^1.5.0"
 pre-commit = "^3.4.0"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.5"
+mkdocs-material = "^9.4"
+mkdocstrings = { version = "^0.23", extras = ["python"] }
+mkdocs-gen-files = "^0.5"
+mkdocs-autorefs = "^0.5"
+interrogate = "^1.6"
+griffe = "^0.36"
 
 [tool.poetry.scripts]
 finbrick = "finbricklab.cli:main"
@@ -77,12 +89,30 @@ select = [
     "B",  # flake8-bugbear
     "C4", # flake8-comprehensions
     "UP", # pyupgrade
+    # "D",  # pydocstyle - temporarily disabled for docs deployment
+    # "ANN", # flake8-annotations - temporarily disabled for docs deployment
 ]
 ignore = [
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
+    "D203",  # no-blank-line-before-class
+    "D213",  # multi-line-summary-second-line
+    "D401",  # first line imperative mood (relax)
 ]
+
+# [tool.ruff.lint.pydocstyle]
+# convention = "google"
+
+[tool.interrogate]
+fail-under = 80
+exclude = ["tests", "docs", "notebooks", "dist", "build", ".venv", ".ruff_cache"]
+ignore-init-method = false
+ignore-private = true
+ignore-magic = true
+verbose = 1
+quiet = false
+color = true
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]

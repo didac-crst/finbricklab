@@ -36,7 +36,7 @@ cash = ABrick(
 scenario = Scenario(id="simple_savings", name="Simple Savings", bricks=[cash])
 results = scenario.run(start=date(2026, 1, 1), months=12)
 
-print(f"Final balance: ${results.final_totals['cash']:,.2f}")
+print(f"Final balance: ${results['totals']['cash'].iloc[-1]:,.2f}")
 ```
 
 ### Buy vs Rent Analysis
@@ -117,8 +117,8 @@ rent_results = rent_scenario.run(start=date(2026, 1, 1), months=120)
 buy_results = buy_scenario.run(start=date(2026, 1, 1), months=120)
 
 # Compare results
-rent_net_worth = rent_results.final_totals['cash']
-buy_net_worth = buy_results.final_totals['total_assets'] - buy_results.final_totals['liabilities']
+rent_net_worth = rent_results['totals']['cash'].iloc[-1]
+buy_net_worth = buy_results['totals']['assets'].iloc[-1] - buy_results['totals']['liabilities'].iloc[-1]
 
 print(f"Rent net worth: ${rent_net_worth:,.2f}")
 print(f"Buy net worth: ${buy_net_worth:,.2f}")
@@ -149,6 +149,13 @@ conservative_scenario = Scenario(
 )
 
 # Aggressive strategy
+aggressive_cash = ABrick(
+    id="aggressive_cash",
+    name="Aggressive Cash",
+    kind="a.cash",
+    spec={"initial_balance": 0.0, "interest_pa": 0.03}
+)
+
 aggressive_etf = ABrick(
     id="aggressive_etf",
     name="Stock ETF",
@@ -164,7 +171,7 @@ aggressive_etf = ABrick(
 aggressive_scenario = Scenario(
     id="aggressive",
     name="Aggressive Strategy",
-    bricks=[aggressive_etf]
+    bricks=[aggressive_cash, aggressive_etf]
 )
 
 # Balanced strategy
@@ -227,14 +234,7 @@ checking = ABrick(
     id="checking",
     name="Checking Account",
     kind="a.cash",
-    spec={"initial_balance": 5000.0, "interest_pa": 0.01}
-)
-
-savings = ABrick(
-    id="savings",
-    name="Savings Account",
-    kind="a.cash",
-    spec={"initial_balance": 20000.0, "interest_pa": 0.025}
+    spec={"initial_balance": 25000.0, "interest_pa": 0.01}
 )
 
 # Income
@@ -272,36 +272,19 @@ groceries = FBrick(
     }
 )
 
-# Monthly savings transfer
-savings_transfer = FBrick(
-    id="savings_transfer",
-    name="Monthly Savings",
-    kind="f.transfer.lumpsum",
-    links={
-        "from": {"from_checking": "checking"},
-        "to": {"to_savings": "savings"}
-    },
-    spec={
-        "amount": -1000.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-    }
-)
-
 # Create scenario
 budget_scenario = Scenario(
     id="budget",
     name="Monthly Budget",
-    bricks=[checking, savings, salary, rent, groceries, savings_transfer]
+    bricks=[checking, salary, rent, groceries]
 )
 
 # Run scenario
-budget_scenario.run(start=date(2026, 1, 1), months=60)
+results = budget_scenario.run(start=date(2026, 1, 1), months=60)
 
 # Analyze results
-canonical_df = budget_scenario.to_canonical_frame()
-print(f"Final checking balance: ${canonical_df['cash'].iloc[-1]:,.2f}")
-print(f"Final savings balance: ${canonical_df['liquid_assets'].iloc[-1]:,.2f}")
-print(f"Total net worth: ${canonical_df['net_worth'].iloc[-1]:,.2f}")
+print(f"Final checking balance: ${results['totals']['cash'].iloc[-1]:,.2f}")
+print(f"Total net worth: ${results['totals']['equity'].iloc[-1]:,.2f}")
 ```
 
 ---
@@ -320,7 +303,7 @@ house = ABrick(
     id="house",
     name="Family Home",
     kind="a.property_discrete",
-    spec={"initial_value": 500000.0, "appreciation_pa": 0.025}
+    spec={"initial_value": 500000.0, "appreciation_pa": 0.025, "fees_pct": 0.06}
 )
 
 mortgage = LBrick(
@@ -365,11 +348,16 @@ scenario = Scenario(
 results = scenario.run(start=date(2026, 1, 1), months=60)
 
 # Access MacroBrick aggregates
-housing_totals = results.by_struct["housing"]
-cash_totals = results.by_struct["cash_reserves"]
+housing_totals = results["by_struct"]["housing"]
+cash_totals = results["by_struct"]["cash_reserves"]
 
-print(f"Housing net worth: ${housing_totals['total_assets'] - housing_totals['liabilities']:,.2f}")
-print(f"Cash balance: ${cash_totals['cash']:,.2f}")
+# Calculate housing net worth from asset value and debt balance
+housing_net_worth = housing_totals['asset_value'][-1] - housing_totals['debt_balance'][-1]
+print(f"Housing net worth: ${housing_net_worth:,.2f}")
+
+# Cash balance is the asset value for cash
+cash_balance = cash_totals['asset_value'][-1]
+print(f"Cash balance: ${cash_balance:,.2f}")
 ```
 
 ### MacroBrick Selection and Overlaps
