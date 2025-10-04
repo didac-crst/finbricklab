@@ -4,6 +4,8 @@ Fixed-rate mortgage with annuity payment schedule.
 
 from __future__ import annotations
 
+import warnings
+from dataclasses import asdict, is_dataclass
 from datetime import date
 
 import numpy as np
@@ -16,6 +18,36 @@ from finbricklab.core.links import PrincipalLink
 from finbricklab.core.results import BrickOutput
 from finbricklab.core.specs import term_from_amort
 from finbricklab.core.utils import active_mask, resolve_prepayments_to_month_idx
+
+
+class FinBrickWarning(UserWarning):
+    """Warning for FinBrickLab configuration issues."""
+
+
+class FinBrickDeprecationWarning(DeprecationWarning):
+    """Deprecation warning for FinBrickLab."""
+
+
+# Global set to track warnings per brick to avoid spam
+_warned: set[tuple[str, str]] = set()
+
+
+def warn_once(code: str, brick_id: str, msg: str, *, category=FinBrickWarning):
+    """Warn once per (brick_id, code) to avoid spam."""
+    key = (brick_id, code)
+    if key not in _warned:
+        _warned.add(key)
+        warnings.warn(msg, category, stacklevel=3)
+
+
+def normalize_spec(spec):
+    """Normalize spec to a dict, handling both dict and LMortgageSpec objects."""
+    if is_dataclass(spec):
+        return asdict(spec)  # plain dict
+    elif isinstance(spec, dict):
+        return dict(spec)  # shallow copy
+    else:
+        raise TypeError("spec must be dict or LMortgageSpec")
 
 
 def _get_spec_value(spec, key, default=None):
@@ -41,18 +73,50 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
     Fixed-rate mortgage with annuity payment schedule (kind: 'l.mortgage.annuity').
 
     This strategy models a traditional fixed-rate mortgage with equal monthly payments
-    that include both principal and interest. The principal can be provided directly
-    or automatically calculated from a linked property minus the down payment.
+    that include both principal and interest. It supports two independent concepts:
 
-    Required Parameters:
+    **Amortization Term**: How long the loan would take to fully repay (drives payment calculation)
+    **Credit Window**: How long the bank's fixed-rate commitment runs (when refinancing is needed)
+
+    **Required Parameters (canonical names):**
         - rate_pa: Annual interest rate (e.g., 0.034 for 3.4%)
-        - term_months: Total term in months (e.g., 300 for 25 years)
+        - term_months OR amortization_pa: Total amortization term or initial amortization rate
 
-    Principal Specification (exactly one required):
+    **User-Friendly Aliases:**
+        - interest_rate_pa → rate_pa
+        - amortization_rate_pa → amortization_pa  
+        - amortization_term_months → term_months
+        - credit_end_date → end_date (highest priority)
+        - credit_term_months → duration_m
+        - fix_rate_months → duration_m (fallback)
+
+    **Principal Specification (exactly one required):**
         - spec.principal: Direct principal amount, OR
         - links.principal: PrincipalLink dict with 'from_house' pointing to property brick ID
 
-    Note:
+    **Credit Window Precedence:**
+        credit_end_date → credit_term_months → fix_rate_months → existing brick fields
+
+    **Balloon Policy (at end of credit window):**
+        - "refinance" (default): Leave remaining debt outstanding for refinancing
+        - "payoff": Pay off remaining debt with cash outflow
+
+    **Example - German Mortgage Scenario:**
+        ```python
+        mortgage = entity.new_LBrick(
+            id="german_mortgage",
+            spec={
+                "principal": 420_000.0,
+                "interest_rate_pa": 0.013,        # 1.3% interest
+                "amortization_rate_pa": 0.04,     # 4% amortization (25-year payoff)
+                "credit_end_date": date(2028, 7, 1),  # 10-year credit term
+                "balloon_policy": "refinance"
+            }
+        )
+        # Results in ~€1,855 monthly payment, ~€240,769 residual after 10 years
+        ```
+
+    **Note:**
         If using links.principal, the principal will be calculated from the linked property's
         initial_value minus down_payment. This enables automatic mortgage sizing based on
         property purchases.
@@ -71,6 +135,50 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         Raises:
             AssertionError: If required parameters are missing or auto-calculation fails
         """
+        # Normalize spec to dict (handles both dict and LMortgageSpec)
+        spec = normalize_spec(brick.spec)
+        
+        # --- Aliases ---
+        alias_map = {
+            "interest_rate_pa": "rate_pa",
+            "amortization_rate_pa": "amortization_pa", 
+            "amortization_term_months": "term_months",
+        }
+        for new, old in alias_map.items():
+            if new in spec:
+                if old in spec and spec[old] != spec[new]:
+                    warn_once("ALIAS_CLASH_"+old.upper(), brick.id,
+                              f"[{brick.id}] '{new}' ignored because '{old}' is set (precedence: {old}).")
+                else:
+                    spec.setdefault(old, spec[new])
+
+        # Handle unknown/deprecated keys
+        if "annual_rate" in spec:
+            warnings.warn(f"[{brick.id}] 'annual_rate' is not supported. Use 'interest_rate_pa'.",
+                          FinBrickDeprecationWarning, stacklevel=3)
+            # Don't use annual_rate - it's deprecated
+
+        # --- Credit window precedence ---
+        credit_end = spec.get("credit_end_date")
+        credit_term = spec.get("credit_term_months")
+        fix_rate = spec.get("fix_rate_months")
+
+        if credit_end is not None:
+            if brick.end_date is not None:
+                warn_once("CREDIT_WINDOW_OVERRIDE", brick.id,
+                          f"[{brick.id}] Overriding brick.end_date with credit_end_date.")
+            brick.end_date = credit_end
+        elif credit_term is not None:
+            if brick.duration_m is not None:
+                warn_once("CREDIT_WINDOW_OVERRIDE", brick.id,
+                          f"[{brick.id}] Overriding brick.duration_m with credit_term_months.")
+            brick.duration_m = int(credit_term)
+        elif fix_rate is not None and brick.end_date is None and brick.duration_m is None:
+            brick.duration_m = int(fix_rate)
+
+        # Push the normalized spec back
+        brick.spec = spec
+
         # Check for conflicting principal specifications BEFORE resolving from links
         has_spec_principal = _get_spec_value(brick.spec, "principal") is not None
         has_link_principal = bool((brick.links or {}).get("principal"))
@@ -150,14 +258,13 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         if rate_pa is None:
             raise AssertionError("Missing required parameter: rate_pa")
 
-        # Handle term calculation from amortization if needed
+        # --- Derive amortization term if needed ---
         term_months = _get_spec_value(brick.spec, "term_months")
         amortization_pa = _get_spec_value(brick.spec, "amortization_pa")
 
         if term_months is None and amortization_pa is not None:
             # Calculate term from amortization
-            term_months = term_from_amort(rate_pa, amortization_pa)
-            brick.spec["term_months"] = term_months
+            brick.spec["term_months"] = term_from_amort(rate_pa, amortization_pa)
         elif term_months is None:
             raise AssertionError(
                 "Missing required parameter: term_months or amortization_pa"
@@ -170,7 +277,7 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
                 "Principal not available - check links or provide explicitly"
             )
 
-        # Set default first payment offset (1 month is standard)
+        # Default values
         brick.spec.setdefault("first_payment_offset", 1)
 
     def simulate(self, brick: LBrick, ctx: ScenarioContext) -> BrickOutput:
