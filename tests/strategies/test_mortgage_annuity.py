@@ -166,6 +166,7 @@ class TestMortgageAnnuityMath:
                 "principal": principal,
                 "rate_pa": rate_pa,
                 "term_months": term_months,
+                "balloon_policy": "payoff",  # Explicitly request full payoff for this test
             },
         )
 

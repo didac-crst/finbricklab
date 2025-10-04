@@ -274,7 +274,6 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
             )
         ]
 
-        # Balloon payoff on window end (equity-neutral)
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
@@ -282,7 +281,9 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
 
         if t_stop is not None and debt[t_stop] > 0:
             residual = debt[t_stop]
-            policy = _get_spec_value(brick.spec, "balloon_policy", "payoff")  # DEFAULT
+            policy = _get_spec_value(
+                brick.spec, "balloon_policy", "refinance"
+            )  # DEFAULT
 
             if policy == "payoff":
                 cash_out[t_stop] += residual

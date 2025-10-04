@@ -130,7 +130,7 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
-        dispose = bool(brick.spec.get("sell_on_window_end", True))  # DEFAULT: True
+        dispose = bool(brick.spec.get("sell_on_window_end", False))  # DEFAULT: False
         fees_pct = float(brick.spec.get("sell_fees_pct", 0.0))
 
         if dispose and mask.any():
