@@ -279,7 +279,7 @@ class Scenario:
             "outputs": outputs,
             "by_struct": by_struct,
             "totals": totals,
-            "views": ScenarioResults(totals),
+            "views": ScenarioResults(totals, registry=self._registry, outputs=outputs),
             "_scenario_bricks": self.bricks,
             "meta": {"execution_order": execution_order, "overlaps": overlaps},
         }

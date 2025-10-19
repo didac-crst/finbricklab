@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .events import Event
+from .registry import Registry
 
 
 class BrickOutput(TypedDict):
@@ -47,14 +48,23 @@ class ScenarioResults:
     Provides ergonomic methods to access quarterly and yearly views of the monthly data.
     """
 
-    def __init__(self, totals: pd.DataFrame):
+    def __init__(
+        self,
+        totals: pd.DataFrame,
+        registry: Registry | None = None,
+        outputs: dict[str, BrickOutput] | None = None,
+    ):
         """
         Initialize with monthly totals DataFrame (PeriodIndex).
 
         Args:
             totals: Monthly totals DataFrame with PeriodIndex
+            registry: Optional registry for MacroBrick expansion
+            outputs: Optional outputs dict for filtered views
         """
         self._monthly_data = totals  # PeriodIndex 'M'
+        self._registry = registry
+        self._outputs = outputs
 
     def to_freq(self, freq: str = "Q") -> pd.DataFrame:
         """
@@ -79,6 +89,142 @@ class ScenarioResults:
     def yearly(self) -> pd.DataFrame:
         """Return yearly aggregated data."""
         return self.to_freq("Y")
+
+    def filter(
+        self,
+        brick_ids: list[str] | None = None,
+        macrobrick_ids: list[str] | None = None,
+        include_cash: bool = True,
+    ) -> ScenarioResults:
+        """
+        Filter results to show only selected bricks and/or MacroBricks.
+
+        Args:
+            brick_ids: List of brick IDs to include (None = no direct bricks)
+            macrobrick_ids: List of MacroBrick IDs to expand and include
+            include_cash: Whether to include cash in the aggregation
+
+        Returns:
+            New ScenarioResults with filtered aggregated data
+
+        Raises:
+            RuntimeError: If registry or outputs are not available
+        """
+        # Validation
+        if not self._registry or not self._outputs:
+            raise RuntimeError("Cannot filter: missing registry or outputs")
+
+        # Resolve selection to brick IDs
+        selected_bricks = set(brick_ids or [])
+
+        # Expand MacroBricks
+        if macrobrick_ids:
+            for mb_id in macrobrick_ids:
+                members = self._registry.get_struct_flat_members(mb_id)
+                selected_bricks.update(members)
+
+        # Identify cash bricks (for cash column calculation)
+        cash_bricks = set()
+        for bid in selected_bricks:
+            if self._registry.is_brick(bid):
+                brick = self._registry.get_brick(bid)
+                if hasattr(brick, "kind") and brick.kind == "a.cash":
+                    cash_bricks.add(bid)
+
+        # Compute filtered totals
+        filtered_df = _compute_filtered_totals(
+            self._outputs,
+            selected_bricks,
+            self._monthly_data.index,
+            include_cash,
+            cash_bricks,
+        )
+
+        # Return new ScenarioResults with filtered data
+        return ScenarioResults(filtered_df, self._registry, self._outputs)
+
+
+def _compute_filtered_totals(
+    outputs: dict[str, BrickOutput],
+    brick_ids: set[str],
+    t_index: pd.PeriodIndex,
+    include_cash: bool,
+    cash_brick_ids: set[str],
+) -> pd.DataFrame:
+    """
+    Compute aggregated totals for a filtered set of bricks.
+
+    This mirrors the logic in Scenario._aggregate_results() but operates
+    on a subset of bricks.
+
+    Args:
+        outputs: All brick outputs from simulation
+        brick_ids: Set of brick IDs to include in aggregation
+        t_index: Time index for the DataFrame
+        include_cash: Whether to include cash in aggregation
+        cash_brick_ids: Set of brick IDs that are cash accounts
+
+    Returns:
+        DataFrame with same structure as scenario totals
+    """
+    # Filter outputs to only selected bricks
+    filtered_outputs = {bid: outputs[bid] for bid in brick_ids if bid in outputs}
+
+    if not filtered_outputs:
+        # Return empty DataFrame with correct structure
+        empty_df = pd.DataFrame(
+            {
+                "cash_in": np.zeros(len(t_index)),
+                "cash_out": np.zeros(len(t_index)),
+                "net_cf": np.zeros(len(t_index)),
+                "assets": np.zeros(len(t_index)),
+                "liabilities": np.zeros(len(t_index)),
+                "non_cash": np.zeros(len(t_index)),
+                "equity": np.zeros(len(t_index)),
+            },
+            index=t_index,
+        )
+        if include_cash:
+            empty_df["cash"] = np.zeros(len(t_index))
+        return empty_df
+
+    # Calculate totals for selected bricks only
+    cash_in_tot = sum(o["cash_in"] for o in filtered_outputs.values())
+    cash_out_tot = sum(o["cash_out"] for o in filtered_outputs.values())
+    assets_tot = sum(o["asset_value"] for o in filtered_outputs.values())
+    liabilities_tot = sum(o["debt_balance"] for o in filtered_outputs.values())
+    net_cf = cash_in_tot - cash_out_tot
+    equity = assets_tot - liabilities_tot
+
+    # Calculate non-cash assets (total assets minus cash from selected cash bricks)
+    cash_assets = None
+    for bid in cash_brick_ids:
+        if bid in filtered_outputs:
+            s = filtered_outputs[bid]["asset_value"]
+            cash_assets = s if cash_assets is None else (cash_assets + s)
+    cash_assets = cash_assets if cash_assets is not None else np.zeros(len(t_index))
+    non_cash_assets = assets_tot - cash_assets
+
+    # Create summary DataFrame with monthly totals
+    totals = pd.DataFrame(
+        {
+            "cash_in": cash_in_tot,
+            "cash_out": cash_out_tot,
+            "net_cf": net_cf,
+            "assets": assets_tot,
+            "liabilities": liabilities_tot,
+            "non_cash": non_cash_assets,
+            "equity": equity,
+        },
+        index=t_index,
+    )
+
+    # Add cash column if requested
+    if include_cash:
+        totals["cash"] = cash_assets
+
+    # Finalize totals with proper identities and assertions
+    return finalize_totals(totals)
 
 
 def aggregate_totals(
