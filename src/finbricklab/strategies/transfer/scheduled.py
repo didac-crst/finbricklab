@@ -131,7 +131,11 @@ class TransferScheduled(ITransferStrategy):
         schedule = brick.spec["schedule"]
         currency = brick.spec.get("currency", "EUR")
 
-        # Generate transfer events
+        # Initialize cash flow arrays
+        cash_in = np.zeros(T, dtype=float)
+        cash_out = np.zeros(T, dtype=float)
+
+        # Generate transfer events and cash flows
         events = []
 
         for entry in schedule:
@@ -140,6 +144,20 @@ class TransferScheduled(ITransferStrategy):
 
             # Create amount object
             amount_obj = create_amount(amount, currency)
+
+            # Find the month index for this transfer
+            month_idx = None
+            for i, t in enumerate(ctx.t_index):
+                if t.astype("datetime64[D]").astype(date) >= transfer_date:
+                    month_idx = i
+                    break
+            
+            if month_idx is not None and month_idx < T:
+                # Record cash flows for the transfer
+                # Money goes out from source account (cash_out)
+                # Money comes in to destination account (cash_in)
+                cash_out[month_idx] += float(amount)
+                cash_in[month_idx] += float(amount)
 
             # Create transfer event
             event = Event(
@@ -191,8 +209,8 @@ class TransferScheduled(ITransferStrategy):
                 events.append(fx_event)
 
         return BrickOutput(
-            cash_in=np.zeros(T),
-            cash_out=np.zeros(T),
+            cash_in=cash_in,
+            cash_out=cash_out,
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             events=events,
