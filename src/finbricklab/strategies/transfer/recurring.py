@@ -27,7 +27,7 @@ class TransferRecurring(ITransferStrategy):
 
     Required Parameters:
         - amount: The amount to transfer each period
-        - frequency: Transfer frequency ('MONTHLY', 'QUARTERLY', 'YEARLY')
+        - frequency: Transfer frequency ('MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY', 'BIYEARLY')
         - currency: Currency code (default: 'EUR')
 
     Required Links:
@@ -76,7 +76,7 @@ class TransferRecurring(ITransferStrategy):
 
         # Validate frequency
         frequency = brick.spec["frequency"]
-        valid_frequencies = ["MONTHLY", "QUARTERLY", "YEARLY"]
+        valid_frequencies = ["MONTHLY", "BIMONTHLY", "QUARTERLY", "SEMIANNUALLY", "YEARLY", "BIYEARLY"]
         assert (
             frequency in valid_frequencies
         ), f"Frequency must be one of {valid_frequencies}"
@@ -122,10 +122,16 @@ class TransferRecurring(ITransferStrategy):
         # Determine transfer frequency in months
         if frequency == "MONTHLY":
             interval_months = 1
+        elif frequency == "BIMONTHLY":
+            interval_months = 2
         elif frequency == "QUARTERLY":
             interval_months = 3
+        elif frequency == "SEMIANNUALLY":
+            interval_months = 6
         elif frequency == "YEARLY":
             interval_months = 12
+        elif frequency == "BIYEARLY":
+            interval_months = 24
         else:
             raise ValueError(f"Invalid frequency: {frequency}")
 
@@ -207,6 +213,14 @@ class TransferRecurring(ITransferStrategy):
                     )
                 else:
                     current_date = current_date.replace(month=current_date.month + 1)
+            elif frequency == "BIMONTHLY":
+                # Add two months
+                if current_date.month >= 11:
+                    current_date = current_date.replace(
+                        year=current_date.year + 1, month=current_date.month + 2 - 12
+                    )
+                else:
+                    current_date = current_date.replace(month=current_date.month + 2)
             elif frequency == "QUARTERLY":
                 # Add three months
                 if current_date.month <= 9:
@@ -215,9 +229,20 @@ class TransferRecurring(ITransferStrategy):
                     current_date = current_date.replace(
                         year=current_date.year + 1, month=current_date.month + 3 - 12
                     )
+            elif frequency == "SEMIANNUALLY":
+                # Add six months
+                if current_date.month <= 6:
+                    current_date = current_date.replace(month=current_date.month + 6)
+                else:
+                    current_date = current_date.replace(
+                        year=current_date.year + 1, month=current_date.month + 6 - 12
+                    )
             elif frequency == "YEARLY":
                 # Add one year
                 current_date = current_date.replace(year=current_date.year + 1)
+            elif frequency == "BIYEARLY":
+                # Add two years
+                current_date = current_date.replace(year=current_date.year + 2)
 
         return BrickOutput(
             cash_in=cash_in,
