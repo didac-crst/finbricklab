@@ -271,8 +271,21 @@ def aggregate_totals(
     flows = [c for c in flows if c in df.columns]
     stocks = [c for c in stocks if c in df.columns]
 
-    agg = {**{c: "sum" for c in flows}, **{c: "last" for c in stocks}}
+    # Create aggregation dictionary preserving original column order
+    agg = {}
+    for col in df.columns:
+        if col in flows:
+            agg[col] = "sum"
+        elif col in stocks:
+            agg[col] = "last"
+        else:
+            # For any other columns, use 'last' as default
+            agg[col] = "last"
+    
     out = df.groupby(df.index.asfreq(freq)).agg(agg)
+    
+    # Ensure column order matches original DataFrame
+    out = out.reindex(columns=df.columns)
 
     if return_period_index:
         return out
