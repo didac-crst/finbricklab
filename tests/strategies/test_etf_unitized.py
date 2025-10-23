@@ -9,7 +9,7 @@ from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.valuation.etf_unitized import ValuationETFUnitized
+from finbricklab.strategies.valuation.security_unitized import ValuationETFUnitized
 
 
 class TestETFUnitizedMath:

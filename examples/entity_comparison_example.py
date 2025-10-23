@@ -33,7 +33,7 @@ def create_conservative_scenario():
     etf = ABrick(
         id="etf_conservative",
         name="Conservative ETF",
-        kind=K.A_ETF_UNITIZED,
+        kind=K.A_SECURITY_UNITIZED,
         spec={
             "price0": 100.0,
             "drift_pa": 0.04,  # 4% annual growth
@@ -102,7 +102,7 @@ def create_balanced_scenario():
     etf = ABrick(
         id="etf_balanced",
         name="Balanced ETF",
-        kind=K.A_ETF_UNITIZED,
+        kind=K.A_SECURITY_UNITIZED,
         spec={
             "price0": 100.0,
             "drift_pa": 0.06,  # 6% annual growth

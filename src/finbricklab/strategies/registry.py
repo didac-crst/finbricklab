@@ -5,22 +5,24 @@ Strategy registry setup for FinBrickLab.
 from finbricklab.core.bricks import FlowRegistry, ScheduleRegistry, ValuationRegistry
 from finbricklab.core.kinds import K
 
-from .flow import (
-    FlowExpenseFixed as FlowExpenseRecurring,
-)
-from .flow import (
-    FlowIncomeFixed as FlowIncomeRecurring,
-)
-from .schedule import ScheduleMortgageAnnuity as ScheduleLoanAnnuity
-from .valuation import (
-    ValuationCash,
-)
-from .valuation import (
-    ValuationETFUnitized as ValuationSecurityUnitized,
-)
-from .valuation import (
-    ValuationPropertyDiscrete as ValuationProperty,
-)
+# Flow strategies
+from .flow.income_recurring import FlowIncomeFixed as FlowIncomeRecurring
+from .flow.expense_recurring import FlowExpenseFixed as FlowExpenseRecurring
+from .flow.income_onetime import FlowIncomeOneTime
+from .flow.expense_onetime import FlowExpenseOneTime
+
+# Schedule strategies
+from .schedule.loan_annuity import ScheduleMortgageAnnuity as ScheduleLoanAnnuity
+
+# Valuation strategies
+from .valuation.cash import ValuationCash
+from .valuation.security_unitized import ValuationETFUnitized as ValuationSecurityUnitized
+from .valuation.property import ValuationPropertyDiscrete as ValuationProperty
+
+# Transfer strategies
+from .transfer.recurring import TransferRecurring
+from .transfer.lumpsum import TransferLumpSum
+from .transfer.scheduled import TransferScheduled
 
 
 def register_defaults():
@@ -60,3 +62,10 @@ def register_defaults():
     # Register cash flow strategies
     FlowRegistry[K.F_INCOME_RECURRING] = FlowIncomeRecurring()
     FlowRegistry[K.F_EXPENSE_RECURRING] = FlowExpenseRecurring()
+    FlowRegistry[K.F_INCOME_ONE_TIME] = FlowIncomeOneTime()
+    FlowRegistry[K.F_EXPENSE_ONE_TIME] = FlowExpenseOneTime()
+    
+    # Register transfer strategies
+    FlowRegistry[K.T_TRANSFER_RECURRING] = TransferRecurring()
+    FlowRegistry[K.T_TRANSFER_LUMP_SUM] = TransferLumpSum()
+    FlowRegistry[K.T_TRANSFER_SCHEDULED] = TransferScheduled()

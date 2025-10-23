@@ -9,7 +9,7 @@ from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.schedule.mortgage_annuity import ScheduleMortgageAnnuity
+from finbricklab.strategies.schedule.loan_annuity import ScheduleMortgageAnnuity
 
 
 class TestMortgageAnnuityMath:

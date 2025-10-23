@@ -110,6 +110,9 @@ def main():
             "f.income.fixed",
             "f.expense.fixed",
             "l.mortgage.annuity",
+            "etf_unitized",
+            "property_discrete",
+            "mortgage_annuity",
         ],
         help="Forbidden tokens to search for (default: tenant household + legacy kinds)",
     )

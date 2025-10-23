@@ -10,7 +10,7 @@ import pytest
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
-from finbricklab.strategies.schedule.mortgage_annuity import (
+from finbricklab.strategies.schedule.loan_annuity import (
     FinBrickDeprecationWarning,
     FinBrickWarning,
     ScheduleMortgageAnnuity,

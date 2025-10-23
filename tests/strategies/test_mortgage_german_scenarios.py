@@ -8,7 +8,7 @@ import numpy as np
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
-from finbricklab.strategies.schedule.mortgage_annuity import ScheduleMortgageAnnuity
+from finbricklab.strategies.schedule.loan_annuity import ScheduleMortgageAnnuity
 
 
 class TestGermanMortgageScenarios:
