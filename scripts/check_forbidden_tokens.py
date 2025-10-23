@@ -105,7 +105,10 @@ def main():
         "--tokens",
         "-t",
         nargs="+",
-        default=[],
+        default=[
+            "tenant",
+            "household",
+        ],
         help="Forbidden tokens to search for (default: restricted terms)",
     )
     parser.add_argument(

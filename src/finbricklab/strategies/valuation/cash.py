@@ -128,16 +128,16 @@ class ValuationCash(IValuationStrategy):
         # Calculate balance for first month
         bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
         # Apply interest on the balance after cash flows
-        bal[0] += bal[0] * r_m
+        bal[0] *= (1 + r_m)
 
         # Calculate balance for remaining months
         for t in range(1, T):
             # Start with previous month's balance
             bal[t] = bal[t - 1]
-            # Apply interest on the previous month's balance
-            bal[t] += bal[t] * r_m
-            # Then add/subtract this month's cash flows
+            # Add/subtract this month's cash flows
             bal[t] += cash_in[t] - cash_out[t]
+            # Apply interest on the full balance (including this month's flows)
+            bal[t] *= (1 + r_m)
 
         return BrickOutput(
             cash_in=np.zeros(
