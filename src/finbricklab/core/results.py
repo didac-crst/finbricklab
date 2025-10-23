@@ -191,6 +191,7 @@ def _compute_filtered_totals(
                 "net_cf": np.zeros(len(t_index)),
                 "assets": np.zeros(len(t_index)),
                 "liabilities": np.zeros(len(t_index)),
+                "interest": np.zeros(len(t_index)),
                 "non_cash": np.zeros(len(t_index)),
                 "equity": np.zeros(len(t_index)),
             },
@@ -205,6 +206,7 @@ def _compute_filtered_totals(
     cash_out_tot = sum(o["cash_out"] for o in filtered_outputs.values())
     assets_tot = sum(o["assets"] for o in filtered_outputs.values())
     liabilities_tot = sum(o["liabilities"] for o in filtered_outputs.values())
+    interest_tot = sum(o["interest"] for o in filtered_outputs.values())
     net_cf = cash_in_tot - cash_out_tot
     equity = assets_tot - liabilities_tot
 
@@ -225,6 +227,7 @@ def _compute_filtered_totals(
             "net_cf": net_cf,
             "assets": assets_tot,
             "liabilities": liabilities_tot,
+            "interest": interest_tot,
             "non_cash": non_cash_assets,
             "equity": equity,
         },
