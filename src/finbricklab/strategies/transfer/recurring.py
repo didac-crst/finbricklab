@@ -4,6 +4,7 @@ Recurring transfer strategy.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import numpy as np
@@ -130,10 +131,16 @@ class TransferRecurring(ITransferStrategy):
 
         # Generate transfer events
         events = []
-        current_date = brick.start_date if brick.start_date else ctx.t_index[0]
+        # Convert numpy.datetime64 to Python date object
+        if brick.start_date:
+            current_date = brick.start_date
+        else:
+            current_date = ctx.t_index[0].astype("datetime64[D]").astype(date)
         end_date = brick.spec.get("end_date")
 
-        while current_date <= ctx.t_index[-1]:
+        # Convert end date to Python date for comparison
+        end_date_py = ctx.t_index[-1].astype("datetime64[D]").astype(date)
+        while current_date <= end_date_py:
             if end_date and current_date > end_date:
                 break
 
