@@ -193,7 +193,7 @@ class TransferScheduled(ITransferStrategy):
         return BrickOutput(
             cash_in=np.zeros(T),
             cash_out=np.zeros(T),
-            asset_value=np.zeros(T),
-            debt_balance=np.zeros(T),
+            assets=np.zeros(T),
+            liabilities=np.zeros(T),
             events=events,
         )

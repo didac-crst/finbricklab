@@ -46,7 +46,7 @@ class TestETFUnitizedMath:
         # Verify units × price = value (within rounding tolerance)
         # Note: We need to extract the internal price array from the strategy
         # For now, let's test that the value is reasonable and positive
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         assert len(asset_values) > 0, "Should have asset values"
         assert np.all(asset_values > 0), "Asset values should be positive"
@@ -87,7 +87,7 @@ class TestETFUnitizedMath:
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         # Value before split (month 5)
         value_before_split = asset_values[5]
@@ -156,7 +156,7 @@ class TestETFUnitizedMath:
         ), "Should have cash inflow from liquidation in final month"
 
         # Asset value should be zero after sale
-        assert result["asset_value"][-1] == 0, "Asset value should be zero after sale"
+        assert result["assets"][-1] == 0, "Asset value should be zero after sale"
 
     def test_different_initial_units_produce_proportional_values(self):
         """Test that different initial units produce proportionally different values."""
@@ -189,7 +189,7 @@ class TestETFUnitizedMath:
             strategy.prepare(etf, ctx)
             result = strategy.simulate(etf, ctx)
 
-            final_values.append(result["asset_value"][-1])
+            final_values.append(result["assets"][-1])
 
         # Values should be proportional to unit amounts
         ratio_units = unit_amounts[1] / unit_amounts[0]
@@ -222,7 +222,7 @@ class TestETFUnitizedMath:
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         # Calculate monthly returns
         returns = np.diff(asset_values) / asset_values[:-1]
@@ -287,7 +287,7 @@ class TestETFScenarioIntegration:
 
         # Verify total assets include ETF value
         total_assets = results["totals"]["assets"]
-        etf_value = results["outputs"]["etf"]["asset_value"]
+        etf_value = results["outputs"]["etf"]["assets"]
 
         # Total assets should include ETF value (among other assets)
         assert np.all(
@@ -334,7 +334,7 @@ class TestETFScenarioIntegration:
         assert final_month_data["cash_in"] > 0, "Should have cash inflow from ETF sale"
 
         # ETF asset value should be zero in final month
-        etf_final_value = results["outputs"]["etf"]["asset_value"][-1]
+        etf_final_value = results["outputs"]["etf"]["assets"][-1]
         assert etf_final_value == 0, "ETF value should be zero after auto-sell"
 
     def test_etf_validation_passes(self):

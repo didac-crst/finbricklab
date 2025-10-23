@@ -58,7 +58,7 @@ class TestCashFlowRouting:
         # For now, verify the cash account balance increased
         cash_output = results["outputs"]["cash"]
         assert (
-            np.sum(cash_output["asset_value"]) > 0
+            np.sum(cash_output["assets"]) > 0
         ), "Cash account should have positive asset value from income"
 
         # Expense should generate cash_out
@@ -110,7 +110,7 @@ class TestCashFlowRouting:
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
         # Verify cash balance progression
-        cash_balance = results["outputs"]["cash"]["asset_value"]
+        cash_balance = results["outputs"]["cash"]["assets"]
 
         # First month: initial + income - expense + interest
         expected_first = initial_balance + monthly_income - monthly_expense
@@ -208,7 +208,7 @@ class TestCashFlowRouting:
         assert np.all(net_cash_flow > 0), "Net cash flow should be positive"
 
         # Cash balance should increase by net cash flow each month
-        cash_balance = cash_output["asset_value"]
+        cash_balance = cash_output["assets"]
         for i in range(1, len(cash_balance)):
             expected_balance = cash_balance[i - 1] + net_cash_flow[i]
             assert (
@@ -241,7 +241,7 @@ class TestCashFlowRouting:
 
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
-        cash_balance = results["outputs"]["cash"]["asset_value"]
+        cash_balance = results["outputs"]["cash"]["assets"]
 
         # Verify interest is being earned
         # Without interest, final balance would be: initial + 12 * deposit
@@ -302,7 +302,7 @@ class TestCashAccountConstraints:
 
         # Currently, the simulation allows negative balances
         # In the future, this should be constrained by overdraft_limit
-        cash_balance = results["outputs"]["cash"]["asset_value"]
+        cash_balance = results["outputs"]["cash"]["assets"]
 
         # For now, just verify the balance goes negative as expected
         assert cash_balance[0] < 0, "Balance should go negative"
@@ -338,7 +338,7 @@ class TestCashAccountConstraints:
 
         results = scenario.run(start=date(2026, 1, 1), months=2)
 
-        results["outputs"]["cash"]["asset_value"]
+        results["outputs"]["cash"]["assets"]
 
         # Currently, buffer is not enforced in simulation
         # Future implementation should ensure balance >= min_buffer
@@ -409,7 +409,7 @@ class TestCashRoutingIntegration:
         ), "Cash account should receive all cash outflows"
 
         # Verify cash balance decreases due to property purchase
-        cash_balance = cash_output["asset_value"]
+        cash_balance = cash_output["assets"]
         assert (
             cash_balance[0] < cash.spec["initial_balance"]
         ), "Cash balance should decrease due to property purchase"

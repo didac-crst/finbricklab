@@ -234,7 +234,7 @@ class TestJournalInvariants:
         assert "expense" in results["outputs"]
 
         # Check that cash balance is reasonable
-        cash_balance = results["outputs"]["cash"]["asset_value"]
+        cash_balance = results["outputs"]["cash"]["assets"]
         assert len(cash_balance) == 3
         assert cash_balance[0] > 0  # Should have positive balance
 

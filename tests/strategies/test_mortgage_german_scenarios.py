@@ -14,7 +14,7 @@ from finbricklab.strategies.schedule.loan_annuity import ScheduleLoanAnnuity
 class TestGermanMortgageScenarios:
     """Test German mortgage scenarios with new parameter aliases."""
 
-    def test_german_mortgage_annuity_math(self):
+    def test_german_loan_annuity_math(self):
         """Test German mortgage annuity calculation with exact numbers."""
         principal = 420_000.0
         interest_rate_pa = 0.013  # 1.3%
@@ -44,7 +44,7 @@ class TestGermanMortgageScenarios:
         # Monthly payment ≈ €1,855
         # First month: interest ≈ €455, principal ≈ €1,400
 
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         cash_out = result["cash_out"]
 
         # Check that term was calculated correctly (should be ~260 months)
@@ -96,7 +96,7 @@ class TestGermanMortgageScenarios:
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         events = result["events"]
 
         # Check that after 10 years (120 months), residual is ~€240,769
@@ -140,7 +140,7 @@ class TestGermanMortgageScenarios:
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         cash_out = result["cash_out"]
         events = result["events"]
 
@@ -193,7 +193,7 @@ class TestGermanMortgageScenarios:
         assert mortgage.spec["term_months"] == 300
 
         # Check that mortgage completes in 25 years (within rounding tolerance)
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         final_balance = debt_balance[-1]
         assert (
             abs(final_balance) < 2000.0
@@ -228,7 +228,7 @@ class TestGermanMortgageScenarios:
         assert mortgage.duration_m == 120
 
         # Check that mortgage becomes inactive after 10 years
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
 
         # After 10 years (index 120), debt should be outstanding
         balance_at_10_years = debt_balance[120]
@@ -270,7 +270,7 @@ class TestGermanMortgageScenarios:
         assert mortgage.duration_m == 120
 
         # Check that mortgage becomes inactive after 10 years
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         balance_at_10_years = debt_balance[120]
         assert (
             240_000 <= balance_at_10_years <= 241_000
@@ -314,7 +314,7 @@ class TestGermanMortgageScenarios:
         ), f"Expected linear payment {expected_payment:.2f}, got {actual_payment:.2f}"
 
         # Final balance should be close to zero (within rounding tolerance)
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         final_balance = debt_balance[-1]
         assert (
             abs(final_balance) < 2000.0

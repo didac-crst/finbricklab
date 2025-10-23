@@ -150,7 +150,7 @@ class FlowIncomeRecurring(IFlowStrategy):
         return BrickOutput(
             cash_in=cash_in,
             cash_out=np.zeros(T),
-            asset_value=np.zeros(T),
-            debt_balance=np.zeros(T),
+            assets=np.zeros(T),
+            liabilities=np.zeros(T),
             events=events,
         )

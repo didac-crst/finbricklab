@@ -31,7 +31,9 @@ class PrincipalLink:
     from_house: str | None = (
         None  # brick_id of A_PROPERTY - price - down_payment - fees
     )
-    remaining_of: str | None = None  # brick_id of L_MORT_ANN - take remaining balance
+    remaining_of: str | None = (
+        None  # brick_id of L_LOAN_ANNUITY - take remaining balance
+    )
     share: float | None = None  # 0..1, for remaining_of - take this fraction
     nominal: float | None = None  # explicit amount or None
     fill_remaining: bool = False  # absorbs residual of the settlement bucket

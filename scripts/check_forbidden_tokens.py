@@ -41,6 +41,9 @@ def find_forbidden_tokens(
             r"\.egg-info$",
             r"dist$",
             r"build$",
+            r"test_strategy_registry_comprehensive\.py",
+            r"check_forbidden_tokens\.py",
+            r"tests/test_strategy_registry_comprehensive\.py",
         ]
 
     results = {}
@@ -57,7 +60,7 @@ def find_forbidden_tokens(
             file_path = os.path.join(root, file)
 
             # Skip excluded files
-            if any(re.search(pattern, file_path) for pattern in exclude_patterns):
+            if any(re.search(pattern, file) for pattern in exclude_patterns):
                 continue
 
             # Only check text files

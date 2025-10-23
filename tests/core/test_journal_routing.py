@@ -64,8 +64,8 @@ class TestJournalRouting:
         assert np.sum(expense_flows) > 0
 
         # Check that both cash accounts receive flows (default routing to all cash accounts)
-        checking_flows = results["outputs"]["checking"]["asset_value"]
-        savings_flows = results["outputs"]["savings"]["asset_value"]
+        checking_flows = results["outputs"]["checking"]["assets"]
+        savings_flows = results["outputs"]["savings"]["assets"]
 
         # Both should have positive balances from income
         assert np.sum(checking_flows) > 0
@@ -93,8 +93,8 @@ class TestJournalRouting:
         results = scenario.run(start=date(2026, 1, 1), months=2)
 
         # Check that both cash accounts receive flows (default routing)
-        main_flows = results["outputs"]["main"]["asset_value"]
-        side_flows = results["outputs"]["side"]["asset_value"]
+        main_flows = results["outputs"]["main"]["assets"]
+        side_flows = results["outputs"]["side"]["assets"]
 
         # Both should have positive balances from income
         assert np.sum(main_flows) > 0
@@ -309,9 +309,9 @@ class TestJournalRouting:
         results = scenario.run(start=date(2026, 1, 1), months=6)
 
         # Check that all accounts have reasonable balances
-        checking_balance = results["outputs"]["checking"]["asset_value"]
-        savings_balance = results["outputs"]["savings"]["asset_value"]
-        investment_balance = results["outputs"]["investment"]["asset_value"]
+        checking_balance = results["outputs"]["checking"]["assets"]
+        savings_balance = results["outputs"]["savings"]["assets"]
+        investment_balance = results["outputs"]["investment"]["assets"]
 
         # All should have positive balances
         assert np.sum(checking_balance) > 0

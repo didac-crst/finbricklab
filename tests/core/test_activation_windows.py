@@ -171,7 +171,7 @@ class TestActivationWindows:
 
         # Check asset behavior during window
         asset_output = results["outputs"]["asset"]
-        asset_value = asset_output["asset_value"]
+        asset_value = asset_output["assets"]
 
         # Month 1: no asset value (not active)
         assert asset_value[0] == 0, "Month 1 should have no asset value"

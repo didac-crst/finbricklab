@@ -30,7 +30,7 @@ def main():
     entity.new_FBrick(
         id="salary",
         name="Salary",
-        kind=K.F_INCOME_FIXED,
+        kind=K.F_INCOME_RECURRING,
         start_date=date(2026, 2, 1),
         spec={"amount_monthly": 5000.0}
         # No routing needed - Journal system handles automatically
@@ -47,7 +47,7 @@ def main():
     entity.new_ABrick(
         id="etf",
         name="ETF",
-        kind=K.A_ETF_UNITIZED,
+        kind=K.A_SECURITY_UNITIZED,
         start_date=date(2026, 6, 1),
         spec={
             "initial_amount": 2000.0,  # ✅ Clear: €2000 invested
@@ -89,9 +89,9 @@ def main():
     checking_output = results["outputs"]["checking"]
 
     print("\n=== Results ===")
-    print(f"Initial ETF value: €{etf_output['asset_value'][0]:,.2f}")
-    print(f"Final ETF value: €{etf_output['asset_value'][-1]:,.2f}")
-    print(f"Final cash balance: €{checking_output['asset_value'][-1]:,.2f}")
+    print(f"Initial ETF value: €{etf_output['assets'][0]:,.2f}")
+    print(f"Final ETF value: €{etf_output['assets'][-1]:,.2f}")
+    print(f"Final cash balance: €{checking_output['assets'][-1]:,.2f}")
 
     # Show ETF events
     print("\n=== ETF Events ===")

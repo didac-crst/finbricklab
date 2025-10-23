@@ -69,7 +69,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
             ctx: The simulation context
         """
         s = brick.spec
-        
+
         # Handle user-friendly initial_amount parameter
         if "initial_amount" in s and "initial_units" not in s:
             # Convert initial_amount to initial_units
@@ -79,7 +79,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
             del s["initial_amount"]
         else:
             s.setdefault("initial_units", 0.0)
-        
+
         s.setdefault("price0", 100.0)
         s.setdefault("drift_pa", 0.03)
         s.setdefault("volatility_pa", 0.0)
@@ -128,17 +128,19 @@ class ValuationSecurityUnitized(IValuationStrategy):
             # Handle user-friendly date parameter
             if "date" in sell_spec and "t" not in sell_spec:
                 from datetime import date
+
                 if isinstance(sell_spec["date"], date):
                     # Convert Python date to numpy datetime64
                     import numpy as np
+
                     sell_spec["t"] = np.datetime64(sell_spec["date"].strftime("%Y-%m"))
                 else:
                     sell_spec["t"] = sell_spec["date"]
                 # Remove the user-friendly parameter
                 del sell_spec["date"]
-            
+
             assert "t" in sell_spec, "sell directive must include 't' (date) or 'date'"
-            
+
             # Handle user-friendly percentage parameter
             if "percentage" in sell_spec:
                 percentage = sell_spec["percentage"]
@@ -147,12 +149,14 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 sell_spec["_percentage"] = percentage
                 # Remove the user-friendly parameter
                 del sell_spec["percentage"]
-            
+
             # Validate that we have exactly one of the supported parameters
             valid_params = ["amount", "units", "_percentage"]
             param_count = sum(1 for param in valid_params if param in sell_spec)
-            assert param_count == 1, f"sell directive: provide exactly one of {valid_params}"
-            
+            assert (
+                param_count == 1
+            ), f"sell directive: provide exactly one of {valid_params}"
+
             if "amount" in sell_spec:
                 assert sell_spec["amount"] >= 0, "sell.amount must be >= 0"
             if "units" in sell_spec:
@@ -404,7 +408,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
-        dispose = bool(brick.spec.get("liquidate_on_window_end", False))  # DEFAULT: False
+        dispose = bool(
+            brick.spec.get("liquidate_on_window_end", False)
+        )  # DEFAULT: False
         fees_pct = float(brick.spec.get("sell_fees_pct", 0.0))
 
         if dispose and mask.any():
@@ -429,7 +435,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
         return BrickOutput(
             cash_in=cash_in,
             cash_out=cash_out,
-            asset_value=asset_value,
-            debt_balance=np.zeros(T),
+            assets=asset_value,
+            liabilities=np.zeros(T),
             events=events,
         )

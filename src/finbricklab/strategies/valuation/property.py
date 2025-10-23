@@ -155,7 +155,7 @@ class ValuationProperty(IValuationStrategy):
         return BrickOutput(
             cash_in=cash_in,
             cash_out=cash_out,
-            asset_value=value,
-            debt_balance=np.zeros(T),
+            assets=value,
+            liabilities=np.zeros(T),
             events=events,
         )

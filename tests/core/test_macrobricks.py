@@ -373,11 +373,11 @@ class TestScenarioIntegration:
         )
         assert np.array_equal(
             struct_output["asset_value"],
-            house_output["asset_value"] + mortgage_output["asset_value"],
+            house_output["assets"] + mortgage_output["assets"],
         )
         assert np.array_equal(
             struct_output["debt_balance"],
-            house_output["debt_balance"] + mortgage_output["debt_balance"],
+            house_output["liabilities"] + mortgage_output["liabilities"],
         )
 
     def test_scenario_from_dict_with_structs(self):
@@ -499,18 +499,16 @@ class TestAggregationCorrectness:
         # Manual aggregation
         manual_cash_in = house_output["cash_in"] + mortgage_output["cash_in"]
         manual_cash_out = house_output["cash_out"] + mortgage_output["cash_out"]
-        manual_asset_value = (
-            house_output["asset_value"] + mortgage_output["asset_value"]
-        )
-        manual_debt_balance = (
-            house_output["debt_balance"] + mortgage_output["debt_balance"]
+        manual_assets = house_output["assets"] + mortgage_output["assets"]
+        manual_liabilities = (
+            house_output["liabilities"] + mortgage_output["liabilities"]
         )
 
         # Compare with automatic aggregation
         assert np.allclose(struct_output["cash_in"], manual_cash_in)
         assert np.allclose(struct_output["cash_out"], manual_cash_out)
-        assert np.allclose(struct_output["asset_value"], manual_asset_value)
-        assert np.allclose(struct_output["debt_balance"], manual_debt_balance)
+        assert np.allclose(struct_output["asset_value"], manual_assets)
+        assert np.allclose(struct_output["debt_balance"], manual_liabilities)
 
     def test_portfolio_totals_deduplication(self):
         """Test that portfolio totals properly deduplicate shared bricks."""
@@ -677,7 +675,7 @@ class TestAggregationInvariants:
 
         # Get cash output separately since it's not in any MacroBrick
         cash_output = results["outputs"]["cash"]
-        cash_assets = cash_output["asset_value"][-1]
+        cash_assets = cash_output["assets"][-1]
 
         sum_assets = primary_assets + secondary_assets + cash_assets
 

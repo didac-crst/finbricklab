@@ -482,8 +482,15 @@ class Scenario:
                 if brick_id in outputs:
                     brick_output = outputs[brick_id]
                     for key in agg.keys():
-                        if key in brick_output:
-                            agg[key] += brick_output[key]
+                        # Map old column names to new ones for compatibility
+                        brick_key = key
+                        if key == "asset_value":
+                            brick_key = "assets"
+                        elif key == "debt_balance":
+                            brick_key = "liabilities"
+
+                        if brick_key in brick_output:
+                            agg[key] += brick_output[brick_key]
 
             by_struct[struct_id] = agg
 
@@ -494,8 +501,8 @@ class Scenario:
         return {
             "cash_in": np.zeros(length),
             "cash_out": np.zeros(length),
-            "asset_value": np.zeros(length),
-            "debt_balance": np.zeros(length),
+            "assets": np.zeros(length),
+            "liabilities": np.zeros(length),
             "equity": np.zeros(length),
         }
 
@@ -764,8 +771,8 @@ class Scenario:
         # Calculate totals
         cash_in_tot = sum(o["cash_in"] for o in outputs.values())
         cash_out_tot = sum(o["cash_out"] for o in outputs.values())
-        assets_tot = sum(o["asset_value"] for o in outputs.values())
-        liabilities_tot = sum(o["debt_balance"] for o in outputs.values())
+        assets_tot = sum(o["assets"] for o in outputs.values())
+        liabilities_tot = sum(o["liabilities"] for o in outputs.values())
         net_cf = cash_in_tot - cash_out_tot
         equity = assets_tot - liabilities_tot
 
@@ -773,7 +780,7 @@ class Scenario:
         cash_assets = None
         for b in self.bricks:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
-                s = outputs[b.id]["asset_value"]
+                s = outputs[b.id]["assets"]
                 cash_assets = s if cash_assets is None else (cash_assets + s)
         cash_assets = cash_assets if cash_assets is not None else np.zeros(len(t_index))
         non_cash_assets = assets_tot - cash_assets
@@ -1227,8 +1234,8 @@ class Scenario:
         # Create arrays of the full simulation length
         full_cash_in = np.zeros(total_length)
         full_cash_out = np.zeros(total_length)
-        full_asset_value = np.zeros(total_length)
-        full_debt_balance = np.zeros(total_length)
+        full_assets = np.zeros(total_length)
+        full_liabilities = np.zeros(total_length)
 
         # Place the brick's output at the correct time positions
         brick_length = len(output["cash_in"])
@@ -1237,14 +1244,14 @@ class Scenario:
 
         full_cash_in[start_idx:end_idx] = output["cash_in"][:actual_length]
         full_cash_out[start_idx:end_idx] = output["cash_out"][:actual_length]
-        full_asset_value[start_idx:end_idx] = output["asset_value"][:actual_length]
-        full_debt_balance[start_idx:end_idx] = output["debt_balance"][:actual_length]
+        full_assets[start_idx:end_idx] = output["assets"][:actual_length]
+        full_liabilities[start_idx:end_idx] = output["liabilities"][:actual_length]
 
         return BrickOutput(
             cash_in=full_cash_in,
             cash_out=full_cash_out,
-            asset_value=full_asset_value,
-            debt_balance=full_debt_balance,
+            assets=full_assets,
+            liabilities=full_liabilities,
             events=output["events"],  # Events don't need shifting
         )
 
@@ -1345,7 +1352,7 @@ def validate_run(
     if bricks is not None:
         for b in bricks:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
-                bal = outputs[b.id]["asset_value"]
+                bal = outputs[b.id]["assets"]
                 overdraft = float((b.spec or {}).get("overdraft_limit", 0.0))
                 minbuf = float((b.spec or {}).get("min_buffer", 0.0))
 
@@ -1377,7 +1384,7 @@ def validate_run(
                 balloon_policy = (b.spec or {}).get("balloon_policy", "payoff")
                 if balloon_policy == "payoff":
                     # Check if balloon was properly paid off
-                    debt_balance = outputs[b.id]["debt_balance"]
+                    debt_balance = outputs[b.id]["liabilities"]
                     cash_out = outputs[b.id]["cash_out"]
 
                     # Find the last active month
@@ -1417,7 +1424,7 @@ def validate_run(
                 break
 
         if brick and hasattr(brick, "kind") and brick.kind == K.A_SECURITY_UNITIZED:
-            asset_value = output["asset_value"]
+            asset_value = output["assets"]
             # We can't directly check units, but we can check for negative asset values
             if (asset_value < -tol).any():
                 t_idx = int(np.where(asset_value < -tol)[0][0])

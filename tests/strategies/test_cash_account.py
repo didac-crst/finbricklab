@@ -66,12 +66,12 @@ class TestValuationCash:
         # Check output structure
         assert "cash_in" in result
         assert "cash_out" in result
-        assert "asset_value" in result
-        assert "debt_balance" in result
+        assert "assets" in result
+        assert "liabilities" in result
         assert "events" in result
 
         # Check that balance grows with interest
-        balance = result["asset_value"]
+        balance = result["assets"]
         assert balance[0] > 1000.0  # Initial balance plus interest
         assert balance[-1] > balance[0]  # Balance grows over time
 
@@ -80,7 +80,7 @@ class TestValuationCash:
         assert np.all(result["cash_out"] == 0)
 
         # Check that debt balance is zero
-        assert np.all(result["debt_balance"] == 0)
+        assert np.all(result["liabilities"] == 0)
 
     def test_cash_simulate_with_external_flows(self):
         """Test cash simulation with external flows."""
@@ -109,7 +109,7 @@ class TestValuationCash:
         strategy = ValuationCash()
         result = strategy.simulate(brick, ctx)
 
-        balance = result["asset_value"]
+        balance = result["assets"]
 
         # Check that balance reflects external flows
         # Month 0: 1000 + 500 + interest

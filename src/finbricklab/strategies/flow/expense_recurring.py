@@ -64,7 +64,7 @@ class FlowExpenseRecurring(IFlowStrategy):
         return BrickOutput(
             cash_in=np.zeros(T),
             cash_out=cash_out,
-            asset_value=np.zeros(T),
-            debt_balance=np.zeros(T),
+            assets=np.zeros(T),
+            liabilities=np.zeros(T),
             events=[],  # No events for regular expense flows
         )

@@ -95,7 +95,7 @@ class TestMortgageAnnuityMath:
         result = strategy.simulate(mortgage, ctx)
 
         # Check that debt balance decreases over time
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
 
         # Initial balance should equal principal
         assert (
@@ -143,7 +143,7 @@ class TestMortgageAnnuityMath:
         result = strategy.simulate(mortgage, ctx)
 
         # Debt balance should decrease monotonically
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         assert len(debt_balance) > 1, "Should have multiple time periods"
 
         # Check that balance decreases (or stays same due to rounding)
@@ -179,7 +179,7 @@ class TestMortgageAnnuityMath:
         result = strategy.simulate(mortgage, ctx)
 
         # Final balance should be zero (within rounding tolerance)
-        final_balance = result["debt_balance"][-1]
+        final_balance = result["liabilities"][-1]
         assert abs(final_balance) < 1.0, f"Final balance not zero: {final_balance:.2f}"
 
     def test_interest_decreases_over_time(self):
@@ -307,7 +307,7 @@ class TestMortgageScenarioIntegration:
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
         # Verify mortgage debt balance is reasonable
-        mortgage_balance = results["outputs"]["mortgage"]["debt_balance"]
+        mortgage_balance = results["outputs"]["mortgage"]["liabilities"]
         assert mortgage_balance[0] > 0, "Mortgage should have initial debt"
         assert (
             mortgage_balance[-1] < mortgage_balance[0]

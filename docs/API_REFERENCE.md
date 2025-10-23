@@ -89,9 +89,9 @@ class TBrick(FinBrickABC):
 ```
 
 **Transfer Kinds:**
-- `t.transfer.lumpsum` - One-time transfer
-- `t.transfer.recurring` - Recurring transfer
-- `t.transfer.scheduled` - Scheduled transfers
+- `K.T_TRANSFER_LUMP_SUM` - One-time transfer
+- `K.T_TRANSFER_RECURRING` - Recurring transfer
+- `K.T_TRANSFER_SCHEDULED` - Scheduled transfers
 
 ### FinBrickABC
 
@@ -386,19 +386,30 @@ def month_range(start: date, months: int) -> pd.DatetimeIndex:
 
 ### Available Asset Strategies
 
-- `a.cash` - Cash account with interest
-- `a.property` - Real estate with appreciation
-- `a.security.unitized` - ETF investment with unitized pricing
+- `K.A_CASH` - Cash account with interest
+- `K.A_PROPERTY` - Real estate with appreciation
+- `K.A_SECURITY_UNITIZED` - ETF investment with unitized pricing
+- `K.A_PRIVATE_EQUITY` - Private equity investment
 
 ### Available Liability Strategies
 
-- `l.loan.annuity` - Fixed-rate mortgage with annuity payments
+- `K.L_LOAN_ANNUITY` - Fixed-rate mortgage with annuity payments
+- `K.L_LOAN_BALLOON` - Balloon payment loan
+- `K.L_CREDIT_LINE` - Revolving credit line
+- `K.L_CREDIT_FIXED` - Fixed-term credit
 
 ### Available Flow Strategies
 
-- `f.transfer.lumpsum` - One-time lump sum transfer
-- `f.income.recurring` - Fixed recurring income
-- `f.expense.recurring` - Fixed recurring expense
+- `K.F_INCOME_RECURRING` - Fixed recurring income
+- `K.F_INCOME_ONE_TIME` - One-time income
+- `K.F_EXPENSE_RECURRING` - Fixed recurring expense
+- `K.F_EXPENSE_ONE_TIME` - One-time expense
+
+### Available Transfer Strategies
+
+- `K.T_TRANSFER_LUMP_SUM` - One-time lump sum transfer
+- `K.T_TRANSFER_RECURRING` - Recurring transfer
+- `K.T_TRANSFER_SCHEDULED` - Scheduled transfers
 
 ---
 

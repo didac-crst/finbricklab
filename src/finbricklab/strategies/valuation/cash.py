@@ -139,7 +139,7 @@ class ValuationCash(IValuationStrategy):
                 T
             ),  # Cash account doesn't generate cash flows, only receives them
             cash_out=np.zeros(T),  # Cash account doesn't generate cash outflows
-            asset_value=bal,
-            debt_balance=np.zeros(T),
+            assets=bal,
+            liabilities=np.zeros(T),
             events=[],
         )

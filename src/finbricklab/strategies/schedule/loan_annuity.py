@@ -467,7 +467,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         return BrickOutput(
             cash_in=cash_in,
             cash_out=cash_out,
-            asset_value=np.zeros(T),
-            debt_balance=debt,
+            assets=np.zeros(T),
+            liabilities=debt,
             events=events,
         )

@@ -24,8 +24,8 @@ class BrickOutput(TypedDict):
     Attributes:
         cash_in: Monthly cash inflows (always >= 0)
         cash_out: Monthly cash outflows (always >= 0)
-        asset_value: Monthly asset valuation (0 for non-assets)
-        debt_balance: Monthly debt balance (0 for non-liabilities)
+        assets: Monthly asset valuation (0 for non-assets)
+        liabilities: Monthly debt balance (0 for non-liabilities)
         events: List of time-stamped events describing key occurrences
 
     Note:
@@ -36,8 +36,8 @@ class BrickOutput(TypedDict):
 
     cash_in: np.ndarray  # Monthly cash inflows (>=0)
     cash_out: np.ndarray  # Monthly cash outflows (>=0)
-    asset_value: np.ndarray  # Monthly asset value (0 if not an asset)
-    debt_balance: np.ndarray  # Monthly debt balance (0 if not a liability)
+    assets: np.ndarray  # Monthly asset value (0 if not an asset)
+    liabilities: np.ndarray  # Monthly debt balance (0 if not a liability)
     events: list[Event]  # Time-stamped events describing key occurrences
 
 
@@ -191,8 +191,8 @@ def _compute_filtered_totals(
     # Calculate totals for selected bricks only
     cash_in_tot = sum(o["cash_in"] for o in filtered_outputs.values())
     cash_out_tot = sum(o["cash_out"] for o in filtered_outputs.values())
-    assets_tot = sum(o["asset_value"] for o in filtered_outputs.values())
-    liabilities_tot = sum(o["debt_balance"] for o in filtered_outputs.values())
+    assets_tot = sum(o["assets"] for o in filtered_outputs.values())
+    liabilities_tot = sum(o["liabilities"] for o in filtered_outputs.values())
     net_cf = cash_in_tot - cash_out_tot
     equity = assets_tot - liabilities_tot
 
@@ -200,7 +200,7 @@ def _compute_filtered_totals(
     cash_assets = None
     for bid in cash_brick_ids:
         if bid in filtered_outputs:
-            s = filtered_outputs[bid]["asset_value"]
+            s = filtered_outputs[bid]["assets"]
             cash_assets = s if cash_assets is None else (cash_assets + s)
     cash_assets = cash_assets if cash_assets is not None else np.zeros(len(t_index))
     non_cash_assets = assets_tot - cash_assets

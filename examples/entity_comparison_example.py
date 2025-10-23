@@ -62,7 +62,7 @@ def create_aggressive_scenario():
     house = ABrick(
         id="house",
         name="Investment Property",
-        kind=K.A_PROPERTY_DISCRETE,
+        kind=K.A_PROPERTY,
         spec={
             "initial_value": 350000.0,
             "appreciation_pa": 0.035,  # 3.5% annual appreciation
@@ -73,7 +73,7 @@ def create_aggressive_scenario():
     mortgage = LBrick(
         id="mortgage",
         name="Investment Mortgage",
-        kind=K.L_MORT_ANN,
+        kind=K.L_LOAN_ANNUITY,
         spec={
             "principal": 280000.0,  # 80% LTV
             "rate_pa": 0.045,  # 4.5% interest rate
@@ -114,7 +114,7 @@ def create_balanced_scenario():
     house = ABrick(
         id="house_balanced",
         name="Primary Residence",
-        kind=K.A_PROPERTY_DISCRETE,
+        kind=K.A_PROPERTY,
         spec={
             "initial_value": 250000.0,
             "appreciation_pa": 0.03,  # 3% annual appreciation
@@ -125,7 +125,7 @@ def create_balanced_scenario():
     mortgage = LBrick(
         id="mortgage_balanced",
         name="Home Mortgage",
-        kind=K.L_MORT_ANN,
+        kind=K.L_LOAN_ANNUITY,
         spec={
             "principal": 200000.0,  # 80% LTV
             "rate_pa": 0.04,  # 4% interest rate

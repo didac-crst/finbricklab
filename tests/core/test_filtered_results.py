@@ -53,7 +53,15 @@ def _create_test_scenario():
     scenario = e.create_scenario(
         "test_scenario",
         "Test Scenario",
-        brick_ids=["cash", "etf", "mortgage", "salary", "rent", "investments", "housing"],
+        brick_ids=[
+            "cash",
+            "etf",
+            "mortgage",
+            "salary",
+            "rent",
+            "investments",
+            "housing",
+        ],
         settlement_default_cash_id="cash",
     )
 
@@ -241,8 +249,8 @@ def test_filtered_totals_match_manual_calculation():
     # Manually calculate expected totals
     expected_cash_in = cash_output["cash_in"] + salary_output["cash_in"]
     expected_cash_out = cash_output["cash_out"] + salary_output["cash_out"]
-    expected_assets = cash_output["asset_value"] + salary_output["asset_value"]
-    expected_liabilities = cash_output["debt_balance"] + salary_output["debt_balance"]
+    expected_assets = cash_output["assets"] + salary_output["assets"]
+    expected_liabilities = cash_output["liabilities"] + salary_output["liabilities"]
 
     # Check that filtered results match manual calculation
     np.testing.assert_array_almost_equal(filtered_monthly["cash_in"], expected_cash_in)
@@ -325,15 +333,15 @@ def test_compute_filtered_totals_helper():
         "brick1": {
             "cash_in": np.array([100, 200, 300]),
             "cash_out": np.array([50, 100, 150]),
-            "asset_value": np.array([1000, 1100, 1200]),
-            "debt_balance": np.array([0, 0, 0]),
+            "assets": np.array([1000, 1100, 1200]),
+            "liabilities": np.array([0, 0, 0]),
             "events": [],
         },
         "brick2": {
             "cash_in": np.array([0, 0, 0]),
             "cash_out": np.array([25, 50, 75]),
-            "asset_value": np.array([0, 0, 0]),
-            "debt_balance": np.array([500, 450, 400]),
+            "assets": np.array([0, 0, 0]),
+            "liabilities": np.array([500, 450, 400]),
             "events": [],
         },
     }
@@ -370,8 +378,8 @@ def test_compute_filtered_totals_empty_selection():
         "brick1": {
             "cash_in": np.array([100, 200]),
             "cash_out": np.array([50, 100]),
-            "asset_value": np.array([1000, 1100]),
-            "debt_balance": np.array([0, 0]),
+            "assets": np.array([1000, 1100]),
+            "liabilities": np.array([0, 0]),
             "events": [],
         }
     }

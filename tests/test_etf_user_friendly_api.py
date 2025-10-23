@@ -45,7 +45,7 @@ def test_initial_amount_conversion():
 
     # Check that ETF has 10 units (€1000 / €100 = 10 units)
     etf_output = results["outputs"]["etf"]
-    assert etf_output["asset_value"][0] == 1000.0  # 10 units * €100 = €1000
+    assert etf_output["assets"][0] == 1000.0  # 10 units * €100 = €1000
 
 
 def test_user_friendly_sell_date():
@@ -133,7 +133,7 @@ def test_user_friendly_sell_percentage():
     # Check that 50% was sold (5 units out of 10, worth €500)
     etf_output = results["outputs"]["etf"]
     assert etf_output["cash_in"][1] == 500.0  # February sale proceeds
-    assert etf_output["asset_value"][1] == 500.0  # Remaining value
+    assert etf_output["assets"][1] == 500.0  # Remaining value
 
 
 def test_backward_compatibility():
@@ -177,7 +177,7 @@ def test_backward_compatibility():
 
     # Check that legacy format still works
     etf_output = results["outputs"]["etf"]
-    assert etf_output["asset_value"][0] == 1000.0  # Initial value
+    assert etf_output["assets"][0] == 1000.0  # Initial value
     assert etf_output["cash_in"][1] == 500.0  # February sale proceeds
 
 
@@ -223,8 +223,8 @@ def test_combined_user_friendly_features():
 
     # March: 25% of €2000 = €500
     assert etf_output["cash_in"][2] == 500.0  # March sale
-    assert etf_output["asset_value"][2] == 1500.0  # Remaining after 25% sale
+    assert etf_output["assets"][2] == 1500.0  # Remaining after 25% sale
 
     # April: €500 sale
     assert etf_output["cash_in"][3] == 500.0  # April sale
-    assert etf_output["asset_value"][3] == 1000.0  # Remaining after €500 sale
+    assert etf_output["assets"][3] == 1000.0  # Remaining after €500 sale

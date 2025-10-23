@@ -26,7 +26,7 @@ def main():
     e.new_ABrick(
         "etf",
         "ETF Investment",
-        K.A_ETF_UNITIZED,
+        K.A_SECURITY_UNITIZED,
         {
             "initial_units": 200.0,
             "price_series": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0],
@@ -35,26 +35,26 @@ def main():
     e.new_ABrick(
         "property",
         "Real Estate",
-        K.A_PROPERTY_DISCRETE,
+        K.A_PROPERTY,
         {"initial_value": 500000.0, "appreciation_pa": 0.03, "fees_pct": 0.05},
     )
     e.new_LBrick(
         "mortgage",
         "Mortgage",
-        K.L_MORT_ANN,
+        K.L_LOAN_ANNUITY,
         {"rate_pa": 0.034, "term_months": 300, "principal": 400000.0},
     )
     e.new_FBrick(
         "salary",
         "Salary",
-        K.F_INCOME_FIXED,
+        K.F_INCOME_RECURRING,
         {"amount_monthly": 8000.0}
         # No routing needed - Journal system handles automatically
     )
     e.new_FBrick(
         "expenses",
         "Monthly Expenses",
-        K.F_EXPENSE_FIXED,
+        K.F_EXPENSE_RECURRING,
         {"amount_monthly": 3000.0}
         # No routing needed - Journal system handles automatically
     )
@@ -67,8 +67,16 @@ def main():
     e.create_scenario(
         "demo_scenario",
         "Demo Scenario",
-        brick_ids=["cash", "etf", "property", "mortgage", "salary", "expenses"],
-        macrobrick_ids=["investments", "real_estate"],
+        brick_ids=[
+            "cash",
+            "etf",
+            "property",
+            "mortgage",
+            "salary",
+            "expenses",
+            "investments",
+            "real_estate",
+        ],
         settlement_default_cash_id="cash",
     )
 

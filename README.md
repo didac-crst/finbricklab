@@ -56,7 +56,7 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
   * Liability → `IScheduleStrategy`
   * Flow → `IFlowStrategy`
   * Transfer → `ITransferStrategy` (new)
-* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.loan.annuity`, `t.transfer.lumpsum`).
+* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `K.A_CASH`, `K.L_LOAN_ANNUITY`, `K.T_TRANSFER_LUMP_SUM`).
 * **Journal**: double-entry bookkeeping system that records all financial transactions with proper accounting invariants.
 * **Scenario**: orchestrates bricks, compiles to Journal entries, aggregates totals, exports results.
 * **Entity**: groups multiple scenarios for comparison, benchmarking, and visualization.
@@ -322,17 +322,19 @@ from datetime import date
 from finbricklab import Scenario, ABrick, LBrick
 
 # 1) Bricks
+from finbricklab.core.kinds import K
+
 cash = ABrick(
     id="cash",
     name="Main Cash",
-    kind="a.cash",
+    kind=K.A_CASH,
     spec={"initial_balance": 50_000.0, "interest_pa": 0.02},
 )
 
 house = ABrick(
     id="house",
     name="Primary Residence",
-    kind="a.property",
+    kind=K.A_PROPERTY,
     spec={
         "initial_value": 400_000.0,
         "appreciation_pa": 0.03,
@@ -344,7 +346,7 @@ house = ABrick(
 mortgage = LBrick(
     id="mortgage",
     name="Fixed Mortgage",
-    kind="l.loan.annuity",
+    kind=K.L_LOAN_ANNUITY,
     spec={
         "principal": 320_000.0,
         "rate_pa": 0.035,
@@ -380,7 +382,7 @@ savings  = ABrick(id="savings",  name="Savings",  kind=K.A_CASH, spec={"initial_
 salary = FBrick(
     id="salary",
     name="Salary",
-    kind=K.F_INCOME_FIXED,
+    kind=K.F_INCOME_RECURRING,
     spec={"amount_monthly": 3000.0}
     # No routing needed - Journal system handles automatically
 )
@@ -388,7 +390,7 @@ salary = FBrick(
 rent = FBrick(
     id="rent",
     name="Rent",
-    kind=K.F_EXPENSE_FIXED,
+    kind=K.F_EXPENSE_RECURRING,
     spec={"amount_monthly": 1200.0}
     # No routing needed - Journal system handles automatically
 )
@@ -453,7 +455,7 @@ entity.new_ABrick(
 entity.new_FBrick(
     id="salary",
     name="Monthly Salary",
-    kind=K.F_INCOME_FIXED,
+    kind=K.F_INCOME_RECURRING,
     spec={"amount_monthly": 6000.0},
     links={"route": {"to": "checking"}}
 )
@@ -527,16 +529,16 @@ from finbricklab.charts import net_worth_vs_time, asset_composition_small_multip
 def create_conservative_scenario():
     cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
                   spec={"initial_balance": 50000.0})
-    etf = ABrick(id="etf", name="ETF", kind=K.A_ETF_UNITIZED,
+    etf = ABrick(id="etf", name="ETF", kind=K.A_SECURITY_UNITIZED,
                  spec={"price0": 100.0, "drift_pa": 0.05, "initial_value": 30000.0})
     return Scenario(id="conservative", name="Conservative", bricks=[cash, etf])
 
 def create_aggressive_scenario():
     cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
                   spec={"initial_balance": 20000.0})
-    house = ABrick(id="house", name="House", kind=K.A_PROPERTY_DISCRETE,
+    house = ABrick(id="house", name="House", kind=K.A_PROPERTY,
                    spec={"initial_value": 400000.0, "appreciation_pa": 0.03, "fees_pct": 0.05})
-    mortgage = LBrick(id="mortgage", name="Mortgage", kind=K.L_MORT_ANN,
+    mortgage = LBrick(id="mortgage", name="Mortgage", kind=K.L_LOAN_ANNUITY,
                       spec={"principal": 320000.0, "rate_pa": 0.035, "term_months": 360})
     return Scenario(id="aggressive", name="Aggressive", bricks=[cash, house, mortgage])
 
@@ -634,15 +636,21 @@ finbrick validate -i demo.json
 
 | Family    | Kind                  | What it models                   | Key `spec` fields (examples)                                                      |
 | --------- | --------------------- | -------------------------------- | --------------------------------------------------------------------------------- |
-| Asset     | `a.cash`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`                                                  |
-| Asset     | `a.property` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
-| Asset     | `a.security.unitized`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
-| Liability | `l.loan.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
-| Flow      | `f.income.recurring`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
-| Flow      | `f.expense.recurring`     | Fixed recurring expense          | `amount_m`, `start_date?`, `end_date?`                                            |
-| Transfer  | `t.transfer.lumpsum`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
-| Transfer  | `t.transfer.recurring`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
-| Transfer  | `t.transfer.scheduled`| Scheduled internal transfers     | `schedule` (list of transfer events)                                              |
+| Asset     | `K.A_CASH`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`                                                  |
+| Asset     | `K.A_PROPERTY` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
+| Asset     | `K.A_SECURITY_UNITIZED`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
+| Asset     | `K.A_PRIVATE_EQUITY`      | Private equity investment        | `initial_value`, `drift_pa`, `valuation_frequency` |
+| Liability | `K.L_LOAN_ANNUITY`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
+| Liability | `K.L_LOAN_BALLOON`  | Balloon payment loan             | `principal`, `rate_pa`, `term_months`, `amortization`, `balloon_at_maturity` |
+| Liability | `K.L_CREDIT_LINE`  | Revolving credit line            | `credit_limit`, `rate_pa`, `min_payment`, `billing_day` |
+| Liability | `K.L_CREDIT_FIXED`  | Fixed-term credit                | `principal`, `rate_pa`, `term_months`, `start_date` |
+| Flow      | `K.F_INCOME_RECURRING`      | Fixed recurring income           | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_INCOME_ONE_TIME`      | One-time income                  | `amount`, `date`, `tax_rate?` |
+| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed recurring expense          | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_EXPENSE_ONE_TIME`     | One-time expense                 | `amount`, `date`, `tax_deductible?`, `tax_rate?` |
+| Transfer  | `K.T_TRANSFER_LUMP_SUM`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
+| Transfer  | `K.T_TRANSFER_RECURRING`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
+| Transfer  | `K.T_TRANSFER_SCHEDULED`| Scheduled internal transfers     | `schedule` (list of transfer events)                                              |
 
 > For full specs, see `src/finbricklab/strategies/` and the tests under `tests/`.
 
@@ -653,7 +661,7 @@ finbrick validate -i demo.json
 Each strategy returns a conceptual **`BrickOutput`**:
 
 * `cash_in[T]`, `cash_out[T]` — arrays aligned to the scenario timeline
-* `asset_value[T]`, `debt_balance[T]` — arrays aligned to the timeline
+* `assets[T]`, `liabilities[T]` — arrays aligned to the timeline
 * `events[]` — optional discrete events (fees, prepayments, etc.)
 
 A **Scenario run** returns a structure that includes:
