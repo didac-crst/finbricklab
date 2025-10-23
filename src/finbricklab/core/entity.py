@@ -533,25 +533,23 @@ class Entity:
         self,
         id: str,
         name: str,
-        brick_ids: list[str] | None = None,
-        macrobrick_ids: list[str] | None = None,
+        brick_ids: list[str],
         currency: str | None = None,
         settlement_default_cash_id: str | None = None,
         validate: bool = True,
         **config_kwargs,
     ) -> Scenario:
         """
-        Create a scenario using brick and MacroBrick IDs.
+        Create a scenario using unified brick references.
 
-        This method creates a new scenario by selecting bricks and MacroBricks
-        from the entity's catalog, expanding MacroBricks to their constituent
-        bricks, and performing validation.
+        This method creates a new scenario by selecting bricks and/or MacroBricks
+        from the entity's catalog. MacroBricks are automatically expanded to their
+        constituent bricks with cycle detection and order preservation.
 
         Args:
             id: Unique identifier for the scenario
             name: Human-readable name for the scenario
-            brick_ids: List of brick IDs to include
-            macrobrick_ids: List of MacroBrick IDs to include and expand
+            brick_ids: List of brick IDs and/or MacroBrick IDs to include
             currency: Currency for the scenario (defaults to entity's base_currency)
             settlement_default_cash_id: Default cash account ID for routing
             validate: Whether to validate the scenario structure
@@ -562,7 +560,7 @@ class Entity:
 
         Raises:
             ValueError: If scenario ID already exists
-            ScenarioValidationError: If validation fails
+            ScenarioValidationError: If validation fails or cycles detected
 
         Note:
             Ensure strategies are registered (e.g., import finbricklab.strategies)
@@ -571,75 +569,62 @@ class Entity:
         if id in self._scenarios:
             raise ValueError(f"Scenario ID '{id}' already exists")
 
-        # Build a temporary registry over the whole catalog
+        # Build a full registry of all catalog items for validation/expansion
         reg_full = Registry(self._bricks, self._macrobricks)
 
-        # Compute included brick ids
-        included: set[str] = set(brick_ids or [])
-        for mb_id in macrobrick_ids or []:
-            if not reg_full.is_macrobrick(mb_id):
-                raise ScenarioValidationError(
-                    id, f"Unknown MacroBrick '{mb_id}'", problem_ids=[mb_id]
-                )
-            included.update(reg_full.get_struct_flat_members(mb_id))
+        def expand(ids: list[str]) -> tuple[list[str], set[str]]:
+            """Expand MacroBricks recursively with cycle detection and deduplication."""
+            out: list[str] = []
+            seen = set()
+            all_macrobricks = set()
 
-        # Validate all included bricks exist
-        missing = [bid for bid in included if not reg_full.is_brick(bid)]
-        if missing:
-            raise ScenarioValidationError(id, "Unknown brick IDs", problem_ids=missing)
+            def push(brick_id: str):
+                if brick_id not in seen:
+                    out.append(brick_id)
+                    seen.add(brick_id)
 
-        # Build a minimal registry for this scenario
-        scen_bricks = [clone_brick(self._bricks[bid]) for bid in sorted(included)]
+            def dfs(item_id: str, stack: set[str], path: list[str]):
+                if reg_full.is_macrobrick(item_id):
+                    all_macrobricks.add(item_id)
+                    if item_id in stack:
+                        cycle_path = " → ".join(path + [item_id])
+                        raise ScenarioValidationError(
+                            id, f"Cycle in MacroBricks: {cycle_path}", [item_id]
+                        )
+                    stack.add(item_id)
+                    path.append(item_id)
+                    
+                    # Cap recursion depth
+                    if len(path) > 64:
+                        raise ScenarioValidationError(
+                            id, f"MacroBrick nesting too deep: {len(path)} levels", [item_id]
+                        )
+                    
+                    # Get the MacroBrick and traverse its members directly
+                    macro = reg_full.get_macrobrick(item_id)
+                    for member_id in macro.members:
+                        dfs(member_id, stack, path)
+                    
+                    stack.remove(item_id)
+                    path.pop()
+                elif reg_full.is_brick(item_id):
+                    push(item_id)
+                else:
+                    raise ScenarioValidationError(
+                        id, f"Unknown id '{item_id}'", [item_id]
+                    )
 
-        # Include all MacroBricks that are referenced (including nested ones)
-        all_macrobrick_ids = set(macrobrick_ids or [])
+            for item_id in ids or []:
+                dfs(item_id, set(), [])
+            return out, all_macrobricks
 
-        # Recursively collect all MacroBricks referenced in the expansion
-        def collect_macrobricks(mb_id: str, seen: set[str]):
-            if mb_id in seen:
-                return  # Avoid infinite recursion
-            seen.add(mb_id)
-            if mb_id in self._macrobricks:
-                macrobrick = self._macrobricks[mb_id]
-                for member_id in macrobrick.members:
-                    if member_id in self._macrobricks:
-                        all_macrobrick_ids.add(member_id)  # Add nested MacroBrick
-                        collect_macrobricks(member_id, seen)
+        included_ids, all_macrobricks = expand(brick_ids)
 
-        for mb_id in macrobrick_ids or []:
-            collect_macrobricks(mb_id, all_macrobrick_ids)
-
-        # Sort MacroBricks in dependency order (dependencies first)
-        def topological_sort(mb_ids: set[str]) -> list[str]:
-            """Sort MacroBricks in dependency order."""
-            result = []
-            visited = set()
-            visiting = set()
-
-            def visit(mb_id: str):
-                if mb_id in visiting:
-                    raise ValueError(f"Circular dependency detected involving {mb_id}")
-                if mb_id in visited:
-                    return
-
-                visiting.add(mb_id)
-                if mb_id in self._macrobricks:
-                    macrobrick = self._macrobricks[mb_id]
-                    for member_id in macrobrick.members:
-                        if member_id in self._macrobricks:
-                            visit(member_id)
-
-                visiting.remove(mb_id)
-                visited.add(mb_id)
-                result.append(mb_id)
-
-            for mb_id in sorted(mb_ids):
-                visit(mb_id)
-
-            return result
-
-        sorted_mb_ids = topological_sort(all_macrobrick_ids)
-        scen_mbs = [deepcopy(self._macrobricks[mid]) for mid in sorted_mb_ids]
+        # Build a **scenario-local** registry of only the included bricks + all macrobricks (for rollups)
+        scen_bricks = [clone_brick(self._bricks[bid]) for bid in included_ids]
+        
+        # Include all referenced MacroBricks for rollup analysis
+        scen_mbs = [deepcopy(self._macrobricks[mid]) for mid in sorted(all_macrobricks)]
 
         scenario = Scenario(
             id=id,
@@ -656,7 +641,7 @@ class Entity:
             if not getattr(report, "is_valid", lambda: True)():
                 # Collect top offending ids if the report exposes them; else fallback to selection
                 problem_ids = (
-                    getattr(report, "problem_ids", None) or sorted(included)[:10]
+                    getattr(report, "problem_ids", None) or sorted(included_ids)[:10]
                 )
                 raise ScenarioValidationError(
                     id, "Validation failed", report=report, problem_ids=problem_ids

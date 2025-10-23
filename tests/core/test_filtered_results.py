@@ -53,8 +53,7 @@ def _create_test_scenario():
     scenario = e.create_scenario(
         "test_scenario",
         "Test Scenario",
-        brick_ids=["cash", "etf", "mortgage", "salary", "rent"],
-        macrobrick_ids=["investments", "housing"],
+        brick_ids=["cash", "etf", "mortgage", "salary", "rent", "investments", "housing"],
         settlement_default_cash_id="cash",
     )
 
