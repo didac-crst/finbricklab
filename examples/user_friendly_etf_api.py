@@ -24,8 +24,9 @@ def main():
     # Salary income
     entity.new_FBrick(id="salary", name="Salary", kind=K.F_INCOME_FIXED, 
                       start_date=date(2026, 2, 1),
-                      spec={"amount_monthly": 5000.0},
-                      links={"route": {"to": "checking"}})
+                      spec={"amount_monthly": 5000.0}
+                      # No routing needed - Journal system handles automatically
+                      )
     
     # ETF with user-friendly configuration
     print("Creating ETF with user-friendly parameters:")

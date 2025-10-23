@@ -23,9 +23,13 @@ class K:
     L_MORT_ANN = "l.mortgage.annuity"
 
     # Flow kinds
-    F_TRANSFER_LUMP_SUM = "f.transfer.lumpsum"
     F_INCOME_FIXED = "f.income.fixed"
     F_EXPENSE_FIXED = "f.expense.fixed"
+    
+    # Transfer kinds
+    T_TRANSFER_LUMP_SUM = "t.transfer.lumpsum"
+    T_TRANSFER_RECURRING = "t.transfer.recurring"
+    T_TRANSFER_SCHEDULED = "t.transfer.scheduled"
 
     # Validation: ensure all registered kinds are covered
     @classmethod
@@ -36,7 +40,9 @@ class K:
             cls.A_PROPERTY_DISCRETE,
             cls.A_ETF_UNITIZED,
             cls.L_MORT_ANN,
-            cls.F_TRANSFER_LUMP_SUM,
             cls.F_INCOME_FIXED,
             cls.F_EXPENSE_FIXED,
+            cls.T_TRANSFER_LUMP_SUM,
+            cls.T_TRANSFER_RECURRING,
+            cls.T_TRANSFER_SCHEDULED,
         ]

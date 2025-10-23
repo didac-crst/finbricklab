@@ -5,6 +5,7 @@ Comprehensive examples demonstrating FinBrickLab capabilities.
 ## Table of Contents
 
 * [Basic Scenarios](#basic-scenarios)
+* [Journal System Examples](#journal-system-examples)
 * [Entity Comparisons](#entity-comparisons)
 * [Advanced Patterns](#advanced-patterns)
 * [Visualization Examples](#visualization-examples)
@@ -123,6 +124,161 @@ buy_net_worth = buy_results['totals']['assets'].iloc[-1] - buy_results['totals']
 print(f"Rent net worth: ${rent_net_worth:,.2f}")
 print(f"Buy net worth: ${buy_net_worth:,.2f}")
 print(f"Buy advantage: ${buy_net_worth - rent_net_worth:,.2f}")
+```
+
+---
+
+## Journal System Examples
+
+### Basic Journal Usage
+
+```python
+from finbricklab import Entity
+from finbricklab.core.kinds import K
+
+# Create entity with Journal-based system
+entity = Entity('person', 'John Doe')
+
+# Create cash accounts
+checking = entity.new_ABrick('checking', 'Checking', K.A_CASH, {'initial_balance': 5000.0})
+savings = entity.new_ABrick('savings', 'Savings', K.A_CASH, {'initial_balance': 10000.0})
+
+# Create income and expense flows
+salary = entity.new_FBrick('salary', 'Salary', K.F_INCOME_FIXED, {'amount_monthly': 6000.0})
+rent = entity.new_FBrick('rent', 'Rent', K.F_EXPENSE_FIXED, {'amount_monthly': 2000.0})
+
+# Create internal transfer
+monthly_save = entity.new_TBrick(
+    'monthly_save',
+    'Monthly Savings',
+    K.T_TRANSFER_RECURRING,
+    {'amount': 1000.0, 'currency': 'EUR', 'freq': 'MONTHLY', 'day': 1},
+    {'from': 'checking', 'to': 'savings'}
+)
+
+# Create scenario
+scenario = entity.create_scenario('journal_demo', 'Journal Demo', 
+                                ['checking', 'savings', 'salary', 'rent', 'monthly_save'])
+results = scenario.run(start=date(2026, 1, 1), months=12)
+
+# Check results
+print(f"Final checking balance: {results['outputs']['checking']['asset_value'][-1]:.2f}")
+print(f"Final savings balance: {results['outputs']['savings']['asset_value'][-1]:.2f}")
+```
+
+### Multi-Currency Journal
+
+```python
+from finbricklab.core.currency import create_amount, EUR, USD
+
+# Create multi-currency scenario
+entity = Entity('international', 'International Person')
+
+# EUR accounts
+eur_cash = entity.new_ABrick('eur_cash', 'EUR Cash', K.A_CASH, {'initial_balance': 10000.0})
+
+# USD accounts  
+usd_cash = entity.new_ABrick('usd_cash', 'USD Cash', K.A_CASH, {'initial_balance': 5000.0})
+
+# EUR income
+eur_salary = entity.new_FBrick('eur_salary', 'EUR Salary', K.F_INCOME_FIXED, 
+                              {'amount_monthly': 5000.0, 'currency': 'EUR'})
+
+# USD income
+usd_salary = entity.new_FBrick('usd_salary', 'USD Salary', K.F_INCOME_FIXED,
+                              {'amount_monthly': 3000.0, 'currency': 'USD'})
+
+# Cross-currency transfer
+fx_transfer = entity.new_TBrick(
+    'fx_transfer',
+    'FX Transfer',
+    K.T_TRANSFER_LUMP_SUM,
+    {'amount': 1000.0, 'currency': 'USD'},
+    {'from': 'usd_cash', 'to': 'eur_cash'}
+)
+
+scenario = entity.create_scenario('multi_currency', 'Multi-Currency', 
+                                ['eur_cash', 'usd_cash', 'eur_salary', 'usd_salary', 'fx_transfer'])
+results = scenario.run(start=date(2026, 1, 1), months=6)
+```
+
+### Journal Validation
+
+```python
+from finbricklab.core.accounts import Account, AccountRegistry, AccountScope, AccountType
+from finbricklab.core.journal import Journal, JournalEntry, Posting
+from finbricklab.core.currency import create_amount
+
+# Create account registry
+registry = AccountRegistry()
+journal = Journal(registry)
+
+# Register accounts
+registry.register_account(Account("cash", "Cash", AccountScope.INTERNAL, AccountType.ASSET))
+registry.register_account(Account("income", "Income", AccountScope.BOUNDARY, AccountType.INCOME))
+
+# Create valid entry
+entry = JournalEntry(
+    id="income_entry",
+    timestamp=date(2026, 1, 1),
+    postings=[
+        Posting("income", create_amount(-1000, "EUR"), {"type": "income"}),
+        Posting("cash", create_amount(1000, "EUR"), {"type": "cash_in"})
+    ],
+    metadata={"type": "income"}
+)
+
+# Post entry
+journal.post(entry)
+
+# Validate invariants
+errors = journal.validate_invariants(registry)
+if errors:
+    print(f"Validation errors: {errors}")
+else:
+    print("Journal is valid!")
+
+# Check balances
+cash_balance = journal.balance("cash", "EUR")
+income_balance = journal.balance("income", "EUR")
+print(f"Cash balance: {cash_balance}")
+print(f"Income balance: {income_balance}")
+```
+
+### Transfer Brick Examples
+
+```python
+# One-time transfer
+emergency_transfer = entity.new_TBrick(
+    'emergency_transfer',
+    'Emergency Transfer',
+    K.T_TRANSFER_LUMP_SUM,
+    {'amount': 2000.0, 'currency': 'EUR'},
+    {'from': 'savings', 'to': 'checking'}
+)
+
+# Recurring transfer
+monthly_investment = entity.new_TBrick(
+    'monthly_investment',
+    'Monthly Investment',
+    K.T_TRANSFER_RECURRING,
+    {'amount': 500.0, 'currency': 'EUR', 'freq': 'MONTHLY', 'day': 15},
+    {'from': 'checking', 'to': 'investment'}
+)
+
+# Scheduled transfers
+bonus_transfers = entity.new_TBrick(
+    'bonus_transfers',
+    'Bonus Transfers',
+    K.T_TRANSFER_SCHEDULED,
+    {
+        'schedule': [
+            {'date': '2026-06-01', 'amount': 5000.0, 'currency': 'EUR'},
+            {'date': '2026-12-01', 'amount': 3000.0, 'currency': 'EUR'}
+        ]
+    },
+    {'from': 'checking', 'to': 'savings'}
+)
 ```
 
 ---

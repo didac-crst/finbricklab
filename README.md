@@ -55,8 +55,10 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
   * Asset → `IValuationStrategy`
   * Liability → `IScheduleStrategy`
   * Flow → `IFlowStrategy`
-* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`).
-* **Scenario**: orchestrates bricks, routes cash, aggregates totals, exports results.
+  * Transfer → `ITransferStrategy` (new)
+* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`, `t.transfer.lumpsum`).
+* **Journal**: double-entry bookkeeping system that records all financial transactions with proper accounting invariants.
+* **Scenario**: orchestrates bricks, compiles to Journal entries, aggregates totals, exports results.
 * **Entity**: groups multiple scenarios for comparison, benchmarking, and visualization.
 * **Context**: timeline + shared configuration available in `prepare()` and `simulate()`.
 * **MacroBrick**: composite structure grouping heterogeneous bricks into named views for analysis and presentation.
@@ -150,6 +152,63 @@ graph TB
   classDef macrobrick fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
   classDef finbrick fill:#bd10e0,stroke:#9013fe,stroke-width:2px,color:#fff;
 ```
+
+---
+
+## Journal System
+
+FinBrickLab now uses a **double-entry bookkeeping system** to ensure financial accuracy and consistency:
+
+### Key Features
+
+- **Double-Entry**: Every transaction has balanced debits and credits
+- **Account Scopes**: Internal accounts (cash, assets) vs Boundary accounts (income, expenses)
+- **Currency Precision**: Decimal arithmetic with currency-specific quantization
+- **Invariant Validation**: Automatic checking of accounting rules
+- **Deterministic**: Repeatable runs with stable transaction IDs
+
+### Account Types
+
+| Scope     | Type      | Examples                    | Purpose                    |
+|-----------|-----------|-----------------------------|----------------------------|
+| Internal  | Asset     | Cash accounts, investments  | Money within the system   |
+| Internal  | Liability | Mortgages, loans            | Debts within the system   |
+| Boundary  | Income    | Salary, dividends           | Money entering system     |
+| Boundary  | Expense   | Rent, groceries             | Money leaving system      |
+| Boundary  | P&L       | Unrealized gains, FX        | Profit/loss tracking      |
+| Boundary  | Equity    | Opening balance             | Net worth reconciliation  |
+
+### Transfer Bricks
+
+New **TBrick** family for internal transfers between accounts:
+
+```python
+# One-time transfer
+transfer = TBrick(
+    id="emergency_transfer",
+    name="Emergency Transfer", 
+    kind="t.transfer.lumpsum",
+    spec={"amount": 5000.0, "currency": "EUR"},
+    links={"from": "checking", "to": "savings"}
+)
+
+# Recurring transfer
+monthly_save = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind="t.transfer.recurring", 
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+### Journal Validation
+
+The system automatically validates:
+- **Zero-sum entries**: All transactions balance to zero
+- **Account scopes**: Transfers only between internal accounts
+- **Net worth consistency**: Total assets = liabilities + equity
+- **Currency precision**: Proper decimal handling per currency
 
 ---
 
@@ -310,8 +369,7 @@ print("Final liabilities:", totals.iloc[-1]["liabilities"])
 
 ### Multi-cash routing
 
-You can hold multiple `a.cash` accounts in one Scenario and route flows to
-specific accounts using `links.route`:
+The Journal system automatically routes flows to all cash accounts by default, ensuring proper double-entry bookkeeping:
 
 ```python
 from finbricklab.core.kinds import K
@@ -323,30 +381,43 @@ salary = FBrick(
     id="salary",
     name="Salary",
     kind=K.F_INCOME_FIXED,
-    spec={"amount_monthly": 3000.0},
-    links={"route": {"to": {"checking": 0.7, "savings": 0.3}}},   # split cash_in
+    spec={"amount_monthly": 3000.0}
+    # No routing needed - Journal system handles automatically
 )
 
 rent = FBrick(
     id="rent",
-    name="Rent",
+    name="Rent", 
     kind=K.F_EXPENSE_FIXED,
-    spec={"amount_monthly": 1200.0},
-    links={"route": {"from": "checking"}},                        # pay cash_out
+    spec={"amount_monthly": 1200.0}
+    # No routing needed - Journal system handles automatically
 )
 
 scenario = Scenario(
     id="multi-cash",
     name="Multi-cash routing",
-    bricks=[checking, savings, salary, rent],
-    settlement_default_cash_id="checking"
+    bricks=[checking, savings, salary, rent]
 )
 
 results = scenario.run(start=date(2026, 1, 1), months=12)
 ```
 
-If `links.route` is omitted, flows default to `scenario.settlement_default_cash_id`
-(or the first cash account in the selection).
+### Internal Transfers
+
+Use **TBrick** for explicit transfers between accounts:
+
+```python
+# Transfer money between accounts
+transfer = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind="t.transfer.recurring",
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+The Journal system ensures all transfers are properly balanced and validated.
 
 ---
 
@@ -569,6 +640,9 @@ finbrick validate -i demo.json
 | Liability | `l.mortgage.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
 | Flow      | `f.income.fixed`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
 | Flow      | `f.expense.fixed`     | Fixed recurring expense          | `amount_m`, `start_date?`, `end_date?`                                            |
+| Transfer  | `t.transfer.lumpsum`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
+| Transfer  | `t.transfer.recurring`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
+| Transfer  | `t.transfer.scheduled`| Scheduled internal transfers     | `schedule` (list of transfer events)                                              |
 
 > For full specs, see `src/finbricklab/strategies/` and the tests under `tests/`.
 

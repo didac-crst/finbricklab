@@ -20,22 +20,78 @@ Complete reference for all classes, functions, and modules in FinBrickLab.
 
 ```python
 class Scenario:
-    """Financial scenario orchestrator."""
+    """Financial scenario orchestrator with Journal-based bookkeeping."""
 
     def __init__(self, id: str, name: str, bricks: List[FinBrickABC]):
         """Initialize scenario with bricks."""
 
     def run(self, start: date, months: int) -> ScenarioResults:
-        """Run scenario simulation."""
+        """Run scenario simulation with Journal compilation."""
 
     def to_canonical_frame(self) -> pd.DataFrame:
         """Convert to canonical schema for Entity comparison."""
 ```
 
 **Key Methods:**
-- `run(start, months)` - Execute simulation
+- `run(start, months)` - Execute simulation with Journal compilation
 - `to_canonical_frame()` - Export to Entity-compatible format
 - `validate()` - Check configuration validity
+
+### Journal System
+
+```python
+class Journal:
+    """Double-entry bookkeeping system for financial transactions."""
+
+    def __init__(self, account_registry: AccountRegistry):
+        """Initialize journal with account registry."""
+
+    def post(self, entry: JournalEntry) -> None:
+        """Post a journal entry to the ledger."""
+
+    def balance(self, account_id: str, currency: str) -> Decimal:
+        """Get account balance for specific currency."""
+
+    def trial_balance(self) -> Dict[str, Dict[str, Decimal]]:
+        """Get trial balance for all accounts."""
+
+    def validate_invariants(self, registry: AccountRegistry) -> List[str]:
+        """Validate journal invariants and return any errors."""
+```
+
+### Account System
+
+```python
+class Account:
+    """Financial account with scope and type classification."""
+
+    def __init__(self, id: str, name: str, scope: AccountScope, account_type: AccountType):
+        """Initialize account with scope and type."""
+
+class AccountRegistry:
+    """Registry for managing account definitions and validation."""
+
+    def register_account(self, account: Account) -> None:
+        """Register an account in the registry."""
+
+    def validate_transfer_accounts(self, from_id: str, to_id: str) -> None:
+        """Validate that transfer accounts are internal."""
+```
+
+### Transfer Bricks
+
+```python
+class TBrick(FinBrickABC):
+    """Transfer brick for internal account transfers."""
+
+    def __init__(self, id: str, name: str, kind: str, spec: Dict, links: Dict):
+        """Initialize transfer brick with from/to account links."""
+```
+
+**Transfer Kinds:**
+- `t.transfer.lumpsum` - One-time transfer
+- `t.transfer.recurring` - Recurring transfer
+- `t.transfer.scheduled` - Scheduled transfers
 
 ### FinBrickABC
 

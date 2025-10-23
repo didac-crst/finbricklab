@@ -18,7 +18,6 @@ making them available for use by bricks with matching kind discriminators.
 from .flow import (
     FlowExpenseFixed,
     FlowIncomeFixed,
-    FlowTransferLumpSum,
 )
 from .registry import register_defaults
 from .schedule import (
@@ -41,7 +40,6 @@ __all__ = [
     # Schedule strategies
     "ScheduleMortgageAnnuity",
     # Flow strategies
-    "FlowTransferLumpSum",
     "FlowIncomeFixed",
     "FlowExpenseFixed",
     # Registry

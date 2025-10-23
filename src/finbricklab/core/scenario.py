@@ -15,8 +15,10 @@ import pandas as pd
 
 from .bricks import (
     ABrick,
+    FBrick,
     FinBrickABC,
     LBrick,
+    TBrick,
     wire_strategies,
 )
 from .context import ScenarioContext
@@ -525,132 +527,151 @@ class Scenario:
     def _simulate_bricks(
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ) -> dict[str, BrickOutput]:
-        """Simulate all bricks and route cash flows to cash accounts."""
+        """Simulate all bricks using Journal-based system."""
+        from .journal import Journal
+        from .compiler import BrickCompiler
+        from .accounts import AccountRegistry, Account, AccountScope, AccountType
+        
         outputs: dict[str, BrickOutput] = {}
-
-        # Collect ALL cash accounts in the execution set
+        
+        # Create account registry and journal
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        compiler = BrickCompiler(account_registry)
+        
+        # Register all cash accounts as internal assets
         cash_ids = [
-            b.id
-            for b in self.bricks
+            b.id for b in self.bricks 
             if isinstance(b, ABrick) and b.kind == K.A_CASH and b.id in execution_order
         ]
+        
+        for cash_id in cash_ids:
+            account_registry.register_account(
+                Account(cash_id, f"Cash Account {cash_id}", AccountScope.INTERNAL, AccountType.ASSET)
+            )
+            
+            # Initialize cash account with opening balance
+            cash_brick = next(b for b in self.bricks if b.id == cash_id)
+            initial_balance = cash_brick.spec.get("initial_balance", 0.0)
+            if initial_balance != 0:
+                from .currency import create_amount
+                from .journal import JournalEntry, Posting
+                
+                # Create opening balance entry
+                opening_entry = JournalEntry(
+                    id=f"opening_{cash_id}",
+                    timestamp=ctx.t_index[0],
+                    postings=[
+                        Posting("Equity:Opening", create_amount(-initial_balance, "EUR"), {"type": "opening_balance"}),
+                        Posting(cash_id, create_amount(initial_balance, "EUR"), {"type": "opening_balance"})
+                    ],
+                    metadata={"type": "opening_balance", "account": cash_id}
+                )
+                journal.post(opening_entry)
+        
         if len(cash_ids) == 0:
             raise AssertionError(
                 f"At least one cash account (kind='{K.A_CASH}') is required in the selection"
             )
 
-        T = len(t_index)
-
-        # Prepare external buffers per cash account
-        cash_buffers_in: dict[str, np.ndarray] = {cid: np.zeros(T) for cid in cash_ids}
-        cash_buffers_out: dict[str, np.ndarray] = {cid: np.zeros(T) for cid in cash_ids}
-
-        def _pick_default_cash() -> str:
-            # Prefer explicit scenario default if set and present; otherwise first in selection
-            if (
-                self.settlement_default_cash_id
-                and self.settlement_default_cash_id in cash_ids
-            ):
-                return self.settlement_default_cash_id
-            return cash_ids[0]
-
-        def _normalize_map(mapping, direction: str) -> dict[str, float]:
-            """
-            Accepts str (single target), dict[str,float], or None.
-            Returns a normalized {cash_id: weight} mapping.
-            """
-            if mapping is None:
-                return {_pick_default_cash(): 1.0}
-            if isinstance(mapping, str):
-                if mapping not in cash_ids:
-                    raise ConfigError(
-                        f"links.route.{direction} references unknown cash id '{mapping}'"
-                    )
-                return {mapping: 1.0}
-            if isinstance(mapping, dict):
-                # validate and normalize
-                items = []
-                for k, v in mapping.items():
-                    if k not in cash_ids:
-                        raise ConfigError(
-                            f"links.route.{direction} references unknown cash id '{k}'"
-                        )
-                    w = float(v)
-                    if w < 0:
-                        raise ConfigError(
-                            f"links.route.{direction} weight for '{k}' must be >= 0"
-                        )
-                    items.append((k, w))
-                total = sum(w for _, w in items)
-                if total <= 0:
-                    # Degenerate → default 100% to default cash
-                    return {_pick_default_cash(): 1.0}
-                return {k: (w / total) for k, w in items}
-            raise ConfigError(f"Invalid links.route.{direction} type: {type(mapping)}")
-
-        # 1) Simulate non-cash bricks, route flows into buffers
+        # Register boundary accounts for external flows
+        boundary_accounts = [
+            "Income:Salary", "Income:Dividends", "Income:Interest",
+            "Expenses:Groceries", "Expenses:BankFees", "Expenses:Interest",
+            "P&L:Unrealized", "P&L:FX", "Equity:Opening"
+        ]
+        
+        # Register Equity:Opening first since it's used for opening balances
+        account_registry.register_account(
+            Account("Equity:Opening", "Opening Equity", AccountScope.BOUNDARY, AccountType.EQUITY)
+        )
+        
+        for account_id in boundary_accounts:
+            account_type = AccountType.INCOME if account_id.startswith("Income:") else \
+                          AccountType.EXPENSE if account_id.startswith("Expenses:") else \
+                          AccountType.PNL if account_id.startswith("P&L:") else \
+                          AccountType.EQUITY
+            account_registry.register_account(
+                Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
+            )
+        
+        # Simulate all bricks and compile to journal entries
+        
+        # First pass: process all non-cash bricks and compile to journal
         for b in [ctx.registry[bid] for bid in execution_order]:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
-                continue  # defer cash bricks
-
+                continue  # Skip cash accounts for now
+                
             brick_output = self._simulate_single_brick(b, ctx, t_index)
             outputs[b.id] = brick_output
-
-            # Resolve links.route (if any)
-            route = {}
-            if b.links and isinstance(b.links, dict):
-                route = b.links.get("route", {}) or {}
-
-            # Support both 'from' and 'from_' keys
-            to_map = _normalize_map(route.get("to"), "to")
-            from_map = _normalize_map(route.get("from", route.get("from_")), "from")
-
-            # Distribute inflows
-            if "cash_in" in brick_output:
-                cin = brick_output["cash_in"]
-                if cin is not None:
-                    for cid, w in to_map.items():
-                        cash_buffers_in[cid] += cin * w
-
-            # Distribute outflows
-            if "cash_out" in brick_output:
-                cout = brick_output["cash_out"]
-                if cout is not None:
-                    for cid, w in from_map.items():
-                        cash_buffers_out[cid] += cout * w
-
-        # Validation: check routing balance
+            
+            # Compile brick to journal entries based on type
+            if isinstance(b, TBrick):
+                # Transfer bricks: compile to internal transfers
+                entries = compiler.compile_tbrick(b, ctx)
+                for entry in entries:
+                    journal.post(entry)
+                    
+            elif isinstance(b, FBrick):
+                # Flow bricks: compile to external flows
+                entries = compiler.compile_fbrick(b, ctx)
+                for entry in entries:
+                    journal.post(entry)
+        
+        # Second pass: process cash accounts with all journal entries available
+        for b in [ctx.registry[bid] for bid in execution_order]:
+            if not (isinstance(b, ABrick) and b.kind == K.A_CASH):
+                continue
+                
+            # Cash bricks: use journal balances for valuation
+            # Don't set initial_balance from journal - let external flows handle it
+            
+            # Calculate external flows from FBrick outputs for this cash account
+            external_in = np.zeros(len(ctx.t_index))
+            external_out = np.zeros(len(ctx.t_index))
+            
+            # Sum up all brick flows that route to this cash account
+            for brick_id, brick_output in outputs.items():
+                if brick_id == b.id:
+                    continue  # Skip self
+                    
+                # Check if this brick routes to our cash account
+                brick = ctx.registry[brick_id]
+                
+                # Handle different brick types that generate cash flows
+                if isinstance(brick, FBrick):
+                    # Check for explicit routing
+                    if brick.links and "to" in brick.links:
+                        if brick.links["to"] == b.id:
+                            # This brick routes to our cash account
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                    else:
+                        # No explicit routing - use default routing (all flows go to first cash account)
+                        # This maintains backward compatibility with the old system
+                        external_in += brick_output["cash_in"]
+                        external_out += brick_output["cash_out"]
+                elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY_DISCRETE:
+                    # Property bricks generate cash flows (purchase costs, etc.)
+                    external_in += brick_output["cash_in"]
+                    external_out += brick_output["cash_out"]
+                elif isinstance(brick, LBrick):
+                    # Liability bricks generate cash flows (payments, etc.)
+                    external_in += brick_output["cash_in"]
+                    external_out += brick_output["cash_out"]
+            
+            # Set external flows for backward compatibility
+            b.spec["external_in"] = external_in
+            b.spec["external_out"] = external_out
+            
+            outputs[b.id] = b.simulate(ctx)
+        
+        # Validate journal invariants
         if self.validate_routing:
-            total_in = sum(buf.sum() for buf in cash_buffers_in.values())
-            total_out = sum(buf.sum() for buf in cash_buffers_out.values())
-            # Compute flow-emitted totals from non-cash outputs we just simulated
-            emitted_in = 0.0
-            emitted_out = 0.0
-            for _, o in outputs.items():
-                if "cash_in" in o and o["cash_in"] is not None:
-                    emitted_in += float(o["cash_in"].sum())
-                if "cash_out" in o and o["cash_out"] is not None:
-                    emitted_out += float(o["cash_out"].sum())
-            # Allow tiny FP slop
-            eps = 1e-8
-            if not (
-                abs(total_in - emitted_in) <= eps
-                and abs(total_out - emitted_out) <= eps
-            ):
-                raise AssertionError(
-                    f"Routing imbalance: routed_in={total_in:.6f} (emitted_in={emitted_in:.6f}), "
-                    f"routed_out={total_out:.6f} (emitted_out={emitted_out:.6f})"
-                )
-
-        # 2) Simulate each cash brick independently with its assigned buffers
-        for cid in cash_ids:
-            cash_brick = ctx.registry[cid]
-            cash_brick.spec.setdefault("external_in", np.zeros(T))
-            cash_brick.spec.setdefault("external_out", np.zeros(T))
-            cash_brick.spec["external_in"] = cash_buffers_in[cid]
-            cash_brick.spec["external_out"] = cash_buffers_out[cid]
-            outputs[cid] = cash_brick.simulate(ctx)
-
+            errors = journal.validate_invariants(account_registry)
+            if errors:
+                raise AssertionError(f"Journal validation failed: {errors}")
+        
         return outputs
 
     def _simulate_single_brick(

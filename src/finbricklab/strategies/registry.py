@@ -5,7 +5,7 @@ Strategy registry setup for FinBrickLab.
 from finbricklab.core.bricks import FlowRegistry, ScheduleRegistry, ValuationRegistry
 from finbricklab.core.kinds import K
 
-from .flow import FlowExpenseFixed, FlowIncomeFixed, FlowTransferLumpSum
+from .flow import FlowExpenseFixed, FlowIncomeFixed
 from .schedule import ScheduleMortgageAnnuity
 from .valuation import ValuationCash, ValuationETFUnitized, ValuationPropertyDiscrete
 
@@ -28,7 +28,6 @@ def register_defaults():
             - 'l.mortgage.annuity': Fixed-rate mortgage with annuity payments
 
         Flows:
-            - 'f.transfer.lumpsum': One-time lump sum transfer
             - 'f.income.fixed': Fixed recurring income
             - 'f.expense.fixed': Fixed recurring expense
 
@@ -46,6 +45,5 @@ def register_defaults():
     ScheduleRegistry[K.L_MORT_ANN] = ScheduleMortgageAnnuity()
 
     # Register cash flow strategies
-    FlowRegistry[K.F_TRANSFER_LUMP_SUM] = FlowTransferLumpSum()
     FlowRegistry[K.F_INCOME_FIXED] = FlowIncomeFixed()
     FlowRegistry[K.F_EXPENSE_FIXED] = FlowExpenseFixed()

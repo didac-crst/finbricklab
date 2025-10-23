@@ -7,6 +7,7 @@ Complete reference for all available strategies in FinBrickLab.
 * [Asset Strategies](#asset-strategies)
 * [Liability Strategies](#liability-strategies)
 * [Flow Strategies](#flow-strategies)
+* [Transfer Strategies](#transfer-strategies)
 * [Strategy Registration](#strategy-registration)
 * [Custom Strategies](#custom-strategies)
 
@@ -312,6 +313,139 @@ rent = FBrick(
 
 **Links**:
 - `from`: Source brick (typically cash account)
+
+---
+
+## Transfer Strategies
+
+### t.transfer.lumpsum
+
+**Purpose**: One-time internal transfer between accounts.
+
+**Specification**:
+```json
+{
+  "amount": 5000.0,
+  "currency": "EUR"
+}
+```
+
+**Parameters**:
+- `amount` (float): Transfer amount (must be positive)
+- `currency` (str): Currency code (e.g., "EUR", "USD")
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+transfer = TBrick(
+    id="emergency_transfer",
+    name="Emergency Transfer",
+    kind="t.transfer.lumpsum",
+    spec={"amount": 5000.0, "currency": "EUR"},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates balanced journal entries (debit from source, credit to destination)
+- Validates that both accounts are internal
+- Ensures zero-sum transaction
+
+### t.transfer.recurring
+
+**Purpose**: Recurring internal transfer between accounts.
+
+**Specification**:
+```json
+{
+  "amount": 1000.0,
+  "currency": "EUR",
+  "freq": "MONTHLY",
+  "day": 1
+}
+```
+
+**Parameters**:
+- `amount` (float): Transfer amount per period
+- `currency` (str): Currency code
+- `freq` (str): Frequency ("MONTHLY", "QUARTERLY", "YEARLY")
+- `day` (int): Day of month for monthly transfers (1-28)
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+monthly_save = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind="t.transfer.recurring",
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates recurring transfer events
+- Respects activation windows
+- Generates journal entries for each occurrence
+
+### t.transfer.scheduled
+
+**Purpose**: Scheduled internal transfers on specific dates.
+
+**Specification**:
+```json
+{
+  "schedule": [
+    {
+      "date": "2026-06-01",
+      "amount": 2000.0,
+      "currency": "EUR"
+    },
+    {
+      "date": "2026-12-01", 
+      "amount": 5000.0,
+      "currency": "EUR"
+    }
+  ]
+}
+```
+
+**Parameters**:
+- `schedule` (list): List of transfer events
+  - `date` (str): Transfer date (YYYY-MM-DD)
+  - `amount` (float): Transfer amount
+  - `currency` (str): Currency code
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+bonus_transfer = TBrick(
+    id="bonus_transfer",
+    name="Bonus Transfer",
+    kind="t.transfer.scheduled",
+    spec={
+        "schedule": [
+            {"date": "2026-06-01", "amount": 2000.0, "currency": "EUR"},
+            {"date": "2026-12-01", "amount": 5000.0, "currency": "EUR"}
+        ]
+    },
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates transfers on specified dates
+- Handles multiple currencies
+- Validates date format and amounts
 
 ---
 

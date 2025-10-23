@@ -16,7 +16,7 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
-from .bricks import ABrick, FBrick, FinBrickABC, LBrick
+from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick
 from .clone import clone_brick
 from .exceptions import ScenarioValidationError
 from .links import RouteLink
@@ -447,6 +447,53 @@ class Entity:
         _links = self._normalize_links(links)
         brick = FBrick(
             id=id, name=name, kind=kind, spec=spec, links=_links or {}, **kwargs
+        )
+        self._bricks[id] = brick
+        return brick
+
+    def new_TBrick(
+        self,
+        id: str,
+        name: str,
+        kind: str,
+        spec: dict[str, Any] | None = None,
+        links: dict[str, Any] | None = None,
+        start_date: date | None = None,
+    ) -> TBrick:
+        """
+        Create and register a new TBrick (Transfer Brick).
+
+        Args:
+            id: Unique identifier for the brick
+            name: Human-readable name for the brick
+            kind: Transfer strategy kind (e.g., 't.transfer.lumpsum')
+            spec: Strategy-specific parameters
+            links: Links to other bricks (must include 'from' and 'to' accounts)
+            start_date: Optional start date for the transfer
+
+        Returns:
+            The created TBrick object
+
+        Raises:
+            ValueError: If ID already exists or required links are missing
+        """
+        self._assert_unique_id(id)
+        
+        # Validate required links for transfers
+        if not links:
+            raise ValueError("Transfer bricks require 'links' with 'from' and 'to' accounts")
+        if "from" not in links:
+            raise ValueError("Transfer bricks must specify 'from' account")
+        if "to" not in links:
+            raise ValueError("Transfer bricks must specify 'to' account")
+        
+        brick = TBrick(
+            id=id,
+            name=name,
+            kind=kind,
+            spec=spec or {},
+            links=links,
+            start_date=start_date,
         )
         self._bricks[id] = brick
         return brick

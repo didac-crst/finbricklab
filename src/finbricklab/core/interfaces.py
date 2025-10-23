@@ -13,7 +13,7 @@ from .results import BrickOutput
 
 if TYPE_CHECKING:
     # Only imported for type checking to avoid runtime cycles
-    from .bricks import ABrick, FBrick, LBrick
+    from .bricks import ABrick, FBrick, LBrick, TBrick
 
 
 @runtime_checkable
@@ -150,4 +150,61 @@ class IFlowStrategy(Protocol):
         ...
 
 
-__all__ = ["IValuationStrategy", "IScheduleStrategy", "IFlowStrategy"]
+@runtime_checkable
+class ITransferStrategy(Protocol):
+    """Contract for TRANSFER strategies (family='t').
+
+    This protocol defines the interface for transfer strategies that move money
+    between internal accounts without affecting net worth. Transfer strategies
+    model internal movements of funds within the system.
+
+    **Use Cases:**
+    - Moving money between checking and savings accounts
+    - Transferring funds between investment accounts
+    - Internal rebalancing of portfolios
+    - Scheduled transfers (monthly savings, etc.)
+
+    **Example Implementation:**
+        ```python
+        class TransferLumpSum(ITransferStrategy):
+            def prepare(self, brick: TBrick, ctx: ScenarioContext) -> None:
+                # Validate required parameters
+                assert "amount" in brick.spec
+                assert "from" in brick.links
+                assert "to" in brick.links
+
+            def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
+                # Generate transfer at specified time
+                amount = brick.spec["amount"]
+                transfer_time = brick.window.start_date
+                
+                return BrickOutput(
+                    cash_in=np.zeros(len(ctx.t_index)),
+                    cash_out=np.zeros(len(ctx.t_index)),
+                    asset_value=np.zeros(len(ctx.t_index)),
+                    debt_balance=np.zeros(len(ctx.t_index)),
+                    events=[Event(transfer_time, "transfer", f"Transfer {amount}")]
+                )
+        ```
+
+    **Responsibilities:**
+    - Move money between internal accounts
+    - Maintain zero net worth impact
+    - Validate transfer-specific parameters in prepare()
+    - Generate appropriate events for transfers
+    """
+
+    def prepare(self, brick: TBrick, ctx: ScenarioContext) -> None:
+        """Validate inputs and initialize internal state prior to simulate()."""
+        ...
+
+    def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
+        """Run the full-period transfer simulation.
+
+        Returns:
+            BrickOutput (same schema). For transfers, asset_value/debt_balance are zeros.
+        """
+        ...
+
+
+__all__ = ["IValuationStrategy", "IScheduleStrategy", "IFlowStrategy", "ITransferStrategy"]

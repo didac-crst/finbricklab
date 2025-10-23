@@ -48,15 +48,15 @@ def main():
         "salary",
         "Salary",
         K.F_INCOME_FIXED,
-        {"amount_monthly": 8000.0},
-        links={"route": {"to": "cash"}},
+        {"amount_monthly": 8000.0}
+        # No routing needed - Journal system handles automatically
     )
     e.new_FBrick(
         "expenses",
         "Monthly Expenses",
         K.F_EXPENSE_FIXED,
-        {"amount_monthly": 3000.0},
-        links={"route": {"from": "cash"}},
+        {"amount_monthly": 3000.0}
+        # No routing needed - Journal system handles automatically
     )
 
     # Create MacroBricks
