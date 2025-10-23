@@ -129,11 +129,7 @@ class TransferRecurring(ITransferStrategy):
         else:
             raise ValueError(f"Invalid frequency: {frequency}")
 
-        # Initialize cash flow arrays
-        cash_in = np.zeros(T, dtype=float)
-        cash_out = np.zeros(T, dtype=float)
-        
-        # Generate transfer events and cash flows
+        # Generate transfer events (no cash flows for transfer bricks)
         events = []
         # Convert numpy.datetime64 to Python date object
         if brick.start_date:
@@ -147,20 +143,6 @@ class TransferRecurring(ITransferStrategy):
         while current_date <= end_date_py:
             if end_date and current_date > end_date:
                 break
-
-            # Find the month index for this transfer
-            month_idx = None
-            for i, t in enumerate(ctx.t_index):
-                if t.astype("datetime64[D]").astype(date) >= current_date:
-                    month_idx = i
-                    break
-            
-            if month_idx is not None and month_idx < T:
-                # Record cash flows for the transfer
-                # Money goes out from source account (cash_out)
-                # Money comes in to destination account (cash_in)
-                cash_out[month_idx] += float(amount)
-                cash_in[month_idx] += float(amount)
 
             # Create transfer event
             event = Event(
@@ -220,8 +202,8 @@ class TransferRecurring(ITransferStrategy):
                 current_date = current_date.replace(year=current_date.year + 1)
 
         return BrickOutput(
-            cash_in=cash_in,
-            cash_out=cash_out,
+            cash_in=np.zeros(T),
+            cash_out=np.zeros(T),
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             events=events,
