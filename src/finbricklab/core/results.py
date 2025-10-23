@@ -274,7 +274,7 @@ def aggregate_totals(
         return df
 
     # Define aggregation rules based on financial semantics
-    flows = ["cash_in", "cash_out", "net_cf"]
+    flows = ["cash_in", "cash_out", "net_cf", "interest"]
     stocks = ["assets", "liabilities", "equity", "cash", "non_cash"]
 
     # Only aggregate columns that exist
