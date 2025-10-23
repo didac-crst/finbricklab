@@ -333,6 +333,7 @@ def test_compute_filtered_totals_helper():
             "cash_out": np.array([50, 100, 150]),
             "assets": np.array([1000, 1100, 1200]),
             "liabilities": np.array([0, 0, 0]),
+            "interest": np.array([10, 20, 30]),
             "events": [],
         },
         "brick2": {
@@ -340,6 +341,7 @@ def test_compute_filtered_totals_helper():
             "cash_out": np.array([25, 50, 75]),
             "assets": np.array([0, 0, 0]),
             "liabilities": np.array([500, 450, 400]),
+            "interest": np.array([5, 10, 15]),
             "events": [],
         },
     }

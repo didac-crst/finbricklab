@@ -381,6 +381,7 @@ class TestCashRoutingIntegration:
             id="property_purchase",
             name="Property Purchase",
             bricks=[cash, house, mortgage],
+            settlement_default_cash_id="cash",
         )
 
         results = scenario.run(start=date(2026, 1, 1), months=12)
@@ -400,7 +401,7 @@ class TestCashRoutingIntegration:
             np.sum(mortgage_output["cash_out"]) > 0
         ), "Mortgage should generate cash outflow"
 
-        # Cash account should receive all outflows
+        # Cash account should receive all outflows (property + mortgage)
         external_out = cash.spec.get("external_out", np.zeros(12))
         expected_external_out = house_output["cash_out"] + mortgage_output["cash_out"]
 

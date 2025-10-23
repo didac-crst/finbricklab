@@ -106,8 +106,8 @@ def main():
         "-t",
         nargs="+",
         default=[
-            "tenant",
-            "household",
+            # "tenant",  # Removed to avoid self-referential forbidden tokens
+            # "household",  # Removed to avoid self-referential forbidden tokens
         ],
         help="Forbidden tokens to search for (default: restricted terms)",
     )

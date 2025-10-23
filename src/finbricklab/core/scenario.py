@@ -679,12 +679,16 @@ class Scenario:
                 # Handle different brick types that generate cash flows
                 if isinstance(brick, FBrick):
                     # Check for explicit routing
-                    if brick.links and "to" in brick.links:
-                        if brick.links["to"] == b.id:
+                    if (
+                        brick.links
+                        and "route" in brick.links
+                        and "to" in brick.links["route"]
+                    ):
+                        if brick.links["route"]["to"] == b.id:
                             # This brick routes to our cash account
                             external_in += brick_output["cash_in"]
                             external_out += brick_output["cash_out"]
-                    else:
+                    elif not (brick.links and "route" in brick.links):
                         # No explicit routing - use default routing (all flows go to first cash account)
                         # This maintains backward compatibility with the old system
                         external_in += brick_output["cash_in"]
@@ -700,12 +704,16 @@ class Scenario:
                             external_in += brick_output["cash_in"]
                 elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY:
                     # Property bricks generate cash flows (purchase costs, etc.)
-                    external_in += brick_output["cash_in"]
-                    external_out += brick_output["cash_out"]
+                    # Only route to the designated settlement account
+                    if b.id == self.settlement_default_cash_id:
+                        external_in += brick_output["cash_in"]
+                        external_out += brick_output["cash_out"]
                 elif isinstance(brick, LBrick):
                     # Liability bricks generate cash flows (payments, etc.)
-                    external_in += brick_output["cash_in"]
-                    external_out += brick_output["cash_out"]
+                    # Only route to the designated settlement account
+                    if b.id == self.settlement_default_cash_id:
+                        external_in += brick_output["cash_in"]
+                        external_out += brick_output["cash_out"]
 
             # Set external flows for backward compatibility
             b.spec["external_in"] = external_in
