@@ -152,5 +152,6 @@ class FlowIncomeRecurring(IFlowStrategy):
             cash_out=np.zeros(T),
             assets=np.zeros(T),
             liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Flow bricks don't generate interest
             events=events,
         )

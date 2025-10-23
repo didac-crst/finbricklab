@@ -97,6 +97,7 @@ class ValuationPrivateEquity(IValuationStrategy):
             cash_out=np.zeros(months, dtype=float),
             assets=asset_value,
             liabilities=np.zeros(months, dtype=float),
+            interest=np.zeros(months, dtype=float),  # Private equity doesn't generate regular interest
             events=[],
         )
 

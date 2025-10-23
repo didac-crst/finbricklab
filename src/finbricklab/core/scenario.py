@@ -503,6 +503,7 @@ class Scenario:
             "cash_out": np.zeros(length),
             "assets": np.zeros(length),
             "liabilities": np.zeros(length),
+            "interest": np.zeros(length),
             "equity": np.zeros(length),
         }
 
@@ -770,6 +771,7 @@ class Scenario:
             cash_out=np.zeros(length),
             assets=np.zeros(length),
             liabilities=np.zeros(length),
+            interest=np.zeros(length),
             events=[],
         )
 
@@ -782,6 +784,7 @@ class Scenario:
         cash_out_tot = sum(o["cash_out"] for o in outputs.values())
         assets_tot = sum(o["assets"] for o in outputs.values())
         liabilities_tot = sum(o["liabilities"] for o in outputs.values())
+        interest_tot = sum(o["interest"] for o in outputs.values())
         net_cf = cash_in_tot - cash_out_tot
         equity = assets_tot - liabilities_tot
 
@@ -803,6 +806,7 @@ class Scenario:
                 "net_cf": net_cf,
                 "assets": assets_tot,
                 "liabilities": liabilities_tot,
+                "interest": interest_tot,
                 "non_cash": non_cash_assets,
                 "equity": equity,
             }
@@ -1245,6 +1249,7 @@ class Scenario:
         full_cash_out = np.zeros(total_length)
         full_assets = np.zeros(total_length)
         full_liabilities = np.zeros(total_length)
+        full_interest = np.zeros(total_length)
 
         # Place the brick's output at the correct time positions
         brick_length = len(output["cash_in"])
@@ -1255,12 +1260,14 @@ class Scenario:
         full_cash_out[start_idx:end_idx] = output["cash_out"][:actual_length]
         full_assets[start_idx:end_idx] = output["assets"][:actual_length]
         full_liabilities[start_idx:end_idx] = output["liabilities"][:actual_length]
+        full_interest[start_idx:end_idx] = output["interest"][:actual_length]
 
         return BrickOutput(
             cash_in=full_cash_in,
             cash_out=full_cash_out,
             assets=full_assets,
             liabilities=full_liabilities,
+            interest=full_interest,
             events=output["events"],  # Events don't need shifting
         )
 

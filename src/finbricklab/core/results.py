@@ -19,18 +19,20 @@ class BrickOutput(TypedDict):
 
     This TypedDict defines the common interface that all brick strategies must return.
     It provides a consistent structure for cash flows, asset values, debt balances,
-    and event tracking across all types of financial instruments.
+    interest tracking, and event tracking across all types of financial instruments.
 
     Attributes:
         cash_in: Monthly cash inflows (always >= 0)
         cash_out: Monthly cash outflows (always >= 0)
         assets: Monthly asset valuation (0 for non-assets)
         liabilities: Monthly debt balance (0 for non-liabilities)
+        interest: Monthly interest income (+) / expense (-) (0 if not applicable)
         events: List of time-stamped events describing key occurrences
 
     Note:
         All numpy arrays have the same length corresponding to the simulation period.
         Cash flows are always positive values - the direction is implicit in the field name.
+        Interest is signed: positive for income (cash accounts, securities), negative for expense (loans, credit).
         Events are time-stamped and can be used to build a simulation ledger.
     """
 
@@ -38,6 +40,7 @@ class BrickOutput(TypedDict):
     cash_out: np.ndarray  # Monthly cash outflows (>=0)
     assets: np.ndarray  # Monthly asset value (0 if not an asset)
     liabilities: np.ndarray  # Monthly debt balance (0 if not a liability)
+    interest: np.ndarray  # Monthly interest income (+) / expense (-) (0 if not applicable)
     events: list[Event]  # Time-stamped events describing key occurrences
 
 

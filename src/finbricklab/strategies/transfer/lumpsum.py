@@ -191,5 +191,6 @@ class TransferLumpSum(ITransferStrategy):
             cash_out=cash_out,
             assets=np.zeros(T),
             liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Transfer bricks don't generate interest
             events=events,
         )

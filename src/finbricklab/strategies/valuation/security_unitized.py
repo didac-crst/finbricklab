@@ -199,6 +199,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
         cash_out = np.zeros(T)  # purchases
         units = np.zeros(T)
         price = np.zeros(T)
+        dividends_earned = np.zeros(T)  # Track dividends/yield earned
         events = []
 
         # Price path calculation with volatility
@@ -266,6 +267,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
             # Dividends BEFORE DCA (based on units at start of month)
             if divm > 0:
                 dv = units[t] * price[t] * divm
+                # Track dividends earned (regardless of reinvestment)
+                dividends_earned[t] = dv
                 if reinv and dv > 0:
                     add_u = dv / price[t]
                     units[t] += add_u
@@ -437,5 +440,6 @@ class ValuationSecurityUnitized(IValuationStrategy):
             cash_out=cash_out,
             assets=asset_value,
             liabilities=np.zeros(T),
+            interest=dividends_earned,  # Positive for dividend income
             events=events,
         )

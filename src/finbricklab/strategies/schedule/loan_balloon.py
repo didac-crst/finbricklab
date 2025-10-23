@@ -79,6 +79,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         debt_balance = np.zeros(months, dtype=float)
         cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
+        interest_paid = np.zeros(months, dtype=float)
         events: list[Event] = []
 
         # Track running balance
@@ -98,6 +99,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                 cash_out=np.zeros(months, dtype=float),
                 assets=np.zeros(months, dtype=float),
                 liabilities=np.zeros(months, dtype=float),
+                interest=np.zeros(months, dtype=float),
                 events=events,
             )
 
@@ -159,6 +161,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
                     # Generate cash flow for balloon payment
                     cash_out[month_idx] = float(balloon_payment)
+                    # Track interest paid (balloon payment includes interest)
+                    interest_paid[month_idx] = float(interest)
 
                 elif months_since_start < balloon_after_months:
                     # Amortization period - pay interest + principal
@@ -183,6 +187,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Generate cash flow for regular payment
                     total_payment = principal_payment + interest
                     cash_out[month_idx] = float(total_payment)
+                    # Track interest paid
+                    interest_paid[month_idx] = float(interest)
 
                 else:
                     # Post-balloon interest-only period (continues indefinitely)
@@ -200,6 +206,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
                     # Generate cash flow for interest-only payment
                     cash_out[month_idx] = float(interest)
+                    # Track interest paid
+                    interest_paid[month_idx] = float(interest)
 
             # Store current balance
             debt_balance[month_idx] = float(current_balance)
@@ -209,6 +217,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
+            interest=-interest_paid,  # Negative for interest expense
             events=events,
         )
 

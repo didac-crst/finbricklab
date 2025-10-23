@@ -66,6 +66,7 @@ class ScheduleCreditFixed(IScheduleStrategy):
         debt_balance = np.zeros(months, dtype=float)
         cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
+        interest_paid = np.zeros(months, dtype=float)
 
         # Track running balance
         current_balance = principal
@@ -105,6 +106,8 @@ class ScheduleCreditFixed(IScheduleStrategy):
 
                 # Record cash outflow
                 cash_out[month_idx] = float(total_payment)
+                # Track interest paid
+                interest_paid[month_idx] = float(interest)
 
             # Store current balance
             debt_balance[month_idx] = float(current_balance)
@@ -114,6 +117,7 @@ class ScheduleCreditFixed(IScheduleStrategy):
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
+            interest=-interest_paid,  # Negative for interest expense
             events=[],
         )
 

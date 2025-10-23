@@ -77,5 +77,6 @@ class FlowIncomeOneTime(IFlowStrategy):
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=np.zeros(months, dtype=float),
+            interest=np.zeros(months, dtype=float),  # Flow bricks don't generate interest
             events=[],
         )

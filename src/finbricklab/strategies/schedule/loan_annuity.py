@@ -313,6 +313,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         cash_in = np.zeros(T)
         cash_out = np.zeros(T)
         debt = np.zeros(T)
+        interest_paid = np.zeros(T)
 
         # Extract parameters
         principal = float(_get_spec_value(brick.spec, "principal", 0))
@@ -359,6 +360,8 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             if prev_debt > 0:
                 # 1. Accrue interest
                 interest = prev_debt * r_m
+                # Track interest paid
+                interest_paid[t] = interest
 
                 # 2. Scheduled annuity payment
                 principal_pay = min(A - interest, prev_debt)
@@ -469,5 +472,6 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             cash_out=cash_out,
             assets=np.zeros(T),
             liabilities=debt,
+            interest=-interest_paid,  # Negative for interest expense
             events=events,
         )

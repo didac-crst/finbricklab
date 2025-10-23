@@ -69,6 +69,7 @@ class ScheduleCreditLine(IScheduleStrategy):
         debt_balance = np.zeros(months, dtype=float)
         cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
+        interest_paid = np.zeros(months, dtype=float)
 
         # Calculate monthly interest rate
         i_m = rate_pa / Decimal("12")
@@ -97,6 +98,8 @@ class ScheduleCreditLine(IScheduleStrategy):
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
                     current_balance += interest
+                    # Track interest paid
+                    interest_paid[month_idx] = float(interest)
 
                 # 2. Add annual fee (prorated monthly)
                 if annual_fee > 0:
@@ -122,6 +125,7 @@ class ScheduleCreditLine(IScheduleStrategy):
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
+            interest=-interest_paid,  # Negative for interest expense
             events=[],
         )
 

@@ -157,5 +157,6 @@ class ValuationProperty(IValuationStrategy):
             cash_out=cash_out,
             assets=value,
             liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Property doesn't generate interest/dividends
             events=events,
         )

@@ -66,5 +66,6 @@ class FlowExpenseRecurring(IFlowStrategy):
             cash_out=cash_out,
             assets=np.zeros(T),
             liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Flow bricks don't generate interest
             events=[],  # No events for regular expense flows
         )

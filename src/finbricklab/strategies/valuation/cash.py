@@ -125,9 +125,13 @@ class ValuationCash(IValuationStrategy):
         cash_in = brick.spec["external_in"].copy()
         cash_out = brick.spec["external_out"].copy()
 
+        # Initialize interest tracking array
+        interest_earned = np.zeros(T)
+
         # Calculate balance for first month
         bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
         # Apply interest on the balance after cash flows
+        interest_earned[0] = bal[0] * r_m
         bal[0] *= (1 + r_m)
 
         # Calculate balance for remaining months
@@ -136,7 +140,9 @@ class ValuationCash(IValuationStrategy):
             bal[t] = bal[t - 1]
             # Add/subtract this month's cash flows
             bal[t] += cash_in[t] - cash_out[t]
-            # Apply interest on the full balance (including this month's flows)
+            # Calculate interest on the full balance (including this month's flows)
+            interest_earned[t] = bal[t] * r_m
+            # Apply interest
             bal[t] *= (1 + r_m)
 
         return BrickOutput(
@@ -146,5 +152,6 @@ class ValuationCash(IValuationStrategy):
             cash_out=np.zeros(T),  # Cash account doesn't generate cash outflows
             assets=bal,
             liabilities=np.zeros(T),
+            interest=interest_earned,  # Interest earned on cash balance
             events=[],
         )
