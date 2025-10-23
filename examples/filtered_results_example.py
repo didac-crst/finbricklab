@@ -112,7 +112,7 @@ def main():
 
     # Filter to investment portfolio MacroBrick
     print("=== FILTERED: Investment Portfolio MacroBrick ===")
-    investments_view = results["views"].filter(macrobrick_ids=["investments"])
+    investments_view = results["views"].filter(brick_ids=["investments"])
     investments_monthly = investments_view.monthly()
     print("Investment portfolio monthly totals (first 3 months):")
     print(investments_monthly.head(3))
@@ -120,7 +120,7 @@ def main():
 
     # Filter to real estate MacroBrick
     print("=== FILTERED: Real Estate MacroBrick ===")
-    real_estate_view = results["views"].filter(macrobrick_ids=["real_estate"])
+    real_estate_view = results["views"].filter(brick_ids=["real_estate"])
     real_estate_monthly = real_estate_view.monthly()
     print("Real estate monthly totals (first 3 months):")
     print(real_estate_monthly.head(3))
@@ -128,9 +128,7 @@ def main():
 
     # Filter to both cash and real estate
     print("=== FILTERED: Cash + Real Estate ===")
-    mixed_view = results["views"].filter(
-        brick_ids=["cash"], macrobrick_ids=["real_estate"]
-    )
+    mixed_view = results["views"].filter(brick_ids=["cash", "real_estate"])
     mixed_monthly = mixed_view.monthly()
     print("Cash + Real Estate monthly totals (first 3 months):")
     print(mixed_monthly.head(3))
@@ -155,8 +153,8 @@ def main():
     print(
         "✅ Filtered views support all time aggregation methods (monthly, quarterly, yearly)"
     )
-    print("✅ Can filter by brick_ids, macrobrick_ids, or both")
-    print("✅ MacroBricks are properly expanded to their constituent bricks")
+    print("✅ Can filter by unified brick_ids (bricks and MacroBricks mixed)")
+    print("✅ MacroBricks are automatically expanded to their constituent bricks")
     print("✅ Filtered results maintain the same structure as full results")
 
 

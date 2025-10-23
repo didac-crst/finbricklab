@@ -93,15 +93,13 @@ class ScenarioResults:
     def filter(
         self,
         brick_ids: list[str] | None = None,
-        macrobrick_ids: list[str] | None = None,
         include_cash: bool = True,
     ) -> ScenarioResults:
         """
         Filter results to show only selected bricks and/or MacroBricks.
 
         Args:
-            brick_ids: List of brick IDs to include (None = no direct bricks)
-            macrobrick_ids: List of MacroBrick IDs to expand and include
+            brick_ids: List of brick IDs and/or MacroBrick IDs to include (None = no filtering)
             include_cash: Whether to include cash in the aggregation
 
         Returns:
@@ -114,14 +112,21 @@ class ScenarioResults:
         if not self._registry or not self._outputs:
             raise RuntimeError("Cannot filter: missing registry or outputs")
 
-        # Resolve selection to brick IDs
-        selected_bricks = set(brick_ids or [])
-
-        # Expand MacroBricks
-        if macrobrick_ids:
-            for mb_id in macrobrick_ids:
-                members = self._registry.get_struct_flat_members(mb_id)
-                selected_bricks.update(members)
+        # Resolve selection to brick IDs (expand MacroBricks automatically)
+        selected_bricks = set()
+        if brick_ids:
+            for item_id in brick_ids:
+                if self._registry.is_macrobrick(item_id):
+                    # Expand MacroBrick to its constituent bricks
+                    members = self._registry.get_struct_flat_members(item_id)
+                    selected_bricks.update(members)
+                elif self._registry.is_brick(item_id):
+                    # Direct brick selection
+                    selected_bricks.add(item_id)
+                else:
+                    # Unknown ID - skip with warning
+                    import warnings
+                    warnings.warn(f"Unknown ID '{item_id}' in filter selection, skipping")
 
         # Identify cash bricks (for cash column calculation)
         cash_bricks = set()
