@@ -16,7 +16,7 @@ from finbricklab.core.utils import active_mask
 
 class ValuationPropertyDiscrete(IValuationStrategy):
     """
-    Real estate property valuation strategy (kind: 'a.property_discrete').
+    Real estate property valuation strategy (kind: 'a.property').
 
     This strategy models a discrete property purchase with upfront costs and
     simple appreciation over time. The property is purchased at t=0 with

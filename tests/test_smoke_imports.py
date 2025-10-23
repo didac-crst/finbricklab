@@ -28,7 +28,7 @@ def test_legacy_api_failures():
     mortgage = LBrick(
         id="mortgage",
         name="Test Mortgage",
-        kind=K.L_MORT_ANN,
+        kind=K.L_LOAN_ANNUITY,
         links={"auto_principal_from": "house"},  # legacy format
         spec={"rate_pa": 0.03, "term_months": 300},
     )
@@ -44,7 +44,7 @@ def test_legacy_api_failures():
     house = ABrick(
         id="house",
         name="Test House",
-        kind=K.A_PROPERTY_DISCRETE,
+        kind=K.A_PROPERTY,
         spec={
             "price": 100000,
             "fees_pct": 0.095,

@@ -528,47 +528,61 @@ class Scenario:
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ) -> dict[str, BrickOutput]:
         """Simulate all bricks using Journal-based system."""
-        from .journal import Journal
+        from .accounts import Account, AccountRegistry, AccountScope, AccountType
         from .compiler import BrickCompiler
-        from .accounts import AccountRegistry, Account, AccountScope, AccountType
-        
+        from .journal import Journal
+
         outputs: dict[str, BrickOutput] = {}
-        
+
         # Create account registry and journal
         account_registry = AccountRegistry()
         journal = Journal(account_registry)
         compiler = BrickCompiler(account_registry)
-        
+
         # Register all cash accounts as internal assets
         cash_ids = [
-            b.id for b in self.bricks 
+            b.id
+            for b in self.bricks
             if isinstance(b, ABrick) and b.kind == K.A_CASH and b.id in execution_order
         ]
-        
+
         for cash_id in cash_ids:
             account_registry.register_account(
-                Account(cash_id, f"Cash Account {cash_id}", AccountScope.INTERNAL, AccountType.ASSET)
+                Account(
+                    cash_id,
+                    f"Cash Account {cash_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.ASSET,
+                )
             )
-            
+
             # Initialize cash account with opening balance
             cash_brick = next(b for b in self.bricks if b.id == cash_id)
             initial_balance = cash_brick.spec.get("initial_balance", 0.0)
             if initial_balance != 0:
                 from .currency import create_amount
                 from .journal import JournalEntry, Posting
-                
+
                 # Create opening balance entry
                 opening_entry = JournalEntry(
                     id=f"opening_{cash_id}",
                     timestamp=ctx.t_index[0],
                     postings=[
-                        Posting("Equity:Opening", create_amount(-initial_balance, "EUR"), {"type": "opening_balance"}),
-                        Posting(cash_id, create_amount(initial_balance, "EUR"), {"type": "opening_balance"})
+                        Posting(
+                            "Equity:Opening",
+                            create_amount(-initial_balance, "EUR"),
+                            {"type": "opening_balance"},
+                        ),
+                        Posting(
+                            cash_id,
+                            create_amount(initial_balance, "EUR"),
+                            {"type": "opening_balance"},
+                        ),
                     ],
-                    metadata={"type": "opening_balance", "account": cash_id}
+                    metadata={"type": "opening_balance", "account": cash_id},
                 )
                 journal.post(opening_entry)
-        
+
         if len(cash_ids) == 0:
             raise AssertionError(
                 f"At least one cash account (kind='{K.A_CASH}') is required in the selection"
@@ -576,68 +590,84 @@ class Scenario:
 
         # Register boundary accounts for external flows
         boundary_accounts = [
-            "Income:Salary", "Income:Dividends", "Income:Interest",
-            "Expenses:Groceries", "Expenses:BankFees", "Expenses:Interest",
-            "P&L:Unrealized", "P&L:FX", "Equity:Opening"
+            "Income:Salary",
+            "Income:Dividends",
+            "Income:Interest",
+            "Expenses:Groceries",
+            "Expenses:BankFees",
+            "Expenses:Interest",
+            "P&L:Unrealized",
+            "P&L:FX",
+            "Equity:Opening",
         ]
-        
+
         # Register Equity:Opening first since it's used for opening balances
         account_registry.register_account(
-            Account("Equity:Opening", "Opening Equity", AccountScope.BOUNDARY, AccountType.EQUITY)
+            Account(
+                "Equity:Opening",
+                "Opening Equity",
+                AccountScope.BOUNDARY,
+                AccountType.EQUITY,
+            )
         )
-        
+
         for account_id in boundary_accounts:
-            account_type = AccountType.INCOME if account_id.startswith("Income:") else \
-                          AccountType.EXPENSE if account_id.startswith("Expenses:") else \
-                          AccountType.PNL if account_id.startswith("P&L:") else \
-                          AccountType.EQUITY
+            account_type = (
+                AccountType.INCOME
+                if account_id.startswith("Income:")
+                else AccountType.EXPENSE
+                if account_id.startswith("Expenses:")
+                else AccountType.PNL
+                if account_id.startswith("P&L:")
+                else AccountType.EQUITY
+            )
             account_registry.register_account(
                 Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
             )
-        
+
         # Simulate all bricks and compile to journal entries
-        
+
         # First pass: process all non-cash bricks and compile to journal
         for b in [ctx.registry[bid] for bid in execution_order]:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
                 continue  # Skip cash accounts for now
-                
+
             brick_output = self._simulate_single_brick(b, ctx, t_index)
             outputs[b.id] = brick_output
-            
+
             # Compile brick to journal entries based on type
             if isinstance(b, TBrick):
                 # Transfer bricks: compile to internal transfers
                 entries = compiler.compile_tbrick(b, ctx)
                 for entry in entries:
                     journal.post(entry)
-                    
+
             elif isinstance(b, FBrick):
                 # Flow bricks: compile to external flows
                 entries = compiler.compile_fbrick(b, ctx)
                 for entry in entries:
                     journal.post(entry)
-        
+
         # Second pass: process cash accounts with all journal entries available
         for b in [ctx.registry[bid] for bid in execution_order]:
             if not (isinstance(b, ABrick) and b.kind == K.A_CASH):
                 continue
-                
+
             # Cash bricks: use journal balances for valuation
             # Don't set initial_balance from journal - let external flows handle it
-            
+
             # Calculate external flows from FBrick outputs for this cash account
             external_in = np.zeros(len(ctx.t_index))
             external_out = np.zeros(len(ctx.t_index))
-            
+
             # Sum up all brick flows that route to this cash account
             for brick_id, brick_output in outputs.items():
                 if brick_id == b.id:
                     continue  # Skip self
-                    
+
                 # Check if this brick routes to our cash account
                 brick = ctx.registry[brick_id]
-                
+
                 # Handle different brick types that generate cash flows
                 if isinstance(brick, FBrick):
                     # Check for explicit routing
@@ -651,7 +681,7 @@ class Scenario:
                         # This maintains backward compatibility with the old system
                         external_in += brick_output["cash_in"]
                         external_out += brick_output["cash_out"]
-                elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY_DISCRETE:
+                elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY:
                     # Property bricks generate cash flows (purchase costs, etc.)
                     external_in += brick_output["cash_in"]
                     external_out += brick_output["cash_out"]
@@ -659,19 +689,19 @@ class Scenario:
                     # Liability bricks generate cash flows (payments, etc.)
                     external_in += brick_output["cash_in"]
                     external_out += brick_output["cash_out"]
-            
+
             # Set external flows for backward compatibility
             b.spec["external_in"] = external_in
             b.spec["external_out"] = external_out
-            
+
             outputs[b.id] = b.simulate(ctx)
-        
+
         # Validate journal invariants
         if self.validate_routing:
             errors = journal.validate_invariants(account_registry)
             if errors:
                 raise AssertionError(f"Journal validation failed: {errors}")
-        
+
         return outputs
 
     def _simulate_single_brick(
@@ -938,7 +968,7 @@ class Scenario:
 
         # Process each mortgage brick
         for brick in self.bricks:
-            if not isinstance(brick, LBrick) or brick.kind != K.L_MORT_ANN:
+            if not isinstance(brick, LBrick) or brick.kind != K.L_LOAN_ANNUITY:
                 continue
 
             # Convert LMortgageSpec to dict for strategy compatibility
@@ -973,7 +1003,10 @@ class Scenario:
                     raise ConfigError(
                         f"StartLink references unknown brick: {start_link.on_fix_end_of}"
                     )
-                if not isinstance(ref_brick, LBrick) or ref_brick.kind != K.L_MORT_ANN:
+                if (
+                    not isinstance(ref_brick, LBrick)
+                    or ref_brick.kind != K.L_LOAN_ANNUITY
+                ):
                     raise ConfigError(
                         f"StartLink on_fix_end_of must reference a mortgage: {start_link.on_fix_end_of}"
                     )
@@ -1021,7 +1054,7 @@ class Scenario:
     def _resolve_principals(self, brick_registry: dict[str, FinBrickABC]) -> None:
         """Resolve principal amounts from PrincipalLink references."""
         for brick in self.bricks:
-            if not isinstance(brick, LBrick) or brick.kind != K.L_MORT_ANN:
+            if not isinstance(brick, LBrick) or brick.kind != K.L_LOAN_ANNUITY:
                 continue
 
             if not hasattr(brick, "links") or not brick.links:
@@ -1042,7 +1075,7 @@ class Scenario:
                     )
                 if (
                     not isinstance(house_brick, ABrick)
-                    or house_brick.kind != K.A_PROPERTY_DISCRETE
+                    or house_brick.kind != K.A_PROPERTY
                 ):
                     raise ConfigError(
                         f"PrincipalLink from_house must reference a property: {principal_link.from_house}"
@@ -1079,7 +1112,7 @@ class Scenario:
         settlement_buckets = {}
 
         for brick in self.bricks:
-            if not isinstance(brick, LBrick) or brick.kind != K.L_MORT_ANN:
+            if not isinstance(brick, LBrick) or brick.kind != K.L_LOAN_ANNUITY:
                 continue
 
             if not hasattr(brick, "links") or not brick.links:
@@ -1339,7 +1372,7 @@ def validate_run(
     # 6) Balloon payment validation (only if we have bricks)
     if bricks is not None:
         for b in bricks:
-            if isinstance(b, LBrick) and b.kind == K.L_MORT_ANN:
+            if isinstance(b, LBrick) and b.kind == K.L_LOAN_ANNUITY:
                 # Check if this mortgage has a balloon policy
                 balloon_policy = (b.spec or {}).get("balloon_policy", "payoff")
                 if balloon_policy == "payoff":
@@ -1383,7 +1416,7 @@ def validate_run(
                 brick = b
                 break
 
-        if brick and hasattr(brick, "kind") and brick.kind == K.A_ETF_UNITIZED:
+        if brick and hasattr(brick, "kind") and brick.kind == K.A_SECURITY_UNITIZED:
             asset_value = output["asset_value"]
             # We can't directly check units, but we can check for negative asset values
             if (asset_value < -tol).any():
@@ -1402,7 +1435,7 @@ def validate_run(
                 brick = b
                 break
 
-        if brick and hasattr(brick, "kind") and brick.kind == K.F_INCOME_FIXED:
+        if brick and hasattr(brick, "kind") and brick.kind == K.F_INCOME_RECURRING:
             annual_step_pct = float((brick.spec or {}).get("annual_step_pct", 0.0))
             if annual_step_pct >= 0:
                 cash_in = output["cash_in"]

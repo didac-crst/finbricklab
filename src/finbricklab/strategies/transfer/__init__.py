@@ -8,6 +8,6 @@ from .scheduled import TransferScheduled
 
 __all__ = [
     "TransferLumpSum",
-    "TransferRecurring", 
+    "TransferRecurring",
     "TransferScheduled",
 ]

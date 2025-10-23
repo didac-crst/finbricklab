@@ -4,15 +4,16 @@ Lump sum transfer strategy.
 
 from __future__ import annotations
 
-import numpy as np
 from decimal import Decimal
+
+import numpy as np
 
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import ITransferStrategy
 from finbricklab.core.results import BrickOutput
-from finbricklab.core.currency import create_amount
 
 
 class TransferLumpSum(ITransferStrategy):
@@ -55,29 +56,31 @@ class TransferLumpSum(ITransferStrategy):
         """
         # Validate required parameters
         assert "amount" in brick.spec, "Missing required parameter: amount"
-        
+
         # Validate required links
         assert brick.links is not None, "Missing required links"
         assert "from" in brick.links, "Missing required link: from"
         assert "to" in brick.links, "Missing required link: to"
-        
+
         # Validate amount is positive
         amount = brick.spec["amount"]
         if isinstance(amount, (int, float)):
             amount = Decimal(str(amount))
         assert amount > 0, "Transfer amount must be positive"
-        
+
         # Validate accounts are different
         from_account = brick.links["from"]
         to_account = brick.links["to"]
-        assert from_account != to_account, "Source and destination accounts must be different"
-        
+        assert (
+            from_account != to_account
+        ), "Source and destination accounts must be different"
+
         # Validate optional parameters
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
             assert "amount" in fees, "Fee amount is required"
             assert "account" in fees, "Fee account is required"
-        
+
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
             assert "rate" in fx, "FX rate is required"
@@ -97,14 +100,14 @@ class TransferLumpSum(ITransferStrategy):
             BrickOutput with transfer event and zero cash flows
         """
         T = len(ctx.t_index)
-        
+
         # Get transfer amount and currency
         amount = Decimal(str(brick.spec["amount"]))
         currency = brick.spec.get("currency", "EUR")
-        
+
         # Create amount object
         amount_obj = create_amount(amount, currency)
-        
+
         # Find transfer time
         transfer_time = None
         if brick.start_date is not None:
@@ -113,10 +116,10 @@ class TransferLumpSum(ITransferStrategy):
                 if t >= brick.start_date:
                     transfer_time = t
                     break
-        
+
         if transfer_time is None:
             transfer_time = ctx.t_index[0]
-        
+
         # Create transfer event
         event = Event(
             transfer_time,
@@ -126,10 +129,10 @@ class TransferLumpSum(ITransferStrategy):
                 "amount": float(amount),
                 "currency": currency,
                 "from": brick.links["from"],
-                "to": brick.links["to"]
-            }
+                "to": brick.links["to"],
+            },
         )
-        
+
         # Add fee event if specified
         events = [event]
         if "fees" in brick.spec:
@@ -137,7 +140,7 @@ class TransferLumpSum(ITransferStrategy):
             fee_amount = Decimal(str(fees["amount"]))
             fee_currency = fees.get("currency", currency)
             fee_amount_obj = create_amount(fee_amount, fee_currency)
-            
+
             fee_event = Event(
                 transfer_time,
                 "transfer_fee",
@@ -145,11 +148,11 @@ class TransferLumpSum(ITransferStrategy):
                 {
                     "amount": float(fee_amount),
                     "currency": fee_currency,
-                    "account": fees["account"]
-                }
+                    "account": fees["account"],
+                },
             )
             events.append(fee_event)
-        
+
         # Add FX event if specified
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
@@ -160,15 +163,15 @@ class TransferLumpSum(ITransferStrategy):
                 {
                     "rate": fx["rate"],
                     "pair": fx["pair"],
-                    "pnl_account": fx.get("pnl_account", "P&L:FX")
-                }
+                    "pnl_account": fx.get("pnl_account", "P&L:FX"),
+                },
             )
             events.append(fx_event)
-        
+
         return BrickOutput(
             cash_in=np.zeros(T),
             cash_out=np.zeros(T),
             asset_value=np.zeros(T),
             debt_balance=np.zeros(T),
-            events=events
+            events=events,
         )

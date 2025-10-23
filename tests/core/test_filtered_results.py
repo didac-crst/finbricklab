@@ -21,26 +21,26 @@ def _create_test_scenario():
     e.new_ABrick(
         "etf",
         "ETF Investment",
-        K.A_ETF_UNITIZED,
+        K.A_SECURITY_UNITIZED,
         {"initial_units": 100.0, "price_series": [100.0, 101.0, 102.0, 103.0, 104.0]},
     )
     e.new_LBrick(
         "mortgage",
         "Mortgage",
-        K.L_MORT_ANN,
+        K.L_LOAN_ANNUITY,
         {"rate_pa": 0.034, "term_months": 300, "principal": 300000.0},
     )
     e.new_FBrick(
         "salary",
         "Salary",
-        K.F_INCOME_FIXED,
+        K.F_INCOME_RECURRING,
         {"amount_monthly": 5000.0},
         links={"route": {"to": "cash"}},
     )
     e.new_FBrick(
         "rent",
         "Rent",
-        K.F_EXPENSE_FIXED,
+        K.F_EXPENSE_RECURRING,
         {"amount_monthly": 1500.0},
         links={"route": {"from": "cash"}},
     )

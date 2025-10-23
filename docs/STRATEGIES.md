@@ -49,7 +49,7 @@ cash = ABrick(
 - No fees or restrictions
 - Immediate liquidity
 
-### a.property_discrete
+### a.property
 
 **Purpose**: Real estate investment with appreciation and transaction costs.
 
@@ -74,7 +74,7 @@ cash = ABrick(
 house = ABrick(
     id="family_home",
     name="Family Home",
-    kind="a.property_discrete",
+    kind="a.property",
     spec={
         "initial_value": 500000.0,
         "appreciation_pa": 0.025,
@@ -89,7 +89,7 @@ house = ABrick(
 - Transaction fees applied on sale
 - Illiquid asset (cannot be partially sold)
 
-### a.etf_unitized
+### a.security.unitized
 
 **Purpose**: ETF investment with unitized pricing, drift, and volatility.
 
@@ -118,7 +118,7 @@ house = ABrick(
 etf = ABrick(
     id="stock_portfolio",
     name="Stock Portfolio",
-    kind="a.etf_unitized",
+    kind="a.security.unitized",
     spec={
         "initial_units": 1000.0,
         "initial_price": 100.0,
@@ -139,7 +139,7 @@ etf = ABrick(
 
 ## Liability Strategies
 
-### l.mortgage.annuity
+### l.loan.annuity
 
 **Purpose**: Fixed-rate mortgage with annuity payments.
 
@@ -162,7 +162,7 @@ etf = ABrick(
 mortgage = LBrick(
     id="home_loan",
     name="Home Loan",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     links={"principal": {"from_house": "family_home"}},
     spec={
         "rate_pa": 0.035,
@@ -230,7 +230,7 @@ down_payment = FBrick(
 - `to`: Destination brick (positive amount flows here)
 - `from`: Source brick (negative amount flows from here)
 
-### f.income.fixed
+### f.income.recurring
 
 **Purpose**: Fixed recurring income.
 
@@ -257,7 +257,7 @@ down_payment = FBrick(
 salary = FBrick(
     id="salary",
     name="Monthly Salary",
-    kind="f.income.fixed",
+    kind="f.income.recurring",
     links={"to": {"to_cash": "checking_account"}},
     spec={
         "amount_monthly": 6000.0,
@@ -272,7 +272,7 @@ salary = FBrick(
 **Links**:
 - `to`: Destination brick (typically cash account)
 
-### f.expense.fixed
+### f.expense.recurring
 
 **Purpose**: Fixed recurring expense.
 
@@ -299,7 +299,7 @@ salary = FBrick(
 rent = FBrick(
     id="rent",
     name="Monthly Rent",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_cash": "checking_account"}},
     spec={
         "amount_monthly": 2500.0,
@@ -408,7 +408,7 @@ monthly_save = TBrick(
       "currency": "EUR"
     },
     {
-      "date": "2026-12-01", 
+      "date": "2026-12-01",
       "amount": 5000.0,
       "currency": "EUR"
     }
@@ -536,8 +536,8 @@ FlowRegistry.register("f.income.variable", VariableIncomeStrategy())
 ### Naming Conventions
 
 - **Assets**: `a.{category}` (e.g., `a.cash`, `a.property`, `a.bond`)
-- **Liabilities**: `l.{type}.{subtype}` (e.g., `l.mortgage.annuity`, `l.loan.fixed`)
-- **Flows**: `f.{type}.{subtype}` (e.g., `f.income.fixed`, `f.expense.variable`)
+- **Liabilities**: `l.{type}.{subtype}` (e.g., `l.loan.annuity`, `l.loan.fixed`)
+- **Flows**: `f.{type}.{subtype}` (e.g., `f.income.recurring`, `f.expense.variable`)
 
 ### Parameter Design
 

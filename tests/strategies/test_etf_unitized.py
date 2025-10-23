@@ -25,7 +25,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Test ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": initial_price,
@@ -69,7 +69,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="ETF with Split",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": 100.0,
@@ -105,7 +105,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Buy and Hold ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 500.0,
                 "price0": 150.0,
@@ -131,7 +131,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="ETF with Auto-Sell",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 200.0,
                 "price0": 75.0,
@@ -172,7 +172,7 @@ class TestETFUnitizedMath:
             etf = ABrick(
                 id=f"etf_{units}",
                 name=f"ETF {units} units",
-                kind=K.A_ETF_UNITIZED,
+                kind=K.A_SECURITY_UNITIZED,
                 spec={
                     "initial_units": units,
                     "price0": initial_price,
@@ -204,7 +204,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Volatile ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": 100.0,
@@ -255,7 +255,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Equity ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 50.0,
                 "price0": 200.0,
@@ -268,7 +268,7 @@ class TestETFScenarioIntegration:
         house = ABrick(
             id="house",
             name="Real Estate",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 300000.0,
                 "fees_pct": 0.03,
@@ -311,7 +311,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Growth ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 100.0,
                 "price0": 150.0,
@@ -346,7 +346,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Test ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 200.0,
                 "price0": 100.0,

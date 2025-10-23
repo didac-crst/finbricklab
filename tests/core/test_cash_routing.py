@@ -26,14 +26,14 @@ class TestCashFlowRouting:
         income = FBrick(
             id="income",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
         )
 
         expense = FBrick(
             id="expense",
             name="Living Expenses",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 3000.0},
         )
 
@@ -47,7 +47,7 @@ class TestCashFlowRouting:
 
         # Check that income generates proper journal entries
         income_output = results["outputs"]["income"]
-        
+
         # Income should generate cash_in
         assert (
             np.sum(income_output["cash_in"]) > 0
@@ -68,7 +68,9 @@ class TestCashFlowRouting:
         ), "Expense should generate cash outflows"
 
         # Check that the net effect is positive (income > expenses)
-        net_income = np.sum(income_output["cash_in"]) - np.sum(expense_output["cash_out"])
+        net_income = np.sum(income_output["cash_in"]) - np.sum(
+            expense_output["cash_out"]
+        )
         assert net_income > 0, "Net income should be positive"
 
     def test_cash_balance_calculation(self):
@@ -88,14 +90,14 @@ class TestCashFlowRouting:
         income = FBrick(
             id="income",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": monthly_income},
         )
 
         expense = FBrick(
             id="expense",
             name="Expenses",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": monthly_expense},
         )
 
@@ -144,14 +146,14 @@ class TestCashFlowRouting:
         income1 = FBrick(
             id="income1",
             name="Primary Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 3000.0},
         )
 
         income2 = FBrick(
             id="income2",
             name="Secondary Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 1500.0},
         )
 
@@ -159,14 +161,14 @@ class TestCashFlowRouting:
         expense1 = FBrick(
             id="expense1",
             name="Housing",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 2000.0},
         )
 
         expense2 = FBrick(
             id="expense2",
             name="Other Expenses",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 800.0},
         )
 
@@ -229,7 +231,7 @@ class TestCashFlowRouting:
         deposit = FBrick(
             id="deposit",
             name="Monthly Deposit",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": monthly_deposit},
         )
 
@@ -288,7 +290,7 @@ class TestCashAccountConstraints:
         expense = FBrick(
             id="expense",
             name="Large Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 2000.0},  # More than initial balance
         )
 
@@ -326,7 +328,7 @@ class TestCashAccountConstraints:
         expense = FBrick(
             id="expense",
             name="Expenses",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 4000.0},  # Would bring balance below buffer
         )
 
@@ -358,7 +360,7 @@ class TestCashRoutingIntegration:
         house = ABrick(
             id="house",
             name="Property",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 400000.0,
                 "fees_pct": 0.05,
@@ -370,7 +372,7 @@ class TestCashRoutingIntegration:
         mortgage = LBrick(
             id="mortgage",
             name="Home Loan",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.035, "term_months": 300},
         )
@@ -421,14 +423,14 @@ class TestCashRoutingIntegration:
         income = FBrick(
             id="income",
             name="Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
         )
 
         expense = FBrick(
             id="expense",
             name="Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 3000.0},
         )
 

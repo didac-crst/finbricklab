@@ -26,7 +26,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -78,7 +78,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -127,7 +127,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -161,7 +161,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -191,7 +191,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -231,7 +231,7 @@ class TestMortgageAnnuityMath:
             mortgage = LBrick(
                 id=f"mortgage_{rate_pa}",
                 name=f"Mortgage {rate_pa}%",
-                kind=K.L_MORT_ANN,
+                kind=K.L_LOAN_ANNUITY,
                 spec={
                     "principal": principal,
                     "rate_pa": rate_pa,
@@ -273,7 +273,7 @@ class TestMortgageScenarioIntegration:
         house = ABrick(
             id="house",
             name="Primary Residence",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 500000.0,
                 "fees_pct": 0.05,
@@ -285,7 +285,7 @@ class TestMortgageScenarioIntegration:
         mortgage = LBrick(
             id="mortgage",
             name="Home Loan",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.034, "term_months": 300},
         )
@@ -324,14 +324,14 @@ class TestMortgageScenarioIntegration:
         house = ABrick(
             id="house",
             name="Property",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 300000.0, "fees_pct": 0.05, "appreciation_pa": 0.02},
         )
 
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.03, "term_months": 240},
         )

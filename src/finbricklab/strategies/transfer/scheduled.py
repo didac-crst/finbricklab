@@ -4,16 +4,17 @@ Scheduled transfer strategy.
 
 from __future__ import annotations
 
-import numpy as np
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
+
+import numpy as np
 
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import ITransferStrategy
 from finbricklab.core.results import BrickOutput
-from finbricklab.core.currency import create_amount
 
 
 class TransferScheduled(ITransferStrategy):
@@ -63,45 +64,49 @@ class TransferScheduled(ITransferStrategy):
         """
         # Validate required parameters
         assert "schedule" in brick.spec, "Missing required parameter: schedule"
-        
+
         # Validate required links
         assert brick.links is not None, "Missing required links"
         assert "from" in brick.links, "Missing required link: from"
         assert "to" in brick.links, "Missing required link: to"
-        
+
         # Validate schedule format
         schedule = brick.spec["schedule"]
         assert isinstance(schedule, list), "Schedule must be a list"
         assert len(schedule) > 0, "Schedule cannot be empty"
-        
+
         for i, entry in enumerate(schedule):
             assert "date" in entry, f"Schedule entry {i} missing 'date'"
             assert "amount" in entry, f"Schedule entry {i} missing 'amount'"
-            
+
             # Validate amount is positive
             amount = entry["amount"]
             if isinstance(amount, (int, float)):
                 amount = Decimal(str(amount))
             assert amount > 0, f"Schedule entry {i} amount must be positive"
-            
+
             # Validate date format
             date_str = entry["date"]
             try:
                 date.fromisoformat(date_str)
             except ValueError:
-                raise ValueError(f"Schedule entry {i} has invalid date format: {date_str}")
-        
+                raise ValueError(
+                    f"Schedule entry {i} has invalid date format: {date_str}"
+                )
+
         # Validate accounts are different
         from_account = brick.links["from"]
         to_account = brick.links["to"]
-        assert from_account != to_account, "Source and destination accounts must be different"
-        
+        assert (
+            from_account != to_account
+        ), "Source and destination accounts must be different"
+
         # Validate optional parameters
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
             assert "amount" in fees, "Fee amount is required"
             assert "account" in fees, "Fee account is required"
-        
+
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
             assert "rate" in fx, "FX rate is required"
@@ -121,21 +126,21 @@ class TransferScheduled(ITransferStrategy):
             BrickOutput with scheduled transfer events and zero cash flows
         """
         T = len(ctx.t_index)
-        
+
         # Get transfer parameters
         schedule = brick.spec["schedule"]
         currency = brick.spec.get("currency", "EUR")
-        
+
         # Generate transfer events
         events = []
-        
+
         for entry in schedule:
             transfer_date = date.fromisoformat(entry["date"])
             amount = Decimal(str(entry["amount"]))
-            
+
             # Create amount object
             amount_obj = create_amount(amount, currency)
-            
+
             # Create transfer event
             event = Event(
                 transfer_date,
@@ -146,18 +151,18 @@ class TransferScheduled(ITransferStrategy):
                     "currency": currency,
                     "from": brick.links["from"],
                     "to": brick.links["to"],
-                    "scheduled": True
-                }
+                    "scheduled": True,
+                },
             )
             events.append(event)
-            
+
             # Add fee event if specified
             if "fees" in brick.spec:
                 fees = brick.spec["fees"]
                 fee_amount = Decimal(str(fees["amount"]))
                 fee_currency = fees.get("currency", currency)
                 fee_amount_obj = create_amount(fee_amount, fee_currency)
-                
+
                 fee_event = Event(
                     transfer_date,
                     "transfer_fee",
@@ -165,11 +170,11 @@ class TransferScheduled(ITransferStrategy):
                     {
                         "amount": float(fee_amount),
                         "currency": fee_currency,
-                        "account": fees["account"]
-                    }
+                        "account": fees["account"],
+                    },
                 )
                 events.append(fee_event)
-            
+
             # Add FX event if specified
             if "fx" in brick.spec:
                 fx = brick.spec["fx"]
@@ -180,15 +185,15 @@ class TransferScheduled(ITransferStrategy):
                     {
                         "rate": fx["rate"],
                         "pair": fx["pair"],
-                        "pnl_account": fx.get("pnl_account", "P&L:FX")
-                    }
+                        "pnl_account": fx.get("pnl_account", "P&L:FX"),
+                    },
                 )
                 events.append(fx_event)
-        
+
         return BrickOutput(
             cash_in=np.zeros(T),
             cash_out=np.zeros(T),
             asset_value=np.zeros(T),
             debt_balance=np.zeros(T),
-            events=events
+            events=events,
         )

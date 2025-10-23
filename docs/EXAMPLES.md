@@ -56,7 +56,7 @@ rent_cash = ABrick(
 rent_expense = FBrick(
     id="rent",
     name="Monthly Rent",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_cash": "rent_cash"}},
     spec={
         "amount_monthly": 2500.0,
@@ -70,7 +70,7 @@ rent_scenario = Scenario(id="rent", name="Rent Forever", bricks=[rent_cash, rent
 house = ABrick(
     id="house",
     name="Family Home",
-    kind="a.property_discrete",
+    kind="a.property",
     spec={
         "initial_value": 500000.0,
         "appreciation_pa": 0.025,
@@ -81,7 +81,7 @@ house = ABrick(
 mortgage = LBrick(
     id="mortgage",
     name="Home Loan",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     links={"principal": {"from_house": "house"}},
     spec={"rate_pa": 0.035, "term_months": 360}
 )
@@ -157,7 +157,7 @@ monthly_save = entity.new_TBrick(
 )
 
 # Create scenario
-scenario = entity.create_scenario('journal_demo', 'Journal Demo', 
+scenario = entity.create_scenario('journal_demo', 'Journal Demo',
                                 ['checking', 'savings', 'salary', 'rent', 'monthly_save'])
 results = scenario.run(start=date(2026, 1, 1), months=12)
 
@@ -177,11 +177,11 @@ entity = Entity('international', 'International Person')
 # EUR accounts
 eur_cash = entity.new_ABrick('eur_cash', 'EUR Cash', K.A_CASH, {'initial_balance': 10000.0})
 
-# USD accounts  
+# USD accounts
 usd_cash = entity.new_ABrick('usd_cash', 'USD Cash', K.A_CASH, {'initial_balance': 5000.0})
 
 # EUR income
-eur_salary = entity.new_FBrick('eur_salary', 'EUR Salary', K.F_INCOME_FIXED, 
+eur_salary = entity.new_FBrick('eur_salary', 'EUR Salary', K.F_INCOME_FIXED,
                               {'amount_monthly': 5000.0, 'currency': 'EUR'})
 
 # USD income
@@ -197,7 +197,7 @@ fx_transfer = entity.new_TBrick(
     {'from': 'usd_cash', 'to': 'eur_cash'}
 )
 
-scenario = entity.create_scenario('multi_currency', 'Multi-Currency', 
+scenario = entity.create_scenario('multi_currency', 'Multi-Currency',
                                 ['eur_cash', 'usd_cash', 'eur_salary', 'usd_salary', 'fx_transfer'])
 results = scenario.run(start=date(2026, 1, 1), months=6)
 ```
@@ -315,7 +315,7 @@ aggressive_cash = ABrick(
 aggressive_etf = ABrick(
     id="aggressive_etf",
     name="Stock ETF",
-    kind="a.etf_unitized",
+    kind="a.security.unitized",
     spec={
         "initial_units": 1000.0,
         "initial_price": 100.0,
@@ -341,7 +341,7 @@ balanced_cash = ABrick(
 balanced_etf = ABrick(
     id="balanced_etf",
     name="Balanced ETF",
-    kind="a.etf_unitized",
+    kind="a.security.unitized",
     spec={
         "initial_units": 500.0,
         "initial_price": 100.0,
@@ -397,7 +397,7 @@ checking = ABrick(
 salary = FBrick(
     id="salary",
     name="Monthly Salary",
-    kind="f.income.fixed",
+    kind="f.income.recurring",
     links={"to": {"to_checking": "checking"}},
     spec={
         "amount_monthly": 6000.0,
@@ -409,7 +409,7 @@ salary = FBrick(
 rent = FBrick(
     id="rent",
     name="Monthly Rent",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_checking": "checking"}},
     spec={
         "amount_monthly": 2500.0,
@@ -420,7 +420,7 @@ rent = FBrick(
 groceries = FBrick(
     id="groceries",
     name="Groceries",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_checking": "checking"}},
     spec={
         "amount_monthly": 800.0,
@@ -458,14 +458,14 @@ from finbricklab import Scenario, ABrick, LBrick, MacroBrick
 house = ABrick(
     id="house",
     name="Family Home",
-    kind="a.property_discrete",
+    kind="a.property",
     spec={"initial_value": 500000.0, "appreciation_pa": 0.025, "fees_pct": 0.06}
 )
 
 mortgage = LBrick(
     id="mortgage",
     name="Home Loan",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     links={"principal": {"from_house": "house"}},
     spec={"rate_pa": 0.035, "term_months": 360}
 )
@@ -583,7 +583,7 @@ from finbricklab import Scenario, ABrick, LBrick, FBrick
 rental_property = ABrick(
     id="rental",
     name="Rental Property",
-    kind="a.property_discrete",
+    kind="a.property",
     spec={
         "initial_value": 300000.0,
         "appreciation_pa": 0.03,
@@ -595,7 +595,7 @@ rental_property = ABrick(
 initial_mortgage = LBrick(
     id="initial_mortgage",
     name="Initial Mortgage",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     links={"principal": {"from_property": "rental"}},
     spec={"rate_pa": 0.045, "term_months": 360}
 )
@@ -604,7 +604,7 @@ initial_mortgage = LBrick(
 refi_mortgage = LBrick(
     id="refi_mortgage",
     name="Refinanced Mortgage",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     links={"principal": {"from_property": "rental"}},
     spec={"rate_pa": 0.035, "term_months": 300}
 )
@@ -636,7 +636,7 @@ down_payment = FBrick(
 rental_income = FBrick(
     id="rental_income",
     name="Rental Income",
-    kind="f.income.fixed",
+    kind="f.income.recurring",
     links={"to": {"to_cash": "cash"}},
     spec={
         "amount_monthly": 2000.0,
@@ -648,7 +648,7 @@ rental_income = FBrick(
 refi_costs = FBrick(
     id="refi_costs",
     name="Refinancing Costs",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_cash": "cash"}},
     spec={
         "amount_monthly": 5000.0,  # One-time cost
@@ -693,7 +693,7 @@ def create_portfolio_scenario(scenario_id: str, name: str, stock_allocation: flo
     stocks = ABrick(
         id=f"{scenario_id}_stocks",
         name="Stock ETF",
-        kind="a.etf_unitized",
+        kind="a.security.unitized",
         spec={
             "initial_units": (100000.0 * stock_allocation) / 100.0,
             "initial_price": 100.0,
@@ -705,7 +705,7 @@ def create_portfolio_scenario(scenario_id: str, name: str, stock_allocation: flo
     bonds = ABrick(
         id=f"{scenario_id}_bonds",
         name="Bond ETF",
-        kind="a.etf_unitized",
+        kind="a.security.unitized",
         spec={
             "initial_units": (100000.0 * bond_allocation) / 50.0,
             "initial_price": 50.0,
@@ -933,7 +933,7 @@ emergency_fund = ABrick(
 retirement_401k = ABrick(
     id="retirement_401k",
     name="401(k) Retirement",
-    kind="a.etf_unitized",
+    kind="a.security.unitized",
     spec={
         "initial_units": 100.0,
         "initial_price": 100.0,
@@ -946,7 +946,7 @@ retirement_401k = ABrick(
 salary = FBrick(
     id="salary",
     name="Monthly Salary",
-    kind="f.income.fixed",
+    kind="f.income.recurring",
     links={"to": {"to_emergency": "emergency_fund"}},
     spec={
         "amount_monthly": 6000.0,
@@ -958,7 +958,7 @@ salary = FBrick(
 rent = FBrick(
     id="rent",
     name="Rent",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_emergency": "emergency_fund"}},
     spec={
         "amount_monthly": 2000.0,
@@ -969,7 +969,7 @@ rent = FBrick(
 living_expenses = FBrick(
     id="living_expenses",
     name="Living Expenses",
-    kind="f.expense.fixed",
+    kind="f.expense.recurring",
     links={"from": {"from_emergency": "emergency_fund"}},
     spec={
         "amount_monthly": 1500.0,
@@ -1022,7 +1022,7 @@ def create_home_scenario(scenario_id: str, name: str, down_payment_pct: float, r
     house = ABrick(
         id=f"{scenario_id}_house",
         name="Family Home",
-        kind="a.property_discrete",
+        kind="a.property",
         spec={
             "initial_value": 500000.0,
             "appreciation_pa": 0.025,
@@ -1034,7 +1034,7 @@ def create_home_scenario(scenario_id: str, name: str, down_payment_pct: float, r
     mortgage = LBrick(
         id=f"{scenario_id}_mortgage",
         name="Home Loan",
-        kind="l.mortgage.annuity",
+        kind="l.loan.annuity",
         links={"principal": {"from_house": f"{scenario_id}_house"}},
         spec={"rate_pa": rate_pa, "term_months": 360}
     )
@@ -1066,7 +1066,7 @@ def create_home_scenario(scenario_id: str, name: str, down_payment_pct: float, r
     income = FBrick(
         id=f"{scenario_id}_income",
         name="Monthly Income",
-        kind="f.income.fixed",
+        kind="f.income.recurring",
         links={"to": {"to_cash": f"{scenario_id}_cash"}},
         spec={
             "amount_monthly": 8000.0,
@@ -1078,7 +1078,7 @@ def create_home_scenario(scenario_id: str, name: str, down_payment_pct: float, r
     expenses = FBrick(
         id=f"{scenario_id}_expenses",
         name="Living Expenses",
-        kind="f.expense.fixed",
+        kind="f.expense.recurring",
         links={"from": {"from_cash": f"{scenario_id}_cash"}},
         spec={
             "amount_monthly": 3000.0,

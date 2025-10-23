@@ -35,7 +35,7 @@ class Registry:
 
         # Create individual bricks
         cash = ABrick(id="cash", name="Savings", kind="a.cash", spec={"initial_balance": 10000})
-        salary = FBrick(id="salary", name="Salary", kind="f.income.fixed", spec={"amount_monthly": 3000})
+        salary = FBrick(id="salary", name="Salary", kind="f.income.recurring", spec={"amount_monthly": 3000})
 
         # Create registry
         registry = Registry(

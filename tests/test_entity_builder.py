@@ -31,7 +31,7 @@ class TestEntityBuilder:
         entity.new_FBrick(
             id="salary",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 6000.0},
             links={"route": {"to": "checking"}},
         )
@@ -94,12 +94,15 @@ class TestEntityBuilder:
             id="cash", name="Cash", kind=K.A_CASH, spec={"initial_balance": 1000.0}
         )
         entity.new_ABrick(
-            id="etf", name="ETF", kind=K.A_ETF_UNITIZED, spec={"initial_units": 100.0}
+            id="etf",
+            name="ETF",
+            kind=K.A_SECURITY_UNITIZED,
+            spec={"initial_units": 100.0},
         )
         entity.new_FBrick(
             id="salary",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
         )
 
@@ -193,7 +196,7 @@ class TestEntityBuilder:
         entity.new_FBrick(
             id="income",
             name="Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
             links=route_link,
         )
@@ -207,7 +210,7 @@ class TestEntityBuilder:
         entity.new_FBrick(
             id="expense",
             name="Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 2000.0},
             links={"route": {"from": "cash"}},
         )
@@ -228,7 +231,7 @@ class TestEntityBuilder:
         entity.new_FBrick(
             id="salary",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
         )
         entity.new_MacroBrick(id="portfolio", name="Portfolio", member_ids=["cash"])
@@ -307,12 +310,15 @@ class TestEntityBuilder:
             id="cash", name="Cash", kind=K.A_CASH, spec={"initial_balance": 1000.0}
         )
         entity.new_ABrick(
-            id="etf", name="ETF", kind=K.A_ETF_UNITIZED, spec={"initial_units": 100.0}
+            id="etf",
+            name="ETF",
+            kind=K.A_SECURITY_UNITIZED,
+            spec={"initial_units": 100.0},
         )
         entity.new_FBrick(
             id="salary",
             name="Salary",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
         )
 

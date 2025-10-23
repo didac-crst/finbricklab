@@ -387,18 +387,18 @@ def month_range(start: date, months: int) -> pd.DatetimeIndex:
 ### Available Asset Strategies
 
 - `a.cash` - Cash account with interest
-- `a.property_discrete` - Real estate with appreciation
-- `a.etf_unitized` - ETF investment with unitized pricing
+- `a.property` - Real estate with appreciation
+- `a.security.unitized` - ETF investment with unitized pricing
 
 ### Available Liability Strategies
 
-- `l.mortgage.annuity` - Fixed-rate mortgage with annuity payments
+- `l.loan.annuity` - Fixed-rate mortgage with annuity payments
 
 ### Available Flow Strategies
 
 - `f.transfer.lumpsum` - One-time lump sum transfer
-- `f.income.fixed` - Fixed recurring income
-- `f.expense.fixed` - Fixed recurring expense
+- `f.income.recurring` - Fixed recurring income
+- `f.expense.recurring` - Fixed recurring expense
 
 ---
 

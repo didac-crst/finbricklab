@@ -8,10 +8,11 @@ different financial strategies.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -364,7 +365,7 @@ class Entity:
         Args:
             id: Unique identifier for the brick
             name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'a.cash', 'a.etf_unitized')
+            kind: Brick kind (e.g., 'a.cash', 'a.security.unitized')
             spec: Brick specification dictionary
             links: Brick links (dict or RouteLink object)
             **kwargs: Additional brick attributes
@@ -398,7 +399,7 @@ class Entity:
         Args:
             id: Unique identifier for the brick
             name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'l.mortgage.annuity')
+            kind: Brick kind (e.g., 'l.loan.annuity')
             spec: Brick specification dictionary
             links: Brick links (dict or RouteLink object)
             **kwargs: Additional brick attributes
@@ -432,7 +433,7 @@ class Entity:
         Args:
             id: Unique identifier for the brick
             name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'f.income.fixed', 'f.expense.fixed')
+            kind: Brick kind (e.g., 'f.income.recurring', 'f.expense.recurring')
             spec: Brick specification dictionary
             links: Brick links (dict or RouteLink object)
             **kwargs: Additional brick attributes
@@ -478,15 +479,17 @@ class Entity:
             ValueError: If ID already exists or required links are missing
         """
         self._assert_unique_id(id)
-        
+
         # Validate required links for transfers
         if not links:
-            raise ValueError("Transfer bricks require 'links' with 'from' and 'to' accounts")
+            raise ValueError(
+                "Transfer bricks require 'links' with 'from' and 'to' accounts"
+            )
         if "from" not in links:
             raise ValueError("Transfer bricks must specify 'from' account")
         if "to" not in links:
             raise ValueError("Transfer bricks must specify 'to' account")
-        
+
         brick = TBrick(
             id=id,
             name=name,
@@ -765,7 +768,7 @@ class Entity:
     ) -> dict[str, dict[str, Any]]:
         """
         Run multiple scenarios and return a mapping {scenario_id: results}.
-        
+
         Raises on first missing scenario_id; consider try/except in caller if you want partial results.
 
         Parameters

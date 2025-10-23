@@ -102,8 +102,16 @@ def main():
         "--tokens",
         "-t",
         nargs="+",
-        default=["tenant", "household"],
-        help="Forbidden tokens to search for (default: tenant household)",
+        default=[
+            "tenant",
+            "household",
+            "a.etf_unitized",
+            "a.property_discrete",
+            "f.income.fixed",
+            "f.expense.fixed",
+            "l.mortgage.annuity",
+        ],
+        help="Forbidden tokens to search for (default: tenant household + legacy kinds)",
     )
     parser.add_argument(
         "--exclude", "-e", nargs="*", help="Additional exclude patterns"
@@ -132,6 +140,7 @@ def main():
         r"\.pre-commit-config\.yaml$",
         # Exclude test files that might legitimately test for these tokens
         r"test.*forbidden.*token",
+        r"test_kinds_registry_alignment\.py$",
     ]
 
     if args.exclude:

@@ -2,19 +2,18 @@
 Tests for mortgage parameter aliasing and precedence behavior.
 """
 
+import warnings
 from datetime import date
 
 import numpy as np
 import pytest
-import warnings
-
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.strategies.schedule.mortgage_annuity import (
-    ScheduleMortgageAnnuity,
-    FinBrickWarning,
     FinBrickDeprecationWarning,
+    FinBrickWarning,
+    ScheduleMortgageAnnuity,
 )
 
 
@@ -26,11 +25,11 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="alias_test",
             name="Alias Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
-                "interest_rate_pa": 0.025,      # New alias
-                "amortization_rate_pa": 0.03,   # New alias
+                "interest_rate_pa": 0.025,  # New alias
+                "amortization_rate_pa": 0.03,  # New alias
             },
         )
 
@@ -50,11 +49,11 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="old_names_test",
             name="Old Names Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
-                "rate_pa": 0.025,               # Old name
-                "amortization_pa": 0.03,        # Old name
+                "rate_pa": 0.025,  # Old name
+                "amortization_pa": 0.03,  # Old name
             },
         )
 
@@ -74,11 +73,11 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="clash_test",
             name="Clash Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
-                "rate_pa": 0.025,               # Old name
-                "interest_rate_pa": 0.030,      # New alias (different value)
+                "rate_pa": 0.025,  # Old name
+                "interest_rate_pa": 0.030,  # New alias (different value)
                 "amortization_pa": 0.03,
             },
         )
@@ -96,7 +95,9 @@ class TestMortgageAliasing:
             # Check that warning was issued
             assert len(w) == 1, f"Expected 1 warning, got {len(w)}"
             assert issubclass(w[0].category, FinBrickWarning)
-            assert "interest_rate_pa" in str(w[0].message) and "rate_pa" in str(w[0].message)
+            assert "interest_rate_pa" in str(w[0].message) and "rate_pa" in str(
+                w[0].message
+            )
 
         # Check that old name wins (precedence)
         assert mortgage.spec["rate_pa"] == 0.025
@@ -107,7 +108,7 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="credit_window_test",
             name="Credit Window Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             start_date=date(2026, 1, 1),
             end_date=date(2030, 1, 1),  # Pre-existing end_date
             spec={
@@ -139,12 +140,12 @@ class TestMortgageAliasing:
     def test_credit_window_hierarchy(self):
         """Test credit window parameter hierarchy."""
         # Test credit_end_date > credit_term_months > fix_rate_months
-        
+
         # Test 1: credit_end_date should win
         mortgage1 = LBrick(
             id="hierarchy_test_1",
             name="Hierarchy Test 1",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
                 "rate_pa": 0.025,
@@ -169,7 +170,7 @@ class TestMortgageAliasing:
         mortgage2 = LBrick(
             id="hierarchy_test_2",
             name="Hierarchy Test 2",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
                 "rate_pa": 0.025,
@@ -188,7 +189,7 @@ class TestMortgageAliasing:
         mortgage3 = LBrick(
             id="hierarchy_test_3",
             name="Hierarchy Test 3",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
                 "rate_pa": 0.025,
@@ -207,11 +208,11 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="deprecated_test",
             name="Deprecated Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
-                "rate_pa": 0.025,               # Required parameter
-                "annual_rate": 0.025,           # Deprecated parameter (should warn)
+                "rate_pa": 0.025,  # Required parameter
+                "annual_rate": 0.025,  # Deprecated parameter (should warn)
                 "amortization_pa": 0.03,
             },
         )
@@ -237,11 +238,11 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="once_only_test",
             name="Once Only Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": 300_000.0,
                 "rate_pa": 0.025,
-                "interest_rate_pa": 0.030,      # Should trigger warning
+                "interest_rate_pa": 0.030,  # Should trigger warning
                 "amortization_pa": 0.03,
             },
         )
@@ -266,6 +267,7 @@ class TestMortgageAliasing:
     def test_lmortgagespec_integration(self):
         """Test that LMortgageSpec objects work with aliases."""
         from dataclasses import asdict
+
         from finbricklab.core.specs import LMortgageSpec
 
         spec = LMortgageSpec(
@@ -276,7 +278,7 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="lmortgagespec_test",
             name="LMortgageSpec Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 **asdict(spec),
                 "principal": 300_000.0,  # Add principal to the spec dict
@@ -300,7 +302,7 @@ class TestMortgageAliasing:
         mortgage = LBrick(
             id="invalid_spec_test",
             name="Invalid Spec Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec="invalid_spec",  # String instead of dict or LMortgageSpec
         )
 

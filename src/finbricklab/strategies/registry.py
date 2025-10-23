@@ -5,9 +5,22 @@ Strategy registry setup for FinBrickLab.
 from finbricklab.core.bricks import FlowRegistry, ScheduleRegistry, ValuationRegistry
 from finbricklab.core.kinds import K
 
-from .flow import FlowExpenseFixed, FlowIncomeFixed
-from .schedule import ScheduleMortgageAnnuity
-from .valuation import ValuationCash, ValuationETFUnitized, ValuationPropertyDiscrete
+from .flow import (
+    FlowExpenseFixed as FlowExpenseRecurring,
+)
+from .flow import (
+    FlowIncomeFixed as FlowIncomeRecurring,
+)
+from .schedule import ScheduleMortgageAnnuity as ScheduleLoanAnnuity
+from .valuation import (
+    ValuationCash,
+)
+from .valuation import (
+    ValuationETFUnitized as ValuationSecurityUnitized,
+)
+from .valuation import (
+    ValuationPropertyDiscrete as ValuationProperty,
+)
 
 
 def register_defaults():
@@ -21,15 +34,15 @@ def register_defaults():
     Registered Strategies:
         Assets:
             - 'a.cash': Cash account with interest
-            - 'a.property_discrete': Real estate with appreciation
-            - 'a.etf_unitized': ETF investment with unitized pricing
+            - 'a.property': Real estate with appreciation
+            - 'a.security.unitized': ETF investment with unitized pricing
 
         Liabilities:
-            - 'l.mortgage.annuity': Fixed-rate mortgage with annuity payments
+            - 'l.loan.annuity': Fixed-rate mortgage with annuity payments
 
         Flows:
-            - 'f.income.fixed': Fixed recurring income
-            - 'f.expense.fixed': Fixed recurring expense
+            - 'f.income.recurring': Recurring income
+            - 'f.expense.recurring': Recurring expense
 
     Note:
         This function is automatically called when the module is imported.
@@ -38,12 +51,12 @@ def register_defaults():
     """
     # Register asset valuation strategies
     ValuationRegistry[K.A_CASH] = ValuationCash()
-    ValuationRegistry[K.A_PROPERTY_DISCRETE] = ValuationPropertyDiscrete()
-    ValuationRegistry[K.A_ETF_UNITIZED] = ValuationETFUnitized()
+    ValuationRegistry[K.A_PROPERTY] = ValuationProperty()
+    ValuationRegistry[K.A_SECURITY_UNITIZED] = ValuationSecurityUnitized()
 
     # Register liability schedule strategies
-    ScheduleRegistry[K.L_MORT_ANN] = ScheduleMortgageAnnuity()
+    ScheduleRegistry[K.L_LOAN_ANNUITY] = ScheduleLoanAnnuity()
 
     # Register cash flow strategies
-    FlowRegistry[K.F_INCOME_FIXED] = FlowIncomeFixed()
-    FlowRegistry[K.F_EXPENSE_FIXED] = FlowExpenseFixed()
+    FlowRegistry[K.F_INCOME_RECURRING] = FlowIncomeRecurring()
+    FlowRegistry[K.F_EXPENSE_RECURRING] = FlowExpenseRecurring()

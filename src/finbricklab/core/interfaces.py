@@ -177,7 +177,7 @@ class ITransferStrategy(Protocol):
                 # Generate transfer at specified time
                 amount = brick.spec["amount"]
                 transfer_time = brick.window.start_date
-                
+
                 return BrickOutput(
                     cash_in=np.zeros(len(ctx.t_index)),
                     cash_out=np.zeros(len(ctx.t_index)),
@@ -207,4 +207,9 @@ class ITransferStrategy(Protocol):
         ...
 
 
-__all__ = ["IValuationStrategy", "IScheduleStrategy", "IFlowStrategy", "ITransferStrategy"]
+__all__ = [
+    "IValuationStrategy",
+    "IScheduleStrategy",
+    "IFlowStrategy",
+    "ITransferStrategy",
+]

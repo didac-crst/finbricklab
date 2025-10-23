@@ -70,7 +70,7 @@ def _has_spec_key(spec, key):
 
 class ScheduleMortgageAnnuity(IScheduleStrategy):
     """
-    Fixed-rate mortgage with annuity payment schedule (kind: 'l.mortgage.annuity').
+    Fixed-rate mortgage with annuity payment schedule (kind: 'l.loan.annuity').
 
     This strategy models a traditional fixed-rate mortgage with equal monthly payments
     that include both principal and interest. It supports two independent concepts:
@@ -84,7 +84,7 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
 
     **User-Friendly Aliases:**
         - interest_rate_pa → rate_pa
-        - amortization_rate_pa → amortization_pa  
+        - amortization_rate_pa → amortization_pa
         - amortization_term_months → term_months
         - credit_end_date → end_date (highest priority)
         - credit_term_months → duration_m
@@ -137,25 +137,31 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
         """
         # Normalize spec to dict (handles both dict and LMortgageSpec)
         spec = normalize_spec(brick.spec)
-        
+
         # --- Aliases ---
         alias_map = {
             "interest_rate_pa": "rate_pa",
-            "amortization_rate_pa": "amortization_pa", 
+            "amortization_rate_pa": "amortization_pa",
             "amortization_term_months": "term_months",
         }
         for new, old in alias_map.items():
             if new in spec:
                 if old in spec and spec[old] != spec[new]:
-                    warn_once("ALIAS_CLASH_"+old.upper(), brick.id,
-                              f"[{brick.id}] '{new}' ignored because '{old}' is set (precedence: {old}).")
+                    warn_once(
+                        "ALIAS_CLASH_" + old.upper(),
+                        brick.id,
+                        f"[{brick.id}] '{new}' ignored because '{old}' is set (precedence: {old}).",
+                    )
                 else:
                     spec.setdefault(old, spec[new])
 
         # Handle unknown/deprecated keys
         if "annual_rate" in spec:
-            warnings.warn(f"[{brick.id}] 'annual_rate' is not supported. Use 'interest_rate_pa'.",
-                          FinBrickDeprecationWarning, stacklevel=3)
+            warnings.warn(
+                f"[{brick.id}] 'annual_rate' is not supported. Use 'interest_rate_pa'.",
+                FinBrickDeprecationWarning,
+                stacklevel=3,
+            )
             # Don't use annual_rate - it's deprecated
 
         # --- Credit window precedence ---
@@ -165,15 +171,23 @@ class ScheduleMortgageAnnuity(IScheduleStrategy):
 
         if credit_end is not None:
             if brick.end_date is not None:
-                warn_once("CREDIT_WINDOW_OVERRIDE", brick.id,
-                          f"[{brick.id}] Overriding brick.end_date with credit_end_date.")
+                warn_once(
+                    "CREDIT_WINDOW_OVERRIDE",
+                    brick.id,
+                    f"[{brick.id}] Overriding brick.end_date with credit_end_date.",
+                )
             brick.end_date = credit_end
         elif credit_term is not None:
             if brick.duration_m is not None:
-                warn_once("CREDIT_WINDOW_OVERRIDE", brick.id,
-                          f"[{brick.id}] Overriding brick.duration_m with credit_term_months.")
+                warn_once(
+                    "CREDIT_WINDOW_OVERRIDE",
+                    brick.id,
+                    f"[{brick.id}] Overriding brick.duration_m with credit_term_months.",
+                )
             brick.duration_m = int(credit_term)
-        elif fix_rate is not None and brick.end_date is None and brick.duration_m is None:
+        elif (
+            fix_rate is not None and brick.end_date is None and brick.duration_m is None
+        ):
             brick.duration_m = int(fix_rate)
 
         # Push the normalized spec back

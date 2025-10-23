@@ -61,7 +61,7 @@ class TestScenarioBasics:
         house = ABrick(
             id="house",
             name="Property",
-            kind="a.property_discrete",
+            kind="a.property",
             spec={
                 "initial_value": 400000.0,
                 "fees_pct": 0.095,
@@ -72,7 +72,7 @@ class TestScenarioBasics:
         mortgage = LBrick(
             id="mortgage",
             name="Home Loan",
-            kind="l.mortgage.annuity",
+            kind="l.loan.annuity",
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.034, "term_months": 300},
         )

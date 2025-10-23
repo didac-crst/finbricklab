@@ -224,13 +224,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -270,13 +270,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -327,13 +327,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -395,7 +395,7 @@ class TestScenarioIntegration:
                 {
                     "id": "house",
                     "name": "House",
-                    "kind": "a.property_discrete",
+                    "kind": "a.property",
                     "spec": {
                         "initial_value": 400000.0,
                         "fees_pct": 0.05,
@@ -427,13 +427,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -465,13 +465,13 @@ class TestAggregationCorrectness:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -521,13 +521,13 @@ class TestAggregationCorrectness:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -574,7 +574,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 
@@ -626,13 +626,13 @@ class TestAggregationInvariants:
         house1 = ABrick(
             id="house1",
             name="House 1",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         house2 = ABrick(
             id="house2",
             name="House 2",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 300000.0,
                 "fees_pct": 0.05,
@@ -694,7 +694,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 
@@ -725,7 +725,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 

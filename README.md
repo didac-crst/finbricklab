@@ -56,7 +56,7 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
   * Liability → `IScheduleStrategy`
   * Flow → `IFlowStrategy`
   * Transfer → `ITransferStrategy` (new)
-* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`, `t.transfer.lumpsum`).
+* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.loan.annuity`, `t.transfer.lumpsum`).
 * **Journal**: double-entry bookkeeping system that records all financial transactions with proper accounting invariants.
 * **Scenario**: orchestrates bricks, compiles to Journal entries, aggregates totals, exports results.
 * **Entity**: groups multiple scenarios for comparison, benchmarking, and visualization.
@@ -94,10 +94,10 @@ flowchart TD
 
   subgraph "Strategy Level"
     B1 --> ST1[a.cash]
-    B2 --> ST2[a.property_discrete]
-    B3 --> ST3[l.mortgage.annuity]
-    B4 --> ST4[a.etf_unitized]
-    B5 --> ST5[f.income.fixed]
+    B2 --> ST2[a.property]
+    B3 --> ST3[l.loan.annuity]
+    B4 --> ST4[a.security.unitized]
+    B5 --> ST5[f.income.recurring]
   end
 
   subgraph "Data Flow"
@@ -186,7 +186,7 @@ New **TBrick** family for internal transfers between accounts:
 # One-time transfer
 transfer = TBrick(
     id="emergency_transfer",
-    name="Emergency Transfer", 
+    name="Emergency Transfer",
     kind="t.transfer.lumpsum",
     spec={"amount": 5000.0, "currency": "EUR"},
     links={"from": "checking", "to": "savings"}
@@ -196,7 +196,7 @@ transfer = TBrick(
 monthly_save = TBrick(
     id="monthly_save",
     name="Monthly Savings",
-    kind="t.transfer.recurring", 
+    kind="t.transfer.recurring",
     spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
     links={"from": "checking", "to": "savings"}
 )
@@ -332,7 +332,7 @@ cash = ABrick(
 house = ABrick(
     id="house",
     name="Primary Residence",
-    kind="a.property_discrete",
+    kind="a.property",
     spec={
         "initial_value": 400_000.0,
         "appreciation_pa": 0.03,
@@ -344,7 +344,7 @@ house = ABrick(
 mortgage = LBrick(
     id="mortgage",
     name="Fixed Mortgage",
-    kind="l.mortgage.annuity",
+    kind="l.loan.annuity",
     spec={
         "principal": 320_000.0,
         "rate_pa": 0.035,
@@ -387,7 +387,7 @@ salary = FBrick(
 
 rent = FBrick(
     id="rent",
-    name="Rent", 
+    name="Rent",
     kind=K.F_EXPENSE_FIXED,
     spec={"amount_monthly": 1200.0}
     # No routing needed - Journal system handles automatically
@@ -611,13 +611,13 @@ finbrick validate -i demo.json
     {
       "id": "house",
       "name": "Primary Residence",
-      "kind": "a.property_discrete",
+      "kind": "a.property",
       "spec": { "initial_value": 400000.0, "appreciation_pa": 0.03, "fees_pct": 0.10 }
     },
     {
       "id": "mortgage",
       "name": "Fixed Mortgage",
-      "kind": "l.mortgage.annuity",
+      "kind": "l.loan.annuity",
       "spec": { "principal": 320000.0, "rate_pa": 0.035, "term_months": 360, "start_date": "2026-01-01" }
     }
   ]
@@ -635,11 +635,11 @@ finbrick validate -i demo.json
 | Family    | Kind                  | What it models                   | Key `spec` fields (examples)                                                      |
 | --------- | --------------------- | -------------------------------- | --------------------------------------------------------------------------------- |
 | Asset     | `a.cash`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`                                                  |
-| Asset     | `a.property_discrete` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
-| Asset     | `a.etf_unitized`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
-| Liability | `l.mortgage.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
-| Flow      | `f.income.fixed`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
-| Flow      | `f.expense.fixed`     | Fixed recurring expense          | `amount_m`, `start_date?`, `end_date?`                                            |
+| Asset     | `a.property` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
+| Asset     | `a.security.unitized`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
+| Liability | `l.loan.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
+| Flow      | `f.income.recurring`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
+| Flow      | `f.expense.recurring`     | Fixed recurring expense          | `amount_m`, `start_date?`, `end_date?`                                            |
 | Transfer  | `t.transfer.lumpsum`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
 | Transfer  | `t.transfer.recurring`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
 | Transfer  | `t.transfer.scheduled`| Scheduled internal transfers     | `schedule` (list of transfer events)                                              |
