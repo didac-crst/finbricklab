@@ -120,6 +120,24 @@ class TransferLumpSum(ITransferStrategy):
         if transfer_time is None:
             transfer_time = ctx.t_index[0]
 
+        # Initialize cash flow arrays
+        cash_in = np.zeros(T, dtype=float)
+        cash_out = np.zeros(T, dtype=float)
+        
+        # Find the month index for this transfer
+        month_idx = None
+        for i, t in enumerate(ctx.t_index):
+            if t >= transfer_time:
+                month_idx = i
+                break
+        
+        if month_idx is not None and month_idx < T:
+            # Record cash flows for the transfer
+            # Money goes out from source account (cash_out)
+            # Money comes in to destination account (cash_in)
+            cash_out[month_idx] += float(amount)
+            cash_in[month_idx] += float(amount)
+
         # Create transfer event
         event = Event(
             transfer_time,
@@ -169,8 +187,8 @@ class TransferLumpSum(ITransferStrategy):
             events.append(fx_event)
 
         return BrickOutput(
-            cash_in=np.zeros(T),
-            cash_out=np.zeros(T),
+            cash_in=cash_in,
+            cash_out=cash_out,
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             events=events,
