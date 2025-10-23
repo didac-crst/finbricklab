@@ -15,7 +15,7 @@ from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.results import BrickOutput
 
 
-class FlowIncomeFixed(IFlowStrategy):
+class FlowIncomeRecurring(IFlowStrategy):
     """
     Fixed monthly income flow strategy with escalation (kind: 'f.income.salary').
 

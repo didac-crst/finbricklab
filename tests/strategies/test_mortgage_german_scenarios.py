@@ -8,7 +8,7 @@ import numpy as np
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
-from finbricklab.strategies.schedule.loan_annuity import ScheduleMortgageAnnuity
+from finbricklab.strategies.schedule.loan_annuity import ScheduleLoanAnnuity
 
 
 class TestGermanMortgageScenarios:
@@ -35,7 +35,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2026-01", "2047-01", dtype="datetime64[M]")  # ~21 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -92,7 +92,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2018-07", "2028-08", dtype="datetime64[M]")  # 10 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -136,7 +136,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2018-07", "2028-08", dtype="datetime64[M]")  # 10 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -183,7 +183,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2026-01", "2051-01", dtype="datetime64[M]")  # 25 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -220,7 +220,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2018-07", "2033-08", dtype="datetime64[M]")  # 15 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -262,7 +262,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2018-07", "2033-08", dtype="datetime64[M]")  # 15 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -295,7 +295,7 @@ class TestGermanMortgageScenarios:
         t_index = np.arange("2026-01", "2051-01", dtype="datetime64[M]")  # 25 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 

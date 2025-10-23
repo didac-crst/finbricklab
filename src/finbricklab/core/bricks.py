@@ -379,5 +379,10 @@ def wire_strategies(bricks: list[FinBrickABC]) -> None:
                 raise ConfigError(f"Unknown flow strategy: {brick.kind}")
             brick.flow = FlowRegistry[brick.kind]
 
+        elif brick.family == "t":
+            if brick.kind not in FlowRegistry:
+                raise ConfigError(f"Unknown transfer strategy: {brick.kind}")
+            brick.transfer = FlowRegistry[brick.kind]
+
         else:
             raise ConfigError(f"Unknown brick family: {brick.family}")

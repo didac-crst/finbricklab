@@ -6,18 +6,18 @@ from finbricklab.core.bricks import FlowRegistry, ScheduleRegistry, ValuationReg
 from finbricklab.core.kinds import K
 
 # Flow strategies
-from .flow.income_recurring import FlowIncomeFixed as FlowIncomeRecurring
-from .flow.expense_recurring import FlowExpenseFixed as FlowExpenseRecurring
+from .flow.income_recurring import FlowIncomeRecurring
+from .flow.expense_recurring import FlowExpenseRecurring
 from .flow.income_onetime import FlowIncomeOneTime
 from .flow.expense_onetime import FlowExpenseOneTime
 
 # Schedule strategies
-from .schedule.loan_annuity import ScheduleMortgageAnnuity as ScheduleLoanAnnuity
+from .schedule.loan_annuity import ScheduleLoanAnnuity
 
 # Valuation strategies
 from .valuation.cash import ValuationCash
-from .valuation.security_unitized import ValuationETFUnitized as ValuationSecurityUnitized
-from .valuation.property import ValuationPropertyDiscrete as ValuationProperty
+from .valuation.security_unitized import ValuationSecurityUnitized
+from .valuation.property import ValuationProperty
 
 # Transfer strategies
 from .transfer.recurring import TransferRecurring

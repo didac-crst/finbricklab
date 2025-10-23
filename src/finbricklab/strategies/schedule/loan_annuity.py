@@ -68,7 +68,7 @@ def _has_spec_key(spec, key):
         return hasattr(spec, key)
 
 
-class ScheduleMortgageAnnuity(IScheduleStrategy):
+class ScheduleLoanAnnuity(IScheduleStrategy):
     """
     Fixed-rate mortgage with annuity payment schedule (kind: 'l.loan.annuity').
 

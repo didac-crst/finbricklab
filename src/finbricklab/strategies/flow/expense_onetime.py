@@ -30,7 +30,7 @@ class FlowExpenseOneTime(IFlowStrategy):
     """
 
     def simulate(
-        self, brick: FBrick, ctx: ScenarioContext, months: int
+        self, brick: FBrick, ctx: ScenarioContext
     ) -> BrickOutput:
         """
         Simulate one-time expense flow.
@@ -38,7 +38,6 @@ class FlowExpenseOneTime(IFlowStrategy):
         Args:
             brick: The FBrick instance
             ctx: Scenario context
-            months: Number of months to simulate
 
         Returns:
             BrickOutput with cash flow data
@@ -59,19 +58,23 @@ class FlowExpenseOneTime(IFlowStrategy):
         else:
             net_amount = amount
         
+        # Get the number of months from the context
+        months = len(ctx.t_index)
+        
         # Initialize arrays
         cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
         
         # Find the month when this event occurs
-        start_date = ctx.start_date
+        # Convert the event date to a string format that matches the time index
+        event_month_str = event_date.strftime("%Y-%m")
+        
         for month_idx in range(months):
-            current_date = start_date.replace(day=1) + np.timedelta64(month_idx, 'M')
-            current_date = current_date.astype(datetime).date()
+            # Convert the time index to string format for comparison
+            current_month_str = str(ctx.t_index[month_idx])
             
             # Check if this is the month of the event
-            if (current_date.year == event_date.year and 
-                current_date.month == event_date.month):
+            if current_month_str == event_month_str:
                 cash_out[month_idx] = net_amount
                 break
         
@@ -79,8 +82,5 @@ class FlowExpenseOneTime(IFlowStrategy):
             cash_in=cash_in,
             cash_out=cash_out,
             asset_value=np.zeros(months, dtype=float),
-            liability_value=np.zeros(months, dtype=float),
-            non_cash=np.zeros(months, dtype=float),
-            equity=np.zeros(months, dtype=float),
-            cash=np.zeros(months, dtype=float),
+            debt_balance=np.zeros(months, dtype=float),
         )

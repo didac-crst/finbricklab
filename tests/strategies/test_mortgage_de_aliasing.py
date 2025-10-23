@@ -13,7 +13,7 @@ from finbricklab.core.kinds import K
 from finbricklab.strategies.schedule.loan_annuity import (
     FinBrickDeprecationWarning,
     FinBrickWarning,
-    ScheduleMortgageAnnuity,
+    ScheduleLoanAnnuity,
 )
 
 
@@ -36,7 +36,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
 
         # Check that aliases were applied
@@ -60,7 +60,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
 
         # Check that old names work as before
@@ -85,7 +85,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
 
         # Capture warnings
         with warnings.catch_warnings(record=True) as w:
@@ -122,7 +122,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
 
         # Capture warnings
         with warnings.catch_warnings(record=True) as w:
@@ -159,7 +159,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage1, ctx)
 
         # credit_end_date should win
@@ -220,7 +220,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
 
         # Capture warnings
         with warnings.catch_warnings(record=True) as w:
@@ -250,7 +250,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
 
         # First call - should warn
         with warnings.catch_warnings(record=True) as w1:
@@ -288,7 +288,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
 
         # Check that LMortgageSpec was normalized to dict
@@ -309,7 +309,7 @@ class TestMortgageAliasing:
         t_index = np.arange("2026-01", "2046-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
 
         with pytest.raises(TypeError, match="spec must be dict or LMortgageSpec"):
             strategy.prepare(mortgage, ctx)

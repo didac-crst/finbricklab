@@ -12,7 +12,7 @@ from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.results import BrickOutput
 
 
-class FlowExpenseFixed(IFlowStrategy):
+class FlowExpenseRecurring(IFlowStrategy):
     """
     Fixed monthly expense flow strategy (kind: 'f.expense.recurring').
 

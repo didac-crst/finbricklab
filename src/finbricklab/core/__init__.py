@@ -11,6 +11,7 @@ from .bricks import (
     FlowRegistry,
     LBrick,
     ScheduleRegistry,
+    TBrick,
     ValuationRegistry,
     wire_strategies,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "ABrick",
     "LBrick",
     "FBrick",
+    "TBrick",
     # Registries
     "ValuationRegistry",
     "ScheduleRegistry",

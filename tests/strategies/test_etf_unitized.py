@@ -9,7 +9,7 @@ from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.valuation.security_unitized import ValuationETFUnitized
+from finbricklab.strategies.valuation.security_unitized import ValuationSecurityUnitized
 
 
 class TestETFUnitizedMath:
@@ -39,7 +39,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -83,7 +83,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -118,7 +118,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -144,7 +144,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -185,7 +185,7 @@ class TestETFUnitizedMath:
             t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
             ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-            strategy = ValuationETFUnitized()
+            strategy = ValuationSecurityUnitized()
             strategy.prepare(etf, ctx)
             result = strategy.simulate(etf, ctx)
 
@@ -218,7 +218,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2029-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 

@@ -14,7 +14,7 @@ from finbricklab.core.results import BrickOutput
 from finbricklab.core.utils import active_mask
 
 
-class ValuationETFUnitized(IValuationStrategy):
+class ValuationSecurityUnitized(IValuationStrategy):
     """
     ETF investment valuation strategy (kind: 'a.invest.etf').
 

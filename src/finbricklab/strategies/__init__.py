@@ -16,17 +16,19 @@ making them available for use by bricks with matching kind discriminators.
 """
 
 from .flow import (
-    FlowExpenseFixed,
-    FlowIncomeFixed,
+    FlowExpenseRecurring,
+    FlowIncomeRecurring,
+    FlowExpenseOneTime,
+    FlowIncomeOneTime,
 )
 from .registry import register_defaults
 from .schedule import (
-    ScheduleMortgageAnnuity,
+    ScheduleLoanAnnuity,
 )
 from .valuation import (
     ValuationCash,
-    ValuationETFUnitized,
-    ValuationPropertyDiscrete,
+    ValuationSecurityUnitized,
+    ValuationProperty,
 )
 
 # Register all default strategies when module is imported
@@ -35,13 +37,15 @@ register_defaults()
 __all__ = [
     # Valuation strategies
     "ValuationCash",
-    "ValuationPropertyDiscrete",
-    "ValuationETFUnitized",
+    "ValuationProperty",
+    "ValuationSecurityUnitized",
     # Schedule strategies
-    "ScheduleMortgageAnnuity",
+    "ScheduleLoanAnnuity",
     # Flow strategies
-    "FlowIncomeFixed",
-    "FlowExpenseFixed",
+    "FlowIncomeRecurring",
+    "FlowExpenseRecurring",
+    "FlowIncomeOneTime",
+    "FlowExpenseOneTime",
     # Registry
     "register_defaults",
 ]

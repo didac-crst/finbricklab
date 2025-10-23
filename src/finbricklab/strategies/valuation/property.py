@@ -14,7 +14,7 @@ from finbricklab.core.results import BrickOutput
 from finbricklab.core.utils import active_mask
 
 
-class ValuationPropertyDiscrete(IValuationStrategy):
+class ValuationProperty(IValuationStrategy):
     """
     Real estate property valuation strategy (kind: 'a.property').
 
