@@ -24,8 +24,7 @@ def _simple_entity():
     s = e.create_scenario(
         "base",
         "Base",
-        brick_ids=["salary"],
-        macrobrick_ids=["liquid"],
+        brick_ids=["salary", "liquid"],
         settlement_default_cash_id="cash",
     )
     return e, s

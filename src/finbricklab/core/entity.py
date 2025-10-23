@@ -589,7 +589,7 @@ class Entity:
                     if item_id in stack:
                         cycle_path = " → ".join(path + [item_id])
                         raise ScenarioValidationError(
-                            id, f"Cycle in MacroBricks: {cycle_path}", [item_id]
+                            id, f"Cycle in MacroBricks: {cycle_path}", problem_ids=[item_id]
                         )
                     stack.add(item_id)
                     path.append(item_id)
@@ -597,7 +597,7 @@ class Entity:
                     # Cap recursion depth
                     if len(path) > 64:
                         raise ScenarioValidationError(
-                            id, f"MacroBrick nesting too deep: {len(path)} levels", [item_id]
+                            id, f"MacroBrick nesting too deep: {len(path)} levels", problem_ids=[item_id]
                         )
                     
                     # Get the MacroBrick and traverse its members directly
@@ -611,7 +611,7 @@ class Entity:
                     push(item_id)
                 else:
                     raise ScenarioValidationError(
-                        id, f"Unknown id '{item_id}'", [item_id]
+                        id, f"Unknown id '{item_id}'", problem_ids=[item_id]
                     )
 
             for item_id in ids or []:
