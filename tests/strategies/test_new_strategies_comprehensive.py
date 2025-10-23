@@ -177,7 +177,7 @@ class TestCreditFixedStrategy:
             settlement_default_cash_id="checking",
         )
 
-        results = scenario.run(start=date(2026, 1, 1), months=24)
+        results = scenario.run(start=date(2026, 1, 1), months=25)
 
         # Should have debt balance that decreases over time
         liabilities = results["totals"]["liabilities"]
@@ -256,13 +256,13 @@ class TestLoanBalloonStrategy:
             "balloon_io",
             "Balloon IO",
             K.L_LOAN_BALLOON,
-            {
+            start_date=date(2026, 1, 1),
+            spec={
                 "principal": 300000.0,
                 "rate_pa": 0.05,
-                "term_months": 36,
-                "amortization": {"type": "interest_only"},
-                "balloon_at_maturity": "full",
-                "start_date": "2026-01-15",
+                "balloon_after_months": 36,
+                "amortization_rate_pa": 0.0,  # Interest only
+                "balloon_type": "residual",
             },
         )
 
@@ -273,7 +273,7 @@ class TestLoanBalloonStrategy:
             settlement_default_cash_id="checking",
         )
 
-        results = scenario.run(start=date(2026, 1, 1), months=36)
+        results = scenario.run(start=date(2026, 1, 1), months=37)
 
         liabilities = results["totals"]["liabilities"]
         cash_out = results["totals"]["cash_out"]
@@ -301,13 +301,13 @@ class TestLoanBalloonStrategy:
             "balloon_linear",
             "Balloon Linear",
             K.L_LOAN_BALLOON,
-            {
+            start_date=date(2026, 1, 1),
+            spec={
                 "principal": 200000.0,
                 "rate_pa": 0.06,
-                "term_months": 24,
-                "amortization": {"type": "linear", "amort_months": 12},
-                "balloon_at_maturity": "residual",
-                "start_date": "2026-01-15",
+                "balloon_after_months": 24,
+                "amortization_rate_pa": 0.02,  # 2% annual amortization
+                "balloon_type": "residual",
             },
         )
 
@@ -318,7 +318,7 @@ class TestLoanBalloonStrategy:
             settlement_default_cash_id="checking",
         )
 
-        results = scenario.run(start=date(2026, 1, 1), months=24)
+        results = scenario.run(start=date(2026, 1, 1), months=25)
 
         liabilities = results["totals"]["liabilities"]
 
@@ -361,7 +361,7 @@ class TestPrivateEquityStrategy:
             settlement_default_cash_id="checking",
         )
 
-        results = scenario.run(start=date(2026, 1, 1), months=24)
+        results = scenario.run(start=date(2026, 1, 1), months=25)
 
         assets = results["totals"]["assets"]
 
@@ -463,12 +463,12 @@ class TestStrategyIntegration:
             "credit_card",
             "Credit Card",
             K.L_CREDIT_LINE,
-            {
+            start_date=date(2026, 1, 15),
+            spec={
                 "credit_limit": 10000.0,
                 "rate_pa": 0.20,
-                "min_payment": {"type": "percent", "percent": 0.03},
+                "min_payment": {"type": "interest_only"},
                 "billing_day": 15,
-                "start_date": "2026-01-15",
             },
         )
 
@@ -477,11 +477,11 @@ class TestStrategyIntegration:
             "personal_loan",
             "Personal Loan",
             K.L_CREDIT_FIXED,
-            {
+            start_date=date(2026, 1, 15),
+            spec={
                 "principal": 15000.0,
                 "rate_pa": 0.08,
                 "term_months": 12,
-                "start_date": "2026-01-15",
             },
         )
 
@@ -490,13 +490,13 @@ class TestStrategyIntegration:
             "equipment_loan",
             "Equipment Loan",
             K.L_LOAN_BALLOON,
-            {
+            start_date=date(2026, 1, 15),
+            spec={
                 "principal": 50000.0,
                 "rate_pa": 0.06,
-                "term_months": 24,
-                "amortization": {"type": "interest_only"},
-                "balloon_at_maturity": "full",
-                "start_date": "2026-01-15",
+                "balloon_after_months": 24,
+                "amortization_rate_pa": 0.0,  # Interest only
+                "balloon_type": "residual",
             },
         )
 
@@ -521,7 +521,7 @@ class TestStrategyIntegration:
             settlement_default_cash_id="checking",
         )
 
-        results = scenario.run(start=date(2026, 1, 1), months=24)
+        results = scenario.run(start=date(2026, 1, 1), months=25)
 
         # All strategies should work together
         totals = results["totals"]

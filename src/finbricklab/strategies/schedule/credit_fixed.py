@@ -4,7 +4,7 @@ Fixed-term credit schedule strategy with linear amortization.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
@@ -47,7 +47,10 @@ class ScheduleCreditFixed(IScheduleStrategy):
         principal = Decimal(str(brick.spec["principal"]))
         rate_pa = Decimal(str(brick.spec["rate_pa"]))
         term_months = int(brick.spec["term_months"])
-        start_date = datetime.strptime(brick.spec["start_date"], "%Y-%m-%d").date()
+        if brick.start_date:
+            start_date = brick.start_date
+        else:
+            start_date = ctx.t_index[0].astype("datetime64[D]").astype(date)
 
         # Get months from context if not provided
         if months is None:
@@ -61,10 +64,15 @@ class ScheduleCreditFixed(IScheduleStrategy):
 
         # Initialize arrays
         debt_balance = np.zeros(months, dtype=float)
+        cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
 
         # Track running balance
         current_balance = principal
+
+        # Generate initial disbursement cash flow
+        if start_date <= ctx.t_index[0].astype("datetime64[D]").astype(date):
+            cash_in[0] = float(principal)
 
         for month_idx in range(months):
             # Get the date for this month - convert from numpy datetime64 to Python date
@@ -102,7 +110,7 @@ class ScheduleCreditFixed(IScheduleStrategy):
             debt_balance[month_idx] = float(current_balance)
 
         return BrickOutput(
-            cash_in=np.zeros(months, dtype=float),
+            cash_in=cash_in,
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,

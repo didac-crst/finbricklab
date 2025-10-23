@@ -372,11 +372,11 @@ class TestScenarioIntegration:
             house_output["cash_out"] + mortgage_output["cash_out"],
         )
         assert np.array_equal(
-            struct_output["asset_value"],
+            struct_output["assets"],
             house_output["assets"] + mortgage_output["assets"],
         )
         assert np.array_equal(
-            struct_output["debt_balance"],
+            struct_output["liabilities"],
             house_output["liabilities"] + mortgage_output["liabilities"],
         )
 
@@ -507,8 +507,8 @@ class TestAggregationCorrectness:
         # Compare with automatic aggregation
         assert np.allclose(struct_output["cash_in"], manual_cash_in)
         assert np.allclose(struct_output["cash_out"], manual_cash_out)
-        assert np.allclose(struct_output["asset_value"], manual_assets)
-        assert np.allclose(struct_output["debt_balance"], manual_liabilities)
+        assert np.allclose(struct_output["assets"], manual_assets)
+        assert np.allclose(struct_output["liabilities"], manual_liabilities)
 
     def test_portfolio_totals_deduplication(self):
         """Test that portfolio totals properly deduplicate shared bricks."""
@@ -607,8 +607,8 @@ class TestAggregationInvariants:
             if hasattr(portfolio_totals.assets, "iloc")
             else portfolio_totals.assets[-1]
         )
-        primary_assets = primary_totals["asset_value"][-1]
-        property_assets = property_totals["asset_value"][-1]
+        primary_assets = primary_totals["assets"][-1]
+        property_assets = property_totals["assets"][-1]
         sum_assets = primary_assets + property_assets
 
         assert (
@@ -670,8 +670,8 @@ class TestAggregationInvariants:
             if hasattr(portfolio_totals.assets, "iloc")
             else portfolio_totals.assets[-1]
         )
-        primary_assets = primary_totals["asset_value"][-1]
-        secondary_assets = secondary_totals["asset_value"][-1]
+        primary_assets = primary_totals["assets"][-1]
+        secondary_assets = secondary_totals["assets"][-1]
 
         # Get cash output separately since it's not in any MacroBrick
         cash_output = results["outputs"]["cash"]

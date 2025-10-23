@@ -1,36 +1,42 @@
 """
-Loan balloon schedule strategy for balloon payment loans.
+Balloon loan schedule strategy for balloon payment loans.
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IScheduleStrategy
 from finbricklab.core.results import BrickOutput
 
 
 class ScheduleLoanBalloon(IScheduleStrategy):
     """
-    Loan balloon schedule strategy (kind: 'l.loan.balloon').
+    Balloon loan schedule strategy (kind: 'l.loan.balloon').
 
-    Models balloon payment loans with either interest-only periods or
-    partial amortization followed by a balloon payment at maturity.
+    Models balloon payment loans with configurable amortization periods,
+    balloon payments, and post-balloon interest-only periods.
 
     Required Parameters:
         - principal: Total loan amount
         - rate_pa: Annual interest rate
-        - term_months: Loan term in months
-        - amortization: Amortization configuration
-        - balloon_at_maturity: Balloon payment type
+        - balloon_after_months: When to make balloon payment (months from start)
+        - amortization_rate_pa: Annual amortization rate (e.g., 0.02 for 2% p.a.)
 
     Optional Parameters:
         - start_date: Start date for the loan (defaults to scenario start)
+        - balloon_type: Type of balloon payment ("residual" or "fixed_amount")
+        - balloon_amount: Fixed balloon amount (if balloon_type="fixed_amount")
+
+    Note:
+        The loan continues with interest-only payments after the balloon payment
+        until the simulation ends. No fixed term is required.
     """
 
     def simulate(
@@ -50,10 +56,11 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         # Extract parameters
         principal = Decimal(str(brick.spec["principal"]))
         rate_pa = Decimal(str(brick.spec["rate_pa"]))
-        term_months = int(brick.spec["term_months"])
-        amortization = brick.spec["amortization"]
-        balloon_type = brick.spec["balloon_at_maturity"]
-        
+        balloon_after_months = int(brick.spec["balloon_after_months"])
+        amortization_rate_pa = Decimal(str(brick.spec["amortization_rate_pa"]))
+        balloon_type = brick.spec.get("balloon_type", "residual")
+        balloon_amount = brick.spec.get("balloon_amount", 0)
+
         # Get start date from brick attribute or context
         if brick.start_date:
             start_date = brick.start_date
@@ -64,35 +71,55 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         if months is None:
             months = len(ctx.t_index)
 
-        # Calculate monthly interest rate
+        # Calculate monthly rates
         i_m = rate_pa / Decimal("12")
+        amort_rate_m = amortization_rate_pa / Decimal("12")
 
         # Initialize arrays
         debt_balance = np.zeros(months, dtype=float)
+        cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
+        events: list[Event] = []
 
         # Track running balance
         current_balance = principal
 
-        # Calculate amortization parameters
-        amort_type = amortization["type"]
-        amort_months = amortization.get("amort_months", 0)
+        # Find start month index
+        start_month_idx = None
+        for i, t in enumerate(ctx.t_index):
+            if t.astype("datetime64[D]").astype(date) >= start_date:
+                start_month_idx = i
+                break
 
-        if amort_type == "interest_only":
-            # Pure interest-only until balloon
-            principal_payment = Decimal("0")
-        elif amort_type == "linear":
-            if amort_months > 0:
-                # Linear amortization for specified months
-                principal_payment = principal / Decimal(str(amort_months))
-            else:
-                # Pure interest-only (amort_months = 0)
-                principal_payment = Decimal("0")
-        else:
-            raise ValueError(f"Unknown amortization type: {amort_type}")
+        if start_month_idx is None:
+            # Loan starts after simulation period
+            return BrickOutput(
+                cash_in=np.zeros(months, dtype=float),
+                cash_out=np.zeros(months, dtype=float),
+                assets=np.zeros(months, dtype=float),
+                liabilities=np.zeros(months, dtype=float),
+                events=events,
+            )
+
+        # Record loan disbursement event and cash flow
+        if start_month_idx < months:
+            events.append(
+                Event(
+                    ctx.t_index[start_month_idx],
+                    "loan_disbursement",
+                    f"Loan disbursed: €{principal:,.2f}",
+                    {"amount": float(principal), "type": "disbursement"},
+                )
+            )
+
+            # Generate cash flow for loan disbursement
+            cash_in[start_month_idx] = float(principal)
+
+        # Calculate monthly amortization amount
+        monthly_amortization = principal * amort_rate_m
 
         for month_idx in range(months):
-            # Get the date for this month - convert from numpy datetime64 to Python date
+            # Get the date for this month
             month_date = ctx.t_index[month_idx].astype("datetime64[D]").astype(date)
 
             # Check if this is a payment month
@@ -103,52 +130,86 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                 interest = current_balance * i_m
                 interest = interest.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-                # Determine if this is the final month (balloon payment)
-                is_final_month = month_idx >= term_months - 1
+                # Determine if this is the balloon payment month
+                months_since_start = month_idx - start_month_idx
+                is_balloon_month = months_since_start == balloon_after_months
 
-                if is_final_month:
+                if is_balloon_month:
                     # Balloon payment
-                    if balloon_type == "full":
-                        # Pay entire remaining balance
+                    if balloon_type == "residual":
                         balloon_payment = current_balance
-                    elif balloon_type == "residual":
-                        # Pay remaining balance (same as full in this case)
-                        balloon_payment = current_balance
+                    elif balloon_type == "fixed_amount":
+                        balloon_payment = Decimal(str(balloon_amount))
                     else:
                         raise ValueError(f"Unknown balloon type: {balloon_type}")
 
-                    total_payment = balloon_payment + interest
-                    current_balance = Decimal("0")
+                    # Pay off the loan
+                    current_balance -= balloon_payment
+                    current_balance = max(Decimal("0"), current_balance)
+
+                    # Record balloon payment event
+                    events.append(
+                        Event(
+                            month_date,
+                            "balloon_payment",
+                            f"Balloon payment: €{balloon_payment:,.2f}",
+                            {"amount": float(balloon_payment), "type": "balloon"},
+                        )
+                    )
+
+                    # Generate cash flow for balloon payment
+                    cash_out[month_idx] = float(balloon_payment)
+
+                elif months_since_start < balloon_after_months:
+                    # Amortization period - pay interest + principal
+                    principal_payment = min(monthly_amortization, current_balance)
+                    current_balance -= principal_payment
+                    current_balance = max(Decimal("0"), current_balance)
+
+                    # Record regular payment event
+                    events.append(
+                        Event(
+                            month_date,
+                            "loan_payment",
+                            f"Loan payment: €{principal_payment + interest:,.2f}",
+                            {
+                                "principal": float(principal_payment),
+                                "interest": float(interest),
+                                "type": "payment",
+                            },
+                        )
+                    )
+
+                    # Generate cash flow for regular payment
+                    total_payment = principal_payment + interest
+                    cash_out[month_idx] = float(total_payment)
 
                 else:
-                    # Regular payment
-                    if amort_type == "interest_only" or (
-                        amort_type == "linear" and month_idx >= amort_months
-                    ):
-                        # Interest-only payment
-                        principal_payment_this_month = Decimal("0")
-                    else:
-                        # Linear amortization payment
-                        principal_payment_this_month = principal_payment
+                    # Post-balloon interest-only period (continues indefinitely)
+                    # Note: current_balance remains unchanged during interest-only period
 
-                    total_payment = principal_payment_this_month + interest
-                    current_balance -= principal_payment_this_month
-                    current_balance = max(
-                        Decimal("0"), current_balance
-                    )  # Never go negative
+                    # Record interest-only payment event
+                    events.append(
+                        Event(
+                            month_date,
+                            "interest_payment",
+                            f"Interest payment: €{interest:,.2f}",
+                            {"interest": float(interest), "type": "interest_only"},
+                        )
+                    )
 
-                # Record cash outflow
-                cash_out[month_idx] = float(total_payment)
+                    # Generate cash flow for interest-only payment
+                    cash_out[month_idx] = float(interest)
 
             # Store current balance
             debt_balance[month_idx] = float(current_balance)
 
         return BrickOutput(
-            cash_in=np.zeros(months, dtype=float),
+            cash_in=cash_in,
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
-            events=[],
+            events=events,
         )
 
     def _is_payment_month(self, month_date: date, start_date: date) -> bool:

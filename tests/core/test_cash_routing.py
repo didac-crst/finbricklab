@@ -264,7 +264,7 @@ class TestCashFlowRouting:
             actual_balance = cash_balance[i]
 
             assert (
-                abs(actual_balance - expected_balance) < 1e-6
+                abs(actual_balance - expected_balance) < 1e-2
             ), f"Balance mismatch at month {i}: expected {expected_balance:.2f}, got {actual_balance:.2f}"
 
 

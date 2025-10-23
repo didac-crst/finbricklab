@@ -4,7 +4,7 @@ Credit line schedule strategy for revolving credit.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -49,11 +49,13 @@ class ScheduleCreditLine(IScheduleStrategy):
             BrickOutput with debt balance and cash flows
         """
         # Extract parameters
-        credit_limit = Decimal(str(brick.spec["credit_limit"]))
         rate_pa = Decimal(str(brick.spec["rate_pa"]))
         min_payment_config = brick.spec["min_payment"]
         billing_day = brick.spec["billing_day"]
-        start_date = datetime.strptime(brick.spec["start_date"], "%Y-%m-%d").date()
+        if brick.start_date:
+            start_date = brick.start_date
+        else:
+            start_date = ctx.t_index[0].astype("datetime64[D]").astype(date)
 
         # Optional parameters
         fees = brick.spec.get("fees", {})
@@ -65,6 +67,7 @@ class ScheduleCreditLine(IScheduleStrategy):
 
         # Initialize arrays
         debt_balance = np.zeros(months, dtype=float)
+        cash_in = np.zeros(months, dtype=float)
         cash_out = np.zeros(months, dtype=float)
 
         # Calculate monthly interest rate
@@ -72,6 +75,10 @@ class ScheduleCreditLine(IScheduleStrategy):
 
         # Track running balance - start with some initial balance for testing
         current_balance = Decimal("2000.0")  # Start with $2000 balance
+
+        # Generate initial disbursement cash flow
+        if start_date <= ctx.t_index[0].astype("datetime64[D]").astype(date):
+            cash_in[0] = float(current_balance)
 
         for month_idx in range(months):
             # Get the date for this month - convert from numpy datetime64 to Python date
@@ -111,7 +118,7 @@ class ScheduleCreditLine(IScheduleStrategy):
             debt_balance[month_idx] = float(current_balance)
 
         return BrickOutput(
-            cash_in=np.zeros(months, dtype=float),
+            cash_in=cash_in,
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,

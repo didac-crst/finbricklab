@@ -120,7 +120,7 @@ def test_filter_with_macrobrick_ids_only():
     results = scenario.run(start=date(2026, 1, 1), months=4)
 
     # Filter to only investments MacroBrick (which contains etf)
-    filtered_view = results["views"].filter(macrobrick_ids=["investments"])
+    filtered_view = results["views"].filter(brick_ids=["investments"])
 
     # Check that we get a new ScenarioResults object
     assert isinstance(filtered_view, ScenarioResults)
@@ -145,9 +145,7 @@ def test_filter_with_both_brick_and_macrobrick_ids():
     results = scenario.run(start=date(2026, 1, 1), months=4)
 
     # Filter to cash brick and investments MacroBrick
-    filtered_view = results["views"].filter(
-        brick_ids=["cash"], macrobrick_ids=["investments"]
-    )
+    filtered_view = results["views"].filter(brick_ids=["cash", "investments"])
 
     # Check that we get a new ScenarioResults object
     assert isinstance(filtered_view, ScenarioResults)
@@ -180,7 +178,7 @@ def test_filter_empty_selection():
     results = scenario.run(start=date(2026, 1, 1), months=4)
 
     # Filter with no selection
-    filtered_view = results["views"].filter(brick_ids=[], macrobrick_ids=[])
+    filtered_view = results["views"].filter(brick_ids=[])
 
     # Check that we get a new ScenarioResults object
     assert isinstance(filtered_view, ScenarioResults)

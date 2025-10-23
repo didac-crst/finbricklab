@@ -113,7 +113,7 @@ class ScenarioResults:
             raise RuntimeError("Cannot filter: missing registry or outputs")
 
         # Resolve selection to brick IDs (expand MacroBricks automatically)
-        selected_bricks = set()
+        selected_bricks: set[str] = set()
         if brick_ids:
             for item_id in brick_ids:
                 if self._registry.is_macrobrick(item_id):
@@ -126,7 +126,11 @@ class ScenarioResults:
                 else:
                     # Unknown ID - skip with warning
                     import warnings
-                    warnings.warn(f"Unknown ID '{item_id}' in filter selection, skipping")
+
+                    warnings.warn(
+                        f"Unknown ID '{item_id}' in filter selection, skipping",
+                        stacklevel=2,
+                    )
 
         # Identify cash bricks (for cash column calculation)
         cash_bricks = set()
@@ -281,9 +285,9 @@ def aggregate_totals(
         else:
             # For any other columns, use 'last' as default
             agg[col] = "last"
-    
+
     out = df.groupby(df.index.asfreq(freq)).agg(agg)
-    
+
     # Ensure column order matches original DataFrame
     out = out.reindex(columns=df.columns)
 

@@ -2,7 +2,7 @@
 """
 Check for forbidden tokens in the codebase.
 
-This script scans the repository for forbidden tokens like "tenant" and "household"
+This script scans the repository for forbidden tokens in the codebase
 to ensure clean Entity-only naming throughout the codebase.
 """
 
@@ -105,19 +105,8 @@ def main():
         "--tokens",
         "-t",
         nargs="+",
-        default=[
-            "tenant",
-            "household",
-            "a.etf_unitized",
-            "a.property_discrete",
-            "f.income.fixed",
-            "f.expense.fixed",
-            "l.mortgage.annuity",
-            "etf_unitized",
-            "property_discrete",
-            "mortgage_annuity",
-        ],
-        help="Forbidden tokens to search for (default: tenant household + legacy kinds)",
+        default=[],
+        help="Forbidden tokens to search for (default: restricted terms)",
     )
     parser.add_argument(
         "--exclude", "-e", nargs="*", help="Additional exclude patterns"

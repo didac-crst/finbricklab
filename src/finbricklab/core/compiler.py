@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from .accounts import Account, AccountRegistry, AccountScope, AccountType
 from .bricks import ABrick, FBrick, TBrick
@@ -23,7 +22,7 @@ class BrickCompiler:
     double-entry journal entries that maintain accounting invariants.
     """
 
-    def __init__(self, account_registry: Optional[AccountRegistry] = None):
+    def __init__(self, account_registry: AccountRegistry | None = None):
         self.account_registry = account_registry or AccountRegistry()
 
     def compile_tbrick(
@@ -254,7 +253,7 @@ class BrickCompiler:
         Returns:
             List of journal entries for valuation changes
         """
-        entries = []
+        entries: list[JournalEntry] = []
 
         if old_value == new_value:
             return entries  # No change
