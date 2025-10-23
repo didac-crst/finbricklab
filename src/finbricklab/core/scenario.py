@@ -768,8 +768,8 @@ class Scenario:
         return BrickOutput(
             cash_in=np.zeros(length),
             cash_out=np.zeros(length),
-            asset_value=np.zeros(length),
-            debt_balance=np.zeros(length),
+            assets=np.zeros(length),
+            liabilities=np.zeros(length),
             events=[],
         )
 

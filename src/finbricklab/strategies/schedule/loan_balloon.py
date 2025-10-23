@@ -28,7 +28,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         - term_months: Loan term in months
         - amortization: Amortization configuration
         - balloon_at_maturity: Balloon payment type
-        - start_date: Start date for the loan
+
+    Optional Parameters:
+        - start_date: Start date for the loan (defaults to scenario start)
     """
 
     def simulate(
@@ -51,7 +53,12 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         term_months = int(brick.spec["term_months"])
         amortization = brick.spec["amortization"]
         balloon_type = brick.spec["balloon_at_maturity"]
-        start_date = datetime.strptime(brick.spec["start_date"], "%Y-%m-%d").date()
+        
+        # Get start date from brick attribute or context
+        if brick.start_date:
+            start_date = brick.start_date
+        else:
+            start_date = ctx.t_index[0].astype("datetime64[D]").astype(date)
 
         # Get months from context if not provided
         if months is None:
