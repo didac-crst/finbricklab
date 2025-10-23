@@ -688,6 +688,15 @@ class Scenario:
                         # This maintains backward compatibility with the old system
                         external_in += brick_output["cash_in"]
                         external_out += brick_output["cash_out"]
+                elif isinstance(brick, TBrick):
+                    # Transfer bricks: route based on from/to links
+                    if brick.links and "from" in brick.links and "to" in brick.links:
+                        if brick.links["from"] == b.id:
+                            # Money going out from this account
+                            external_out += brick_output["cash_out"]
+                        elif brick.links["to"] == b.id:
+                            # Money coming in to this account
+                            external_in += brick_output["cash_in"]
                 elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY:
                     # Property bricks generate cash flows (purchase costs, etc.)
                     external_in += brick_output["cash_in"]
