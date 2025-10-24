@@ -267,7 +267,7 @@ class Scenario:
         self._prepare_simulation(ctx)
 
         # Simulate selected bricks and route cash flows (in deterministic order)
-        outputs = self._simulate_bricks(ctx, t_index, execution_order)
+        outputs, journal = self._simulate_bricks(ctx, t_index, execution_order)
 
         # Aggregate results into summary statistics
         totals = self._aggregate_results(outputs, t_index, include_cash)
@@ -281,7 +281,8 @@ class Scenario:
             "outputs": outputs,
             "by_struct": by_struct,
             "totals": totals,
-            "views": ScenarioResults(totals, registry=self._registry, outputs=outputs),
+            "views": ScenarioResults(totals, registry=self._registry, outputs=outputs, journal=journal),
+            "journal": journal,
             "_scenario_bricks": self.bricks,
             "meta": {"execution_order": execution_order, "overlaps": overlaps},
         }
@@ -727,7 +728,7 @@ class Scenario:
             if errors:
                 raise AssertionError(f"Journal validation failed: {errors}")
 
-        return outputs
+        return outputs, journal
 
     def _simulate_single_brick(
         self, brick: FinBrickABC, ctx: ScenarioContext, t_index: np.ndarray
