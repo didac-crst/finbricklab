@@ -155,7 +155,8 @@ class TestOnetimeFlows:
             "bonus",
             "Year-end Bonus",
             K.F_INCOME_ONE_TIME,
-            {"amount": 5000.0, "date": "2026-06-01"},  # June bonus
+            start_date=date(2026, 6, 1),  # June bonus
+            spec={"amount": 5000.0},
         )
 
         scenario = entity.create_scenario(
