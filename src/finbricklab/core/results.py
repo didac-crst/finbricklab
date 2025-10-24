@@ -160,9 +160,52 @@ class ScenarioResults:
             filtered_df, self._registry, self._outputs, self._journal
         )
 
-    def journal(self) -> pd.DataFrame:
+    def journal(
+        self,
+        # Category filters (exact matches)
+        brick_id: str | list[str] | None = None,
+        brick_type: str | list[str] | None = None,
+        transaction_type: str | list[str] | None = None,
+        account_id: str | list[str] | None = None,
+        posting_side: str | list[str] | None = None,
+        # Range filters
+        iteration_min: int | None = None,
+        iteration_max: int | None = None,
+        timestamp_start: str | "datetime" | None = None,
+        timestamp_end: str | "datetime" | None = None,
+        amount_min: float | None = None,
+        amount_max: float | None = None,
+        # Advanced filters
+        metadata_filter: dict | None = None,
+        account_type: str | None = None,
+        # Output options
+        sort_by: str = "timestamp",
+        ascending: bool = True,
+        limit: int | None = None,
+    ) -> pd.DataFrame:
         """
-        Convert journal entries to a DataFrame for analysis.
+        Convert journal entries to a DataFrame for analysis with comprehensive filtering.
+
+        Args:
+            brick_id: Filter by brick IDs (supports MacroBricks - automatically expands)
+            brick_type: Filter by brick types (flow, transfer, liability, asset)
+            transaction_type: Filter by transaction types (income, expense, transfer, payment, disbursement, opening)
+            account_id: Filter by account IDs (asset:checking, income:salary, etc.)
+            posting_side: Filter by posting side (credit, debit)
+
+            iteration_min: Minimum iteration number
+            iteration_max: Maximum iteration number
+            timestamp_start: Start date for filtering (string or datetime)
+            timestamp_end: End date for filtering (string or datetime)
+            amount_min: Minimum transaction amount
+            amount_max: Maximum transaction amount
+
+            metadata_filter: Filter by metadata keys/values (e.g., {'interest_amount': {'>': 100}})
+            account_type: Filter by account type (asset, income, expense, liability, equity)
+
+            sort_by: Column to sort by (default: 'timestamp')
+            ascending: Sort order (default: True)
+            limit: Maximum number of results to return
 
         Returns:
             DataFrame with canonical journal structure:
@@ -185,6 +228,7 @@ class ScenarioResults:
             raise ValueError(
                 "Journal object not available. Journal is only available for scenarios with journal-based routing."
             )
+
 
         import pandas as pd
 
@@ -217,9 +261,170 @@ class ScenarioResults:
                 )
 
         df = pd.DataFrame(entries_data)
+        if df.empty:
+            return df
+
+        # Keep timestamps as np.datetime64 for consistency with the rest of the codebase
+        # No conversion needed - timestamps are already in the correct format
+
+        # Apply filters
+        df = self._apply_journal_filters(
+            df,
+            brick_id,
+            brick_type,
+            transaction_type,
+            account_id,
+            posting_side,
+            iteration_min,
+            iteration_max,
+            timestamp_start,
+            timestamp_end,
+            amount_min,
+            amount_max,
+            metadata_filter,
+            account_type,
+        )
+
+        # Sort and limit results
         if not df.empty:
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            df = df.sort_values("timestamp").reset_index(drop=True)
+            df = df.sort_values(sort_by, ascending=ascending).reset_index(drop=True)
+            if limit is not None:
+                df = df.head(limit)
+
+        return df
+
+    def _expand_brick_ids(self, brick_ids: list[str]) -> list[str]:
+        """Expand brick IDs, automatically handling MacroBricks."""
+        if self._registry is None:
+            return brick_ids
+            
+        expanded = []
+        for brick_id in brick_ids:
+            try:
+                # Try to get as a regular brick first
+                self._registry.get_brick(brick_id)
+                expanded.append(brick_id)  # Regular brick
+            except Exception:
+                try:
+                    # Try to get as a MacroBrick
+                    macrobrick = self._registry.get_macrobrick(brick_id)
+                    # Recursively expand MacroBrick members
+                    expanded.extend(self._expand_brick_ids(macrobrick.members))
+                except Exception:
+                    # Not found in registry, treat as direct brick ID
+                    expanded.append(brick_id)
+        return list(set(expanded))  # Remove duplicates
+
+    def _apply_journal_filters(
+        self,
+        df: pd.DataFrame,
+        brick_id: str | list[str] | None,
+        brick_type: str | list[str] | None,
+        transaction_type: str | list[str] | None,
+        account_id: str | list[str] | None,
+        posting_side: str | list[str] | None,
+        iteration_min: int | None,
+        iteration_max: int | None,
+        timestamp_start: str | "datetime" | None,
+        timestamp_end: str | "datetime" | None,
+        amount_min: float | None,
+        amount_max: float | None,
+        metadata_filter: dict | None,
+        account_type: str | None,
+    ) -> pd.DataFrame:
+        """Apply all journal filters to the DataFrame."""
+        from datetime import datetime
+
+        import numpy as np
+
+        # Handle brick_id filtering (with MacroBrick expansion)
+        if brick_id is not None:
+            if isinstance(brick_id, str):
+                brick_id = [brick_id]
+
+            # Expand MacroBricks to constituent bricks
+            expanded_brick_ids = self._expand_brick_ids(brick_id)
+            df = df[df["brick_id"].isin(expanded_brick_ids)]
+
+        # Handle other category filters
+        if brick_type is not None:
+            if isinstance(brick_type, str):
+                brick_type = [brick_type]
+            df = df[df["brick_type"].isin(brick_type)]
+
+        if transaction_type is not None:
+            if isinstance(transaction_type, str):
+                transaction_type = [transaction_type]
+            df = df[df["transaction_type"].isin(transaction_type)]
+
+        if account_id is not None:
+            if isinstance(account_id, str):
+                account_id = [account_id]
+            df = df[df["account_id"].isin(account_id)]
+
+        if posting_side is not None:
+            if isinstance(posting_side, str):
+                posting_side = [posting_side]
+            df = df[df["posting_side"].isin(posting_side)]
+
+        # Handle range filters
+        if iteration_min is not None:
+            df = df[df["iteration"] >= iteration_min]
+
+        if iteration_max is not None:
+            df = df[df["iteration"] <= iteration_max]
+
+        if timestamp_start is not None:
+            if isinstance(timestamp_start, str):
+                timestamp_start = np.datetime64(timestamp_start, "M")
+            elif isinstance(timestamp_start, datetime):
+                timestamp_start = np.datetime64(timestamp_start, "M")
+            df = df[df["timestamp"] >= timestamp_start]
+
+        if timestamp_end is not None:
+            if isinstance(timestamp_end, str):
+                timestamp_end = np.datetime64(timestamp_end, "M")
+            elif isinstance(timestamp_end, datetime):
+                timestamp_end = np.datetime64(timestamp_end, "M")
+            df = df[df["timestamp"] <= timestamp_end]
+
+        if amount_min is not None:
+            df = df[df["amount"] >= amount_min]
+
+        if amount_max is not None:
+            df = df[df["amount"] <= amount_max]
+
+        # Handle account_type filter
+        if account_type is not None:
+            df = df[df["account_id"].str.startswith(f"{account_type}:")]
+
+        # Handle metadata filter
+        if metadata_filter is not None:
+            for key, value in metadata_filter.items():
+                if isinstance(value, dict):
+                    # Handle comparison operators
+                    for op, val in value.items():
+                        def _filter_func(x, k=key, v=val, op_type=op):
+                            if op_type == ">":
+                                return x.get(k, 0) > v
+                            elif op_type == "<":
+                                return x.get(k, 0) < v
+                            elif op_type == ">=":
+                                return x.get(k, 0) >= v
+                            elif op_type == "<=":
+                                return x.get(k, 0) <= v
+                            elif op_type == "==":
+                                return x.get(k, 0) == v
+                            elif op_type == "!=":
+                                return x.get(k, 0) != v
+                            return False
+                        
+                        df = df[df["metadata"].apply(_filter_func)]
+                else:
+                    # Exact match
+                    def _exact_filter_func(x, k=key, v=value):
+                        return x.get(k) == v
+                    df = df[df["metadata"].apply(_exact_filter_func)]
 
         return df
 
