@@ -152,7 +152,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Record balloon payment event
                     events.append(
                         Event(
-                            month_date,
+                            ctx.t_index[month_idx],
                             "balloon_payment",
                             f"Balloon payment: €{balloon_payment:,.2f}",
                             {"amount": float(balloon_payment), "type": "balloon"},
@@ -173,7 +173,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Record regular payment event
                     events.append(
                         Event(
-                            month_date,
+                            ctx.t_index[month_idx],
                             "loan_payment",
                             f"Loan payment: €{principal_payment + interest:,.2f}",
                             {
@@ -197,7 +197,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Record interest-only payment event
                     events.append(
                         Event(
-                            month_date,
+                            ctx.t_index[month_idx],
                             "interest_payment",
                             f"Interest payment: €{interest:,.2f}",
                             {"interest": float(interest), "type": "interest_only"},
