@@ -188,6 +188,13 @@ def main():
         print(f"     {account_id}: {count} transactions")
     print()
 
+    print("6. POSTING_SIDE ANALYSIS:")
+    posting_side_counts = journal_df["posting_side"].value_counts()
+    print("   Transactions by posting side:")
+    for side, count in posting_side_counts.items():
+        print(f"     {side}: {count} transactions")
+    print()
+
     # === QUERY DEMONSTRATIONS ===
     print("=== CANONICAL QUERY DEMONSTRATIONS ===")
 
@@ -195,7 +202,7 @@ def main():
     print("   Salary transactions:")
     salary_txns = journal_df[journal_df["brick_id"] == "salary"]
     print(f"     Found {len(salary_txns)} salary transactions")
-    for i, row in salary_txns.head(3).iterrows():
+    for row in salary_txns.head(3).iterrows():
         print(
             f"       {row['record_id']} | {row['account_id']} | {row['amount']:+.2f} €"
         )
@@ -210,13 +217,25 @@ def main():
     print(f"     Found {len(transfer_txns)} transfer transactions")
     print()
 
-    print("3. FILTER BY ACCOUNT_ID:")
-    print("   Checking account transactions:")
-    checking_txns = journal_df[journal_df["account_id"] == "checking"]
-    print(f"     Found {len(checking_txns)} checking transactions")
-    print("   Savings account transactions:")
-    savings_txns = journal_df[journal_df["account_id"] == "savings"]
-    print(f"     Found {len(savings_txns)} savings transactions")
+    print("3. FILTER BY ACCOUNT_ID (STANDARDIZED FORMAT):")
+    print("   Asset transactions:")
+    asset_txns = journal_df[journal_df["account_id"].str.startswith("Asset:")]
+    print(f"     Found {len(asset_txns)} asset transactions")
+    print("   Income transactions:")
+    income_txns = journal_df[journal_df["account_id"].str.startswith("Income:")]
+    print(f"     Found {len(income_txns)} income transactions")
+    print("   Liability transactions:")
+    liability_txns = journal_df[journal_df["account_id"].str.startswith("Liability:")]
+    print(f"     Found {len(liability_txns)} liability transactions")
+    print()
+
+    print("4. FILTER BY POSTING_SIDE:")
+    print("   Debit transactions:")
+    debit_txns = journal_df[journal_df["posting_side"] == "debit"]
+    print(f"     Found {len(debit_txns)} debit transactions")
+    print("   Credit transactions:")
+    credit_txns = journal_df[journal_df["posting_side"] == "credit"]
+    print(f"     Found {len(credit_txns)} credit transactions")
     print()
 
     # === ADVANCED CANONICAL ANALYSIS ===

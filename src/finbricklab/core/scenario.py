@@ -636,6 +636,17 @@ class Scenario:
                 Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
             )
 
+        # Register Asset: prefixed accounts for all cash accounts
+        for cash_id in cash_ids:
+            account_registry.register_account(
+                Account(
+                    f"Asset:{cash_id}",
+                    f"Asset:{cash_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.ASSET,
+                )
+            )
+
         # Simulate all bricks and compile to journal entries
 
         # First pass: process all non-cash bricks and compile to journal
@@ -749,7 +760,6 @@ class Scenario:
         for all monthly transactions (transfers, salary, loan payments, etc.)
         that occurred during the simulation.
         """
-        from .compiler import BrickCompiler
 
         # compiler = BrickCompiler(journal.account_registry)  # Not used in monthly capture
 
@@ -816,23 +826,31 @@ class Scenario:
         # Create postings for the transfer
         postings = []
 
-        # Money goes out from source account
+        # Money goes out from source account (debit)
         if cash_out > 0:
             postings.append(
                 Posting(
-                    brick.links["from"],
+                    f"Asset:{brick.links['from']}",
                     create_amount(-cash_out, "EUR"),
-                    {"type": "transfer_out", "month": month_idx},
+                    {
+                        "type": "transfer_out",
+                        "month": month_idx,
+                        "posting_side": "debit",
+                    },
                 )
             )
 
-        # Money comes in to destination account
+        # Money comes in to destination account (credit)
         if cash_in > 0:
             postings.append(
                 Posting(
-                    brick.links["to"],
+                    f"Asset:{brick.links['to']}",
                     create_amount(cash_in, "EUR"),
-                    {"type": "transfer_in", "month": month_idx},
+                    {
+                        "type": "transfer_in",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
                 )
             )
 
@@ -881,15 +899,15 @@ class Scenario:
         if not cash_account:
             return  # No routing specified
 
-        # Create boundary account for the flow
+        # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
-            boundary_account = f"Income:{brick.name}"
+            boundary_account = f"Income:{brick.id}"
             transaction_type = "income"
         elif brick.kind.startswith("f.expense"):
-            boundary_account = f"Expense:{brick.name}"
+            boundary_account = f"Expense:{brick.id}"
             transaction_type = "expense"
         else:
-            boundary_account = f"Flow:{brick.name}"
+            boundary_account = f"Flow:{brick.id}"
             transaction_type = "flow"
 
         # Register boundary account if not already registered
@@ -913,29 +931,37 @@ class Scenario:
                 Posting(
                     boundary_account,
                     create_amount(-cash_in, "EUR"),
-                    {"type": "income", "month": month_idx},
+                    {"type": "income", "month": month_idx, "posting_side": "debit"},
                 )
             )
             postings.append(
                 Posting(
-                    cash_account,
+                    f"Asset:{cash_account}",
                     create_amount(cash_in, "EUR"),
-                    {"type": "income_allocation", "month": month_idx},
+                    {
+                        "type": "income_allocation",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
                 )
             )
         elif cash_out > 0:  # Expense
             postings.append(
                 Posting(
-                    cash_account,
+                    f"Asset:{cash_account}",
                     create_amount(-cash_out, "EUR"),
-                    {"type": "expense_payment", "month": month_idx},
+                    {
+                        "type": "expense_payment",
+                        "month": month_idx,
+                        "posting_side": "debit",
+                    },
                 )
             )
             postings.append(
                 Posting(
                     boundary_account,
                     create_amount(cash_out, "EUR"),
-                    {"type": "expense", "month": month_idx},
+                    {"type": "expense", "month": month_idx, "posting_side": "credit"},
                 )
             )
 
@@ -983,8 +1009,8 @@ class Scenario:
         # Determine the cash account to route to (use settlement default)
         cash_account = self.settlement_default_cash_id or "cash"
 
-        # Create boundary account for the liability
-        boundary_account = f"Liability:{brick.name}"
+        # Create boundary account for the liability using brick_id
+        boundary_account = f"Liability:{brick.id}"
 
         # Register liability account if not already registered
         if not journal.account_registry.has_account(boundary_account):
@@ -1003,16 +1029,24 @@ class Scenario:
         if cash_out > 0:  # Payment
             postings.append(
                 Posting(
-                    cash_account,
+                    f"Asset:{cash_account}",
                     create_amount(-cash_out, "EUR"),
-                    {"type": "loan_payment", "month": month_idx},
+                    {
+                        "type": "loan_payment",
+                        "month": month_idx,
+                        "posting_side": "debit",
+                    },
                 )
             )
             postings.append(
                 Posting(
                     boundary_account,
                     create_amount(cash_out, "EUR"),
-                    {"type": "liability_payment", "month": month_idx},
+                    {
+                        "type": "liability_payment",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
                 )
             )
             transaction_type = "payment"
@@ -1021,14 +1055,22 @@ class Scenario:
                 Posting(
                     boundary_account,
                     create_amount(-cash_in, "EUR"),
-                    {"type": "loan_disbursement", "month": month_idx},
+                    {
+                        "type": "loan_disbursement",
+                        "month": month_idx,
+                        "posting_side": "debit",
+                    },
                 )
             )
             postings.append(
                 Posting(
-                    cash_account,
+                    f"Asset:{cash_account}",
                     create_amount(cash_in, "EUR"),
-                    {"type": "liability_disbursement", "month": month_idx},
+                    {
+                        "type": "liability_disbursement",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
                 )
             )
             transaction_type = "disbursement"

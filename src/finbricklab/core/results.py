@@ -169,7 +169,8 @@ class ScenarioResults:
             - record_id: Self-documenting unique ID (e.g., "flow:salary:checking:0:income:2019-07-01")
             - brick_id: Primary column for filtering by brick
             - brick_type: Type of financial instrument (flow, transfer, liability, asset)
-            - account_id: Where money flows (cash account or boundary account)
+            - account_id: Where money flows (standardized format: Asset:brick_id, Income:brick_id, etc.)
+            - posting_side: Credit or debit side of the transaction
             - timestamp: Transaction timestamp
             - amount: Transaction amount
             - currency: Transaction currency
@@ -196,7 +197,10 @@ class ScenarioResults:
                         "brick_type": entry.metadata.get(
                             "brick_type"
                         ),  # Primary column
-                        "account_id": posting.account_id,  # Where money flows
+                        "account_id": posting.account_id,  # Where money flows (standardized format)
+                        "posting_side": posting.metadata.get(
+                            "posting_side"
+                        ),  # credit/debit
                         "timestamp": entry.timestamp,
                         "amount": float(posting.amount.value),
                         "currency": posting.amount.currency.code,

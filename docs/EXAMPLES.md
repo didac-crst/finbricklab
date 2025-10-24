@@ -607,7 +607,8 @@ print(journal_df.iloc[0])
 - **record_id**: `"flow:salary:checking:0:income:2019-07-01"` - Self-documenting unique ID
 - **brick_id**: `"salary"` - Primary column for filtering
 - **brick_type**: `"flow"` - Type of financial instrument
-- **account_id**: `"checking"` - Where money flows
+- **account_id**: `"Asset:checking"` - Where money flows (standardized format)
+- **posting_side**: `"credit"` or `"debit"` - Double-entry bookkeeping side
 - **metadata**: Rich transaction information
 
 **Example Queries:**
@@ -618,8 +619,14 @@ salary_transactions = journal_df[journal_df['brick_id'] == 'salary']
 # Filter by brick type
 flow_transactions = journal_df[journal_df['brick_type'] == 'flow']
 
-# Filter by account
-checking_transactions = journal_df[journal_df['account_id'] == 'checking']
+# Filter by account type (standardized format)
+asset_transactions = journal_df[journal_df['account_id'].str.startswith('Asset:')]
+income_transactions = journal_df[journal_df['account_id'].str.startswith('Income:')]
+liability_transactions = journal_df[journal_df['account_id'].str.startswith('Liability:')]
+
+# Filter by posting side (double-entry bookkeeping)
+debit_transactions = journal_df[journal_df['posting_side'] == 'debit']
+credit_transactions = journal_df[journal_df['posting_side'] == 'credit']
 
 # Parse record_id for complex analysis
 journal_df['parsed_record'] = journal_df['record_id'].str.split(':')
