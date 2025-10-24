@@ -580,12 +580,12 @@ class Scenario:
                     timestamp=ctx.t_index[0],
                     postings=[
                         Posting(
-                            "Equity:Opening",
+                            "equity:opening",
                             create_amount(-initial_balance, "EUR"),
                             {"type": "opening_balance", "posting_side": "debit"},
                         ),
                         Posting(
-                            f"Asset:{cash_id}",
+                            f"asset:{cash_id}",
                             create_amount(initial_balance, "EUR"),
                             {"type": "opening_balance", "posting_side": "credit"},
                         ),
@@ -643,16 +643,26 @@ class Scenario:
                 Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
             )
 
-        # Register Asset: prefixed accounts for all cash accounts
+        # Register asset: prefixed accounts for all cash accounts
         for cash_id in cash_ids:
             account_registry.register_account(
                 Account(
-                    f"Asset:{cash_id}",
-                    f"Asset:{cash_id}",
+                    f"asset:{cash_id}",
+                    f"asset:{cash_id}",
                     AccountScope.INTERNAL,
                     AccountType.ASSET,
                 )
             )
+        
+        # Register equity:opening account
+        account_registry.register_account(
+            Account(
+                "equity:opening",
+                "equity:opening",
+                AccountScope.BOUNDARY,
+                AccountType.EQUITY,
+            )
+        )
 
         # Simulate all bricks and compile to journal entries
 
@@ -827,7 +837,7 @@ class Scenario:
         if cash_out > 0:
             postings.append(
                 Posting(
-                    f"Asset:{brick.links['from']}",
+                    f"asset:{brick.links['from']}",
                     create_amount(-cash_out, "EUR"),
                     {
                         "type": "transfer_out",
@@ -841,7 +851,7 @@ class Scenario:
         if cash_in > 0:
             postings.append(
                 Posting(
-                    f"Asset:{brick.links['to']}",
+                    f"asset:{brick.links['to']}",
                     create_amount(cash_in, "EUR"),
                     {
                         "type": "transfer_in",
@@ -899,13 +909,13 @@ class Scenario:
 
         # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
-            boundary_account = f"Income:{brick.id}"
+            boundary_account = f"income:{brick.id}"
             transaction_type = "income"
         elif brick.kind.startswith("f.expense"):
-            boundary_account = f"Expense:{brick.id}"
+            boundary_account = f"expense:{brick.id}"
             transaction_type = "expense"
         else:
-            boundary_account = f"Flow:{brick.id}"
+            boundary_account = f"flow:{brick.id}"
             transaction_type = "flow"
 
         # Register boundary account if not already registered
@@ -934,7 +944,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"Asset:{cash_account}",
+                    f"asset:{cash_account}",
                     create_amount(cash_in, "EUR"),
                     {
                         "type": "income_allocation",
@@ -946,7 +956,7 @@ class Scenario:
         elif cash_out > 0:  # Expense
             postings.append(
                 Posting(
-                    f"Asset:{cash_account}",
+                    f"asset:{cash_account}",
                     create_amount(-cash_out, "EUR"),
                     {
                         "type": "expense_payment",
@@ -1009,7 +1019,7 @@ class Scenario:
         cash_account = self.settlement_default_cash_id or "cash"
 
         # Create boundary account for the liability using brick_id
-        boundary_account = f"Liability:{brick.id}"
+        boundary_account = f"liability:{brick.id}"
 
         # Register liability account if not already registered
         if not journal.account_registry.has_account(boundary_account):
@@ -1028,7 +1038,7 @@ class Scenario:
         if cash_out > 0:  # Payment
             postings.append(
                 Posting(
-                    f"Asset:{cash_account}",
+                    f"asset:{cash_account}",
                     create_amount(-cash_out, "EUR"),
                     {
                         "type": "loan_payment",
@@ -1063,7 +1073,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"Asset:{cash_account}",
+                    f"asset:{cash_account}",
                     create_amount(cash_in, "EUR"),
                     {
                         "type": "liability_disbursement",
