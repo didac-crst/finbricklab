@@ -122,17 +122,36 @@ class ValuationCash(IValuationStrategy):
         T = len(ctx.t_index)
         bal = np.zeros(T)
         r_m = brick.spec["interest_pa"] / 12.0  # Monthly interest rate
-        cash_in = brick.spec["external_in"].copy()
-        cash_out = brick.spec["external_out"].copy()
+        # Don't copy the arrays - use them directly to allow runtime modifications
+        cash_in = brick.spec["external_in"]
+        cash_out = brick.spec["external_out"]
+
+        # Support for post-interest adjustments (for maturity transfers)
+        post_interest_in = brick.spec.get("post_interest_in", np.zeros(T))
+        post_interest_out = brick.spec.get("post_interest_out", np.zeros(T))
 
         # Initialize interest tracking array
         interest_earned = np.zeros(T)
+
+        # Apply active mask to enforce start_date and end_date
+        from finbricklab.core.utils import active_mask
+
+        mask = active_mask(
+            ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
+        )
 
         # Calculate balance for first month
         bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
         # Apply interest on the balance after cash flows
         interest_earned[0] = bal[0] * r_m
-        bal[0] *= (1 + r_m)
+        bal[0] *= 1 + r_m
+        # Apply post-interest adjustments (no interest on these)
+        bal[0] += post_interest_in[0] - post_interest_out[0]
+
+        # Apply active mask to first month
+        if not mask[0]:
+            bal[0] = 0.0
+            interest_earned[0] = 0.0
 
         # Calculate balance for remaining months
         for t in range(1, T):
@@ -143,7 +162,14 @@ class ValuationCash(IValuationStrategy):
             # Calculate interest on the full balance (including this month's flows)
             interest_earned[t] = bal[t] * r_m
             # Apply interest
-            bal[t] *= (1 + r_m)
+            bal[t] *= 1 + r_m
+            # Apply post-interest adjustments (no interest on these)
+            bal[t] += post_interest_in[t] - post_interest_out[t]
+
+            # Apply active mask - zero out inactive periods
+            if not mask[t]:
+                bal[t] = 0.0
+                interest_earned[t] = 0.0
 
         return BrickOutput(
             cash_in=np.zeros(

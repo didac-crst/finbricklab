@@ -540,6 +540,7 @@ class Scenario:
     ):
         """Simulate all bricks using Journal-based system."""
         from .accounts import Account, AccountRegistry, AccountScope, AccountType
+
         # from .compiler import BrickCompiler  # No longer needed with new journal system
         from .journal import Journal
 
@@ -548,7 +549,7 @@ class Scenario:
         # Create account registry and journal
         account_registry = AccountRegistry()
         journal = Journal(account_registry)
-        
+
         # Track iteration count per brick and transaction type
         brick_iteration_counters = {}
         # compiler = BrickCompiler(account_registry)  # No longer needed with new journal system
@@ -594,7 +595,7 @@ class Scenario:
                         ),
                     ],
                     metadata={
-                        "type": "opening_balance", 
+                        "type": "opening_balance",
                         "account": cash_id,
                         "brick_id": cash_id,  # Use cash_id as brick_id for opening balances
                         "brick_type": "asset",  # Opening balances are asset-related
@@ -656,7 +657,7 @@ class Scenario:
                     AccountType.ASSET,
                 )
             )
-        
+
         # Register equity:opening account
         account_registry.register_account(
             Account(
@@ -681,7 +682,9 @@ class Scenario:
             # No need to compile here as we use the new journal system
 
         # NEW: Capture monthly transactions for each month of simulation
-        self._capture_monthly_transactions(journal, outputs, ctx, execution_order, brick_iteration_counters)
+        self._capture_monthly_transactions(
+            journal, outputs, ctx, execution_order, brick_iteration_counters
+        )
 
         # Second pass: process cash accounts with all journal entries available
         for b in [ctx.registry[bid] for bid in execution_order]:
@@ -731,22 +734,57 @@ class Scenario:
                             external_in += brick_output["cash_in"]
                 elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY:
                     # Property bricks generate cash flows (purchase costs, etc.)
-                    # Only route to the designated settlement account
-                    if b.id == self.settlement_default_cash_id:
+                    # Check for explicit routing first
+                    if (
+                        brick.links
+                        and "route" in brick.links
+                        and "to" in brick.links["route"]
+                    ):
+                        if brick.links["route"]["to"] == b.id:
+                            # This brick routes to our cash account
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                    elif b.id == self.settlement_default_cash_id:
+                        # Fall back to settlement account if no explicit routing
                         external_in += brick_output["cash_in"]
                         external_out += brick_output["cash_out"]
                 elif isinstance(brick, LBrick):
                     # Liability bricks generate cash flows (payments, etc.)
-                    # Only route to the designated settlement account
-                    if b.id == self.settlement_default_cash_id:
+                    # Check for explicit routing first
+                    if (
+                        brick.links
+                        and "route" in brick.links
+                        and "to" in brick.links["route"]
+                    ):
+                        if brick.links["route"]["to"] == b.id:
+                            # This brick routes to our cash account
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                    elif b.id == self.settlement_default_cash_id:
+                        # Fall back to settlement account if no explicit routing
                         external_in += brick_output["cash_in"]
                         external_out += brick_output["cash_out"]
+                elif isinstance(brick, ABrick) and brick.kind == K.A_CASH:
+                    # Cash accounts with maturity transfers
+                    # Check for explicit routing first
+                    if (
+                        brick.links
+                        and "route" in brick.links
+                        and "to" in brick.links["route"]
+                    ):
+                        if brick.links["route"]["to"] == b.id:
+                            # This cash account routes to our cash account (maturity transfer)
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
 
             # Set external flows for backward compatibility
             b.spec["external_in"] = external_in
             b.spec["external_out"] = external_out
 
             outputs[b.id] = b.simulate(ctx)
+
+        # Handle maturity transfers for cash accounts with end_date and route links
+        self._handle_maturity_transfers(outputs, ctx, journal, brick_iteration_counters)
 
         # Validate journal invariants
         if self.validate_routing:
@@ -755,6 +793,172 @@ class Scenario:
                 raise AssertionError(f"Journal validation failed: {errors}")
 
         return outputs, journal
+
+    def _handle_maturity_transfers(
+        self,
+        outputs: dict[str, BrickOutput],
+        ctx: ScenarioContext,
+        journal,
+        brick_iteration_counters: dict,
+    ) -> None:
+        """Handle maturity transfers for cash accounts with end_date and route links."""
+        from .currency import create_amount
+        from .events import Event
+        from .journal import JournalEntry, Posting
+
+        for brick in self.bricks:
+            if (
+                isinstance(brick, ABrick)
+                and brick.kind == K.A_CASH
+                and brick.end_date is not None
+                and brick.links
+                and "route" in brick.links
+            ):
+                # Find the end month index
+                end_month_idx = None
+                for i, t in enumerate(ctx.t_index):
+                    if t >= brick.end_date:
+                        end_month_idx = i
+                        break
+
+                if end_month_idx is not None and end_month_idx < len(ctx.t_index):
+                    # Get final balance at maturity (before active mask is applied)
+                    # We need to calculate the balance before the active mask zeros it out
+                    # Temporarily remove the end_date to get the true balance
+                    original_end_date = brick.end_date
+                    brick.end_date = None
+
+                    # Re-simulate to get the balance without active mask
+                    temp_output = brick.simulate(ctx)
+
+                    # Restore the original end_date
+                    brick.end_date = original_end_date
+
+                    # Calculate the transfer amount: balance before interest + contribution
+                    # This ensures we transfer the principal + contribution, and let interest be earned on the remaining balance
+                    prev_balance = temp_output["assets"][end_month_idx - 1]
+                    monthly_contribution = brick.spec.get(
+                        "external_in", np.zeros(len(ctx.t_index))
+                    )[end_month_idx]
+                    transfer_amount = prev_balance + monthly_contribution
+
+                    if transfer_amount > 0:
+                        dest_brick_id = brick.links["route"]["to"]
+
+                        # EOM_POST_INTEREST policy: Source transfers at end of month (external_out)
+                        # Destination receives post-interest (post_interest_in)
+                        # This ensures source earns interest for the month, destination doesn't double-earn
+
+                        # Source: transfer out at end of month (earns interest first)
+                        if "external_out" not in brick.spec:
+                            brick.spec["external_out"] = np.zeros(len(ctx.t_index))
+                        brick.spec["external_out"][end_month_idx] += transfer_amount
+
+                        # Destination: receive post-interest (no interest on transfer this month)
+                        dest_brick = None
+                        for b in self.bricks:
+                            if b.id == dest_brick_id:
+                                dest_brick = b
+                                break
+
+                        if dest_brick:
+                            if "post_interest_in" not in dest_brick.spec:
+                                dest_brick.spec["post_interest_in"] = np.zeros(
+                                    len(ctx.t_index)
+                                )
+                            dest_brick.spec["post_interest_in"][
+                                end_month_idx
+                            ] += transfer_amount
+
+                        # Create maturity transfer event
+                        transfer_event = Event(
+                            np.datetime64(brick.end_date, "M"),
+                            "maturity_transfer",
+                            f"Maturity transfer: {transfer_amount:,.2f} EUR to {dest_brick_id}",
+                            {
+                                "amount": transfer_amount,
+                                "from": brick.id,
+                                "to": dest_brick_id,
+                                "type": "maturity_transfer",
+                                "policy": "EOM_POST_INTEREST",
+                            },
+                        )
+                        outputs[brick.id]["events"].append(transfer_event)
+
+                        # Create destination receive event
+                        if dest_brick:
+                            receive_event = Event(
+                                np.datetime64(brick.end_date, "M"),
+                                "maturity_transfer_in",
+                                f"Received maturity transfer: {transfer_amount:,.2f} EUR from {brick.id}",
+                                {
+                                    "amount": transfer_amount,
+                                    "from": brick.id,
+                                    "to": dest_brick_id,
+                                    "type": "maturity_transfer_in",
+                                    "policy": "EOM_POST_INTEREST",
+                                },
+                            )
+                            outputs[dest_brick_id]["events"].append(receive_event)
+
+                        # Create journal entry for the transfer (EOM_POST_INTEREST policy)
+                        month_timestamp = ctx.t_index[end_month_idx]
+
+                        # Calculate iteration for the transfer
+                        iteration = self._calculate_relative_iteration(
+                            brick, "maturity_transfer", brick_iteration_counters
+                        )
+
+                        transfer_entry = JournalEntry(
+                            id=f"maturity_transfer:{brick.id}:{iteration}",
+                            timestamp=month_timestamp,
+                            postings=[
+                                Posting(
+                                    f"asset:{brick.id}",
+                                    create_amount(-transfer_amount, "EUR"),
+                                    {
+                                        "type": "maturity_transfer",
+                                        "month": end_month_idx,
+                                        "posting_side": "debit",
+                                        "from": brick.id,
+                                        "to": dest_brick_id,
+                                        "policy": "EOM_POST_INTEREST",
+                                    },
+                                ),
+                                Posting(
+                                    f"asset:{dest_brick_id}",
+                                    create_amount(transfer_amount, "EUR"),
+                                    {
+                                        "type": "maturity_transfer",
+                                        "month": end_month_idx,
+                                        "posting_side": "credit",
+                                        "from": brick.id,
+                                        "to": dest_brick_id,
+                                        "policy": "EOM_POST_INTEREST",
+                                    },
+                                ),
+                            ],
+                            metadata={
+                                "brick_id": brick.id,
+                                "brick_type": "asset",
+                                "kind": brick.kind,
+                                "month": end_month_idx,
+                                "iteration": iteration,
+                                "transaction_type": "maturity_transfer",
+                                "amount_type": "debit",
+                                "from": brick.id,
+                                "to": dest_brick_id,
+                                "amount": transfer_amount,
+                                "policy": "EOM_POST_INTEREST",
+                            },
+                        )
+                        journal.post(transfer_entry)
+
+                        # Re-simulate affected cash bricks to rebuild their balance time series
+                        # This ensures the maturity transfer is properly integrated into the cash strategy
+                        outputs[brick.id] = brick.simulate(ctx)
+                        if dest_brick:
+                            outputs[dest_brick_id] = dest_brick.simulate(ctx)
 
     def _capture_monthly_transactions(
         self,
@@ -803,17 +1007,32 @@ class Scenario:
                 if isinstance(brick, TBrick):
                     # Transfer brick: create internal transfer entry
                     self._create_transfer_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
+                        journal,
+                        brick,
+                        brick_output,
+                        month_idx,
+                        month_timestamp,
+                        brick_iteration_counters,
                     )
                 elif isinstance(brick, FBrick):
                     # Flow brick: create external flow entry
                     self._create_flow_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
+                        journal,
+                        brick,
+                        brick_output,
+                        month_idx,
+                        month_timestamp,
+                        brick_iteration_counters,
                     )
                 elif isinstance(brick, LBrick):
                     # Liability brick: create loan payment entry
                     self._create_liability_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
+                        journal,
+                        brick,
+                        brick_output,
+                        month_idx,
+                        month_timestamp,
+                        brick_iteration_counters,
                     )
 
     def _create_transfer_journal_entry(
@@ -867,7 +1086,9 @@ class Scenario:
             )
 
         # Create canonical record ID using sequential iteration
-        iteration = self._calculate_relative_iteration(brick, "transfer", brick_iteration_counters)
+        iteration = self._calculate_relative_iteration(
+            brick, "transfer", brick_iteration_counters
+        )
         record_id = f"transfer:{brick.id}:{iteration}"
 
         entry = JournalEntry(
@@ -981,7 +1202,9 @@ class Scenario:
             )
 
         # Create canonical record ID using sequential iteration
-        iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
+        iteration = self._calculate_relative_iteration(
+            brick, transaction_type, brick_iteration_counters
+        )
         record_id = f"{transaction_type}:{brick.id}:{iteration}"
 
         entry = JournalEntry(
@@ -1068,11 +1291,13 @@ class Scenario:
                 )
             )
             transaction_type = "disbursement"
-            
+
             # Create disbursement journal entry
-            disbursement_iteration = self._calculate_relative_iteration(brick, "disbursement", brick_iteration_counters)
+            disbursement_iteration = self._calculate_relative_iteration(
+                brick, "disbursement", brick_iteration_counters
+            )
             disbursement_record_id = f"disbursement:{brick.id}:{disbursement_iteration}"
-            
+
             disbursement_metadata = {
                 "brick_id": brick.id,
                 "brick_type": "liability",
@@ -1084,7 +1309,7 @@ class Scenario:
                 "boundary_account": boundary_account,
                 "total_disbursement": cash_in,
             }
-            
+
             disbursement_entry = JournalEntry(
                 id=disbursement_record_id,
                 timestamp=month_timestamp,
@@ -1092,16 +1317,20 @@ class Scenario:
                 metadata=disbursement_metadata,
             )
             journal.post(disbursement_entry)
-            
+
             # Reset postings for payment entry
             postings = []
-        
+
         # Handle payments (cash_out > 0) - can be in same month as disbursement
         if cash_out > 0:  # Payment
             # Calculate interest and amortization breakdown
-            interest_amount = abs(brick_output["interest"][month_idx])  # Interest is negative, make positive
-            amortization_amount = cash_out - interest_amount  # Total payment - interest = principal
-            
+            interest_amount = abs(
+                brick_output["interest"][month_idx]
+            )  # Interest is negative, make positive
+            amortization_amount = (
+                cash_out - interest_amount
+            )  # Total payment - interest = principal
+
             postings.append(
                 Posting(
                     f"asset:{cash_account}",
@@ -1133,7 +1362,9 @@ class Scenario:
         # Create payment journal entry (if there are payments)
         if cash_out > 0:  # Payment
             # Create canonical record ID using sequential iteration
-            iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
+            iteration = self._calculate_relative_iteration(
+                brick, transaction_type, brick_iteration_counters
+            )
             record_id = f"{transaction_type}:{brick.id}:{iteration}"
 
             # Prepare metadata with interest and amortization breakdown for payments
@@ -1147,16 +1378,18 @@ class Scenario:
                 "amount_type": "debit",
                 "boundary_account": boundary_account,
             }
-            
+
             # Add interest and amortization breakdown for payments
             interest_amount = abs(brick_output["interest"][month_idx])
             amortization_amount = cash_out - interest_amount
-            metadata.update({
-                "interest_amount": interest_amount,
-                "amortization_amount": amortization_amount,
-                "total_payment": cash_out,
-            })
-            
+            metadata.update(
+                {
+                    "interest_amount": interest_amount,
+                    "amortization_amount": amortization_amount,
+                    "total_payment": cash_out,
+                }
+            )
+
             entry = JournalEntry(
                 id=record_id,
                 timestamp=month_timestamp,
@@ -1166,15 +1399,17 @@ class Scenario:
 
             journal.post(entry)
 
-    def _calculate_relative_iteration(self, brick, transaction_type: str, brick_iteration_counters: dict) -> int:
+    def _calculate_relative_iteration(
+        self, brick, transaction_type: str, brick_iteration_counters: dict
+    ) -> int:
         """Calculate sequential iteration for each transaction type within each brick."""
         # Create a key for this brick and transaction type
         key = f"{brick.id}:{transaction_type}"
-        
+
         # Get current count and increment
         current_count = brick_iteration_counters.get(key, 0)
         brick_iteration_counters[key] = current_count + 1
-        
+
         # Return the current count (0-based) or current_count + 1 (1-based)
         return current_count  # 0-based: first transaction is iteration 0
 
