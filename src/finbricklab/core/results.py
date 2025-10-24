@@ -166,9 +166,10 @@ class ScenarioResults:
 
         Returns:
             DataFrame with canonical journal structure:
-            - record_id: Clean, self-documenting unique ID (e.g., "flow:income:salary:checking:0")
+            - record_id: Clean, self-documenting unique ID (e.g., "income:salary:0")
             - brick_id: Primary column for filtering by brick
             - brick_type: Type of financial instrument (flow, transfer, liability, asset)
+            - transaction_type: Transaction type (income, expense, transfer, payment, disbursement, etc.)
             - account_id: Where money flows (standardized format: Asset:brick_id, Income:brick_id, etc.)
             - posting_side: Credit or debit side of the transaction
             - timestamp: Transaction timestamp
@@ -197,6 +198,9 @@ class ScenarioResults:
                         "brick_type": entry.metadata.get(
                             "brick_type"
                         ),  # Primary column
+                        "transaction_type": entry.metadata.get(
+                            "transaction_type"
+                        ),  # Transaction type (income, expense, transfer, etc.)
                         "account_id": posting.account_id,  # Where money flows (standardized format)
                         "posting_side": posting.metadata.get(
                             "posting_side"

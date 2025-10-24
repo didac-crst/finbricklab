@@ -540,7 +540,7 @@ class Scenario:
     ):
         """Simulate all bricks using Journal-based system."""
         from .accounts import Account, AccountRegistry, AccountScope, AccountType
-        from .compiler import BrickCompiler
+        # from .compiler import BrickCompiler  # No longer needed with new journal system
         from .journal import Journal
 
         outputs: dict[str, BrickOutput] = {}
@@ -548,7 +548,7 @@ class Scenario:
         # Create account registry and journal
         account_registry = AccountRegistry()
         journal = Journal(account_registry)
-        compiler = BrickCompiler(account_registry)
+        # compiler = BrickCompiler(account_registry)  # No longer needed with new journal system
 
         # Register all cash accounts as internal assets
         cash_ids = [
@@ -582,15 +582,21 @@ class Scenario:
                         Posting(
                             "Equity:Opening",
                             create_amount(-initial_balance, "EUR"),
-                            {"type": "opening_balance"},
+                            {"type": "opening_balance", "posting_side": "debit"},
                         ),
                         Posting(
                             cash_id,
                             create_amount(initial_balance, "EUR"),
-                            {"type": "opening_balance"},
+                            {"type": "opening_balance", "posting_side": "credit"},
                         ),
                     ],
-                    metadata={"type": "opening_balance", "account": cash_id},
+                    metadata={
+                        "type": "opening_balance", 
+                        "account": cash_id,
+                        "brick_id": None,  # Opening balances don't have brick_id
+                        "brick_type": None,  # Opening balances don't have brick_type
+                        "transaction_type": None,  # Opening balances don't have transaction_type
+                    },
                 )
                 journal.post(opening_entry)
 
@@ -657,18 +663,8 @@ class Scenario:
             brick_output = self._simulate_single_brick(b, ctx, t_index)
             outputs[b.id] = brick_output
 
-            # Compile brick to journal entries based on type
-            if isinstance(b, TBrick):
-                # Transfer bricks: compile to internal transfers
-                entries = compiler.compile_tbrick(b, ctx)
-                for entry in entries:
-                    journal.post(entry)
-
-            elif isinstance(b, FBrick):
-                # Flow bricks: compile to external flows
-                entries = compiler.compile_fbrick(b, ctx)
-                for entry in entries:
-                    journal.post(entry)
+            # Journal entries are now created in _capture_monthly_transactions
+            # No need to compile here as we use the new journal system
 
         # NEW: Capture monthly transactions for each month of simulation
         self._capture_monthly_transactions(journal, outputs, ctx, execution_order)
@@ -855,7 +851,7 @@ class Scenario:
             )
 
         # Create canonical record ID
-        record_id = f"transfer:transfer:{brick.id}:{brick.links.get('to', 'unknown')}:{month_idx}"
+        record_id = f"transfer:{brick.id}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,
@@ -966,7 +962,7 @@ class Scenario:
             )
 
         # Create canonical record ID
-        record_id = f"flow:{transaction_type}:{brick.id}:{cash_account}:{month_idx}"
+        record_id = f"{transaction_type}:{brick.id}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,
@@ -1076,7 +1072,7 @@ class Scenario:
             transaction_type = "disbursement"
 
         # Create canonical record ID
-        record_id = f"liability:{transaction_type}:{brick.id}:{cash_account}:{month_idx}"
+        record_id = f"{transaction_type}:{brick.id}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,
