@@ -117,19 +117,15 @@ class ScheduleLoanBalloon(IScheduleStrategy):
             # Generate cash flow for loan disbursement
             cash_in[start_month_idx] = float(principal)
 
-        # Calculate constant monthly payment using annuity formula
-        # For balloon loans, we need constant payments until balloon date
+        # Calculate monthly payment for balloon loan
+        # For balloon loans, monthly payments are typically interest + small principal
+        # The balloon payment pays off the remaining balance
         if balloon_after_months > 0:
-            # Calculate monthly payment using annuity formula
-            # PMT = P * [r(1+r)^n] / [(1+r)^n - 1]
-            # where P = principal, r = monthly rate, n = months to balloon
-            r = i_m
-            n = balloon_after_months
-            if r > 0:
-                monthly_payment = principal * (r * (1 + r)**n) / ((1 + r)**n - 1)
-            else:
-                # If interest rate is 0, just divide principal by months
-                monthly_payment = principal / n
+            # Calculate monthly payment as: interest + small principal amortization
+            # This ensures the balloon payment is significant
+            monthly_interest = principal * i_m  # Interest on full principal initially
+            monthly_principal = principal * amort_rate_m  # Small principal payment
+            monthly_payment = monthly_interest + monthly_principal
         else:
             # No balloon period, use simple amortization
             monthly_payment = principal * amort_rate_m
