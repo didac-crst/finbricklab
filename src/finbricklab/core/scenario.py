@@ -1045,6 +1045,10 @@ class Scenario:
 
         # Money flows from cash to liability (payments) or vice versa (disbursements)
         if cash_out > 0:  # Payment
+            # Calculate interest and amortization breakdown
+            interest_amount = abs(brick_output["interest"][month_idx])  # Interest is negative, make positive
+            amortization_amount = cash_out - interest_amount  # Total payment - interest = principal
+            
             postings.append(
                 Posting(
                     f"asset:{cash_account}",
@@ -1053,6 +1057,8 @@ class Scenario:
                         "type": "loan_payment",
                         "month": month_idx,
                         "posting_side": "debit",
+                        "interest_amount": interest_amount,
+                        "amortization_amount": amortization_amount,
                     },
                 )
             )
@@ -1064,6 +1070,8 @@ class Scenario:
                         "type": "liability_payment",
                         "month": month_idx,
                         "posting_side": "credit",
+                        "interest_amount": interest_amount,
+                        "amortization_amount": amortization_amount,
                     },
                 )
             )
@@ -1097,20 +1105,33 @@ class Scenario:
         iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
         record_id = f"{transaction_type}:{brick.id}:{iteration}"
 
+        # Prepare metadata with interest and amortization breakdown for payments
+        metadata = {
+            "brick_id": brick.id,
+            "brick_type": "liability",
+            "kind": brick.kind,
+            "month": month_idx,
+            "iteration": iteration,  # Sequential enumeration
+            "transaction_type": transaction_type,
+            "amount_type": "debit" if cash_out > 0 else "credit",
+            "boundary_account": boundary_account,
+        }
+        
+        # Add interest and amortization breakdown for payments
+        if cash_out > 0:  # Payment
+            interest_amount = abs(brick_output["interest"][month_idx])
+            amortization_amount = cash_out - interest_amount
+            metadata.update({
+                "interest_amount": interest_amount,
+                "amortization_amount": amortization_amount,
+                "total_payment": cash_out,
+            })
+        
         entry = JournalEntry(
             id=record_id,
             timestamp=month_timestamp,
             postings=postings,
-            metadata={
-                "brick_id": brick.id,
-                "brick_type": "liability",
-                "kind": brick.kind,
-                "month": month_idx,
-                "iteration": iteration,  # Sequential enumeration
-                "transaction_type": transaction_type,
-                "amount_type": "debit" if cash_out > 0 else "credit",
-                "boundary_account": boundary_account,
-            },
+            metadata=metadata,
         )
 
         journal.post(entry)
