@@ -117,8 +117,22 @@ class ScheduleLoanBalloon(IScheduleStrategy):
             # Generate cash flow for loan disbursement
             cash_in[start_month_idx] = float(principal)
 
-        # Calculate monthly amortization amount
-        monthly_amortization = principal * amort_rate_m
+        # Calculate constant monthly payment using annuity formula
+        # For balloon loans, we need constant payments until balloon date
+        if balloon_after_months > 0:
+            # Calculate monthly payment using annuity formula
+            # PMT = P * [r(1+r)^n] / [(1+r)^n - 1]
+            # where P = principal, r = monthly rate, n = months to balloon
+            r = i_m
+            n = balloon_after_months
+            if r > 0:
+                monthly_payment = principal * (r * (1 + r)**n) / ((1 + r)**n - 1)
+            else:
+                # If interest rate is 0, just divide principal by months
+                monthly_payment = principal / n
+        else:
+            # No balloon period, use simple amortization
+            monthly_payment = principal * amort_rate_m
 
         for month_idx in range(months):
             # Get the date for this month
@@ -165,8 +179,10 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     interest_paid[month_idx] = float(interest)
 
                 elif months_since_start < balloon_after_months:
-                    # Amortization period - pay interest + principal
-                    principal_payment = min(monthly_amortization, current_balance)
+                    # Amortization period - constant monthly payment (annuity)
+                    # Calculate principal payment as: total_payment - interest
+                    principal_payment = monthly_payment - interest
+                    principal_payment = min(principal_payment, current_balance)  # Don't overpay
                     current_balance -= principal_payment
                     current_balance = max(Decimal("0"), current_balance)
 
@@ -175,7 +191,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         Event(
                             ctx.t_index[month_idx],
                             "loan_payment",
-                            f"Loan payment: €{principal_payment + interest:,.2f}",
+                            f"Loan payment: €{monthly_payment:,.2f}",
                             {
                                 "principal": float(principal_payment),
                                 "interest": float(interest),
@@ -185,8 +201,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     )
 
                     # Generate cash flow for regular payment
-                    total_payment = principal_payment + interest
-                    cash_out[month_idx] = float(total_payment)
+                    cash_out[month_idx] = float(monthly_payment)
                     # Track interest paid
                     interest_paid[month_idx] = float(interest)
 
