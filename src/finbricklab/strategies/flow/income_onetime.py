@@ -22,7 +22,7 @@ class FlowIncomeOneTime(IFlowStrategy):
 
     Required Parameters:
         - amount: The one-time income amount
-        - date: The date when the income occurs (YYYY-MM-DD format)
+        - start_date: The date when the income occurs (set on the brick)
 
     Optional Parameters:
         - tax_rate: Tax rate on this income (default: 0.0)
@@ -41,13 +41,13 @@ class FlowIncomeOneTime(IFlowStrategy):
         """
         # Extract parameters
         amount = brick.spec["amount"]
-        date_str = brick.spec["date"]
         tax_rate = brick.spec.get("tax_rate", 0.0)
 
-        # Parse the date
-        from datetime import datetime
-
-        event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        # Use the brick's start_date for the event date
+        if not brick.start_date:
+            raise ValueError(f"One-time income brick '{brick.id}' must have a start_date")
+        
+        event_date = brick.start_date
 
         # Calculate net amount after tax
         net_amount = amount * (1 - tax_rate)
