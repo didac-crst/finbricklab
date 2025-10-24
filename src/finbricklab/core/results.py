@@ -166,7 +166,7 @@ class ScenarioResults:
 
         Returns:
             DataFrame with canonical journal structure:
-            - record_id: Self-documenting unique ID (e.g., "flow:salary:checking:0:income:2019-07-01")
+            - record_id: Clean, self-documenting unique ID (e.g., "flow:income:salary:checking:0")
             - brick_id: Primary column for filtering by brick
             - brick_type: Type of financial instrument (flow, transfer, liability, asset)
             - account_id: Where money flows (standardized format: Asset:brick_id, Income:brick_id, etc.)
@@ -174,7 +174,7 @@ class ScenarioResults:
             - timestamp: Transaction timestamp
             - amount: Transaction amount
             - currency: Transaction currency
-            - metadata: Rich transaction information
+            - metadata: Combined rich transaction information (entry + posting metadata)
 
         Raises:
             ValueError: If journal object is not available
@@ -204,8 +204,7 @@ class ScenarioResults:
                         "timestamp": entry.timestamp,
                         "amount": float(posting.amount.value),
                         "currency": posting.amount.currency.code,
-                        "metadata": posting.metadata,
-                        "entry_metadata": entry.metadata,
+                        "metadata": {**entry.metadata, **posting.metadata},
                     }
                 )
 
