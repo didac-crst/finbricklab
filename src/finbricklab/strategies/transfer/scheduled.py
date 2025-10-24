@@ -81,7 +81,7 @@ class TransferScheduled(ITransferStrategy):
 
             # Validate amount is positive
             amount = entry["amount"]
-            if isinstance(amount, (int, float)):
+            if isinstance(amount, int | float):
                 amount = Decimal(str(amount))
             assert amount > 0, f"Schedule entry {i} amount must be positive"
 
@@ -89,10 +89,10 @@ class TransferScheduled(ITransferStrategy):
             date_str = entry["date"]
             try:
                 date.fromisoformat(date_str)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     f"Schedule entry {i} has invalid date format: {date_str}"
-                )
+                ) from e
 
         # Validate accounts are different
         from_account = brick.links["from"]
@@ -151,7 +151,7 @@ class TransferScheduled(ITransferStrategy):
                 if t.astype("datetime64[D]").astype(date) >= transfer_date:
                     month_idx = i
                     break
-            
+
             if month_idx is not None and month_idx < T:
                 # Record cash flows for the transfer
                 # Money goes out from source account (cash_out)
@@ -161,7 +161,7 @@ class TransferScheduled(ITransferStrategy):
 
             # Create transfer event
             event = Event(
-                transfer_date,
+                np.datetime64(transfer_date, "M"),
                 "transfer",
                 f"Scheduled transfer: {amount_obj}",
                 {
@@ -182,7 +182,7 @@ class TransferScheduled(ITransferStrategy):
                 fee_amount_obj = create_amount(fee_amount, fee_currency)
 
                 fee_event = Event(
-                    transfer_date,
+                    np.datetime64(transfer_date, "M"),
                     "transfer_fee",
                     f"Transfer fee: {fee_amount_obj}",
                     {
@@ -197,7 +197,7 @@ class TransferScheduled(ITransferStrategy):
             if "fx" in brick.spec:
                 fx = brick.spec["fx"]
                 fx_event = Event(
-                    transfer_date,
+                    np.datetime64(transfer_date, "M"),
                     "fx_transfer",
                     f"FX transfer: {fx['pair']} @ {fx['rate']}",
                     {

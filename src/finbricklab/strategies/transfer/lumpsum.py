@@ -64,7 +64,7 @@ class TransferLumpSum(ITransferStrategy):
 
         # Validate amount is positive
         amount = brick.spec["amount"]
-        if isinstance(amount, (int, float)):
+        if isinstance(amount, int | float):
             amount = Decimal(str(amount))
         assert amount > 0, "Transfer amount must be positive"
 
@@ -112,7 +112,7 @@ class TransferLumpSum(ITransferStrategy):
         transfer_time = None
         if brick.start_date is not None:
             # Find the index for the start date
-            for i, t in enumerate(ctx.t_index):
+            for t in ctx.t_index:
                 if t >= brick.start_date:
                     transfer_time = t
                     break
@@ -123,14 +123,14 @@ class TransferLumpSum(ITransferStrategy):
         # Initialize cash flow arrays
         cash_in = np.zeros(T, dtype=float)
         cash_out = np.zeros(T, dtype=float)
-        
+
         # Find the month index for this transfer
         month_idx = None
         for i, t in enumerate(ctx.t_index):
             if t >= transfer_time:
                 month_idx = i
                 break
-        
+
         if month_idx is not None and month_idx < T:
             # Record cash flows for the transfer
             # Money goes out from source account (cash_out)
@@ -140,7 +140,7 @@ class TransferLumpSum(ITransferStrategy):
 
         # Create transfer event
         event = Event(
-            transfer_time,
+            np.datetime64(transfer_time, "M"),
             "transfer",
             f"Lump sum transfer: {amount_obj}",
             {
@@ -160,7 +160,7 @@ class TransferLumpSum(ITransferStrategy):
             fee_amount_obj = create_amount(fee_amount, fee_currency)
 
             fee_event = Event(
-                transfer_time,
+                np.datetime64(transfer_time, "M"),
                 "transfer_fee",
                 f"Transfer fee: {fee_amount_obj}",
                 {
@@ -175,7 +175,7 @@ class TransferLumpSum(ITransferStrategy):
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
             fx_event = Event(
-                transfer_time,
+                np.datetime64(transfer_time, "M"),
                 "fx_transfer",
                 f"FX transfer: {fx['pair']} @ {fx['rate']}",
                 {

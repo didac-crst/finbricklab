@@ -70,13 +70,20 @@ class TransferRecurring(ITransferStrategy):
 
         # Validate amount is positive
         amount = brick.spec["amount"]
-        if isinstance(amount, (int, float)):
+        if isinstance(amount, int | float):
             amount = Decimal(str(amount))
         assert amount > 0, "Transfer amount must be positive"
 
         # Validate frequency
         frequency = brick.spec["frequency"]
-        valid_frequencies = ["MONTHLY", "BIMONTHLY", "QUARTERLY", "SEMIANNUALLY", "YEARLY", "BIYEARLY"]
+        valid_frequencies = [
+            "MONTHLY",
+            "BIMONTHLY",
+            "QUARTERLY",
+            "SEMIANNUALLY",
+            "YEARLY",
+            "BIYEARLY",
+        ]
         assert (
             frequency in valid_frequencies
         ), f"Frequency must be one of {valid_frequencies}"
@@ -113,7 +120,7 @@ class TransferRecurring(ITransferStrategy):
         amount = Decimal(str(brick.spec["amount"]))
         frequency = brick.spec["frequency"]
         currency = brick.spec.get("currency", "EUR")
-        day_of_month = brick.spec.get("day_of_month", 1)
+        # day_of_month = brick.spec.get("day_of_month", 1)  # Not used in current implementation
         priority = brick.spec.get("priority", 0)
 
         # Create amount object
@@ -131,14 +138,14 @@ class TransferRecurring(ITransferStrategy):
         elif frequency == "YEARLY":
             interval_months = 12
         elif frequency == "BIYEARLY":
-            interval_months = 24
+            interval_months = 24  # Used in loop below
         else:
             raise ValueError(f"Invalid frequency: {frequency}")
 
         # Initialize cash flow arrays
         cash_in = np.zeros(T, dtype=float)
         cash_out = np.zeros(T, dtype=float)
-        
+
         # Generate transfer events and cash flows
         events = []
         # Convert numpy.datetime64 to Python date object
@@ -160,7 +167,7 @@ class TransferRecurring(ITransferStrategy):
                 if t.astype("datetime64[D]").astype(date) >= current_date:
                     month_idx = i
                     break
-            
+
             if month_idx is not None and month_idx < T:
                 # Record cash flows for the transfer
                 # Money goes out from source account (cash_out)
@@ -170,7 +177,7 @@ class TransferRecurring(ITransferStrategy):
 
             # Create transfer event
             event = Event(
-                current_date,
+                np.datetime64(current_date, "M"),
                 "transfer",
                 f"Recurring transfer: {amount_obj}",
                 {
@@ -192,7 +199,7 @@ class TransferRecurring(ITransferStrategy):
                 fee_amount_obj = create_amount(fee_amount, fee_currency)
 
                 fee_event = Event(
-                    current_date,
+                    np.datetime64(current_date, "M"),
                     "transfer_fee",
                     f"Transfer fee: {fee_amount_obj}",
                     {
