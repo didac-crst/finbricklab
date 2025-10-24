@@ -30,6 +30,7 @@ from .macrobrick import MacroBrick
 from .registry import Registry
 from .results import BrickOutput, ScenarioResults, aggregate_totals, finalize_totals
 from .specs import LMortgageSpec
+from .transfer_visibility import TransferVisibility
 from .utils import _apply_window_equity_neutral, active_mask, month_range
 from .validation import DisjointReport
 
@@ -1568,7 +1569,8 @@ class Scenario:
         # Use the stored results from the last run
         validate_run(self._last_results, self.bricks, mode=mode, tol=tol)
 
-    def to_canonical_frame(self) -> pd.DataFrame:
+    def to_canonical_frame(self, 
+                          transfer_visibility: "TransferVisibility | None" = None) -> pd.DataFrame:
         """
         Convert scenario results to canonical schema for Entity comparison.
 
@@ -1577,6 +1579,9 @@ class Scenario:
         - cash, liquid_assets, illiquid_assets, liabilities
         - inflows, outflows, taxes, fees
         - Computed: total_assets, net_worth
+
+        Args:
+            transfer_visibility: How to handle transfer visibility (default: OFF)
 
         Returns:
             DataFrame with canonical columns and month-end date index

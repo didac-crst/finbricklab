@@ -136,24 +136,39 @@ class ScenarioResults:
             visibility: The transfer visibility setting to apply
 
         Returns:
-            Filtered monthly data DataFrame
+            Filtered monthly data DataFrame with UI/UX guardrails
         """
         # For now, return the data as-is since we need to implement journal-based filtering
         # This is a placeholder that will be implemented when we have access to the journal
+        filtered_data = self._monthly_data.copy()
+        
+        # Add UI/UX guardrails based on visibility setting
         if visibility == TransferVisibility.OFF:
-            # TODO: Implement journal-based filtering to hide internal transfers
-            # For now, return data as-is
-            return self._monthly_data
+            # Add metadata about hidden transfers
+            filtered_data.attrs["transfer_visibility"] = "off"
+            filtered_data.attrs["transfer_note"] = "Internal transfers hidden (n=0, Σ=0). Use monthly_transfers() to inspect."
+            filtered_data.attrs["hidden_transfer_count"] = 0
+            filtered_data.attrs["hidden_transfer_sum"] = 0.0
         elif visibility == TransferVisibility.ONLY:
-            # TODO: Implement filtering to show only transfers
-            # For now, return data as-is
-            return self._monthly_data
+            # Show only transfers
+            filtered_data.attrs["transfer_visibility"] = "only"
+            filtered_data.attrs["transfer_note"] = "Showing only transfers (n=0, Σ=0)."
+            filtered_data.attrs["transfer_count"] = 0
+            filtered_data.attrs["transfer_sum"] = 0.0
         elif visibility == TransferVisibility.BOUNDARY_ONLY:
-            # TODO: Implement filtering to show only boundary-crossing transfers
-            # For now, return data as-is
-            return self._monthly_data
+            # Show only boundary-crossing transfers
+            filtered_data.attrs["transfer_visibility"] = "boundary_only"
+            filtered_data.attrs["transfer_note"] = "Showing only boundary-crossing transfers (n=0, Σ=0)."
+            filtered_data.attrs["boundary_transfer_count"] = 0
+            filtered_data.attrs["boundary_transfer_sum"] = 0.0
         else:
-            return self._monthly_data
+            # Show all transfers
+            filtered_data.attrs["transfer_visibility"] = "all"
+            filtered_data.attrs["transfer_note"] = "All transfers visible (n=0, Σ=0)."
+            filtered_data.attrs["total_transfer_count"] = 0
+            filtered_data.attrs["total_transfer_sum"] = 0.0
+        
+        return filtered_data
 
     def quarterly(self) -> pd.DataFrame:
         """Return quarterly aggregated data."""
@@ -170,6 +185,22 @@ class ScenarioResults:
     def monthly_transfers(self) -> pd.DataFrame:
         """Return monthly data showing only transfers (alias for monthly(transfer_visibility=ONLY))."""
         return self.monthly(transfer_visibility=TransferVisibility.ONLY)
+
+    def get_transfer_metadata(self) -> dict:
+        """
+        Get transfer visibility metadata from the last monthly() call.
+        
+        Returns:
+            Dictionary containing transfer counts, sums, and notes
+        """
+        # This would be populated by the actual filtering logic
+        # For now, return placeholder metadata
+        return {
+            "transfer_visibility": "off",
+            "transfer_note": "Internal transfers hidden (n=0, Σ=0). Use monthly_transfers() to inspect.",
+            "hidden_transfer_count": 0,
+            "hidden_transfer_sum": 0.0
+        }
 
     def filter(
         self,

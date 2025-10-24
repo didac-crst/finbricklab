@@ -24,6 +24,7 @@ from .links import RouteLink
 from .macrobrick import MacroBrick
 from .registry import Registry
 from .scenario import Scenario
+from .transfer_visibility import TransferVisibility
 
 
 @dataclass
@@ -63,12 +64,15 @@ class Entity:
     _macrobricks: dict[str, MacroBrick] = field(default_factory=dict, repr=False)
     _scenarios: dict[str, Scenario] = field(default_factory=dict, repr=False)
 
-    def compare(self, scenario_ids: list[str] | None = None) -> pd.DataFrame:
+    def compare(self, 
+                scenario_ids: list[str] | None = None,
+                transfer_visibility: "TransferVisibility | None" = None) -> pd.DataFrame:
         """
         Compare multiple scenarios and return a tidy DataFrame with canonical columns.
 
         Args:
             scenario_ids: List of scenario IDs to include. If None, includes all scenarios.
+            transfer_visibility: How to handle transfer visibility (default: OFF)
 
         Returns:
             DataFrame with canonical columns plus scenario_id and scenario_name.
@@ -100,7 +104,7 @@ class Entity:
         for scenario in self.scenarios:
             if scenario.id in scenario_ids:
                 # Get canonical frame from scenario
-                df = scenario.to_canonical_frame()
+                df = scenario.to_canonical_frame(transfer_visibility=transfer_visibility)
 
                 # Add scenario metadata
                 df = df.copy()
