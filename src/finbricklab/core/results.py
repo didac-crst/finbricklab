@@ -171,8 +171,8 @@ class ScenarioResults:
         # Range filters
         iteration_min: int | None = None,
         iteration_max: int | None = None,
-        timestamp_start: str | "datetime" | None = None,
-        timestamp_end: str | "datetime" | None = None,
+        timestamp_start: str | None = None,
+        timestamp_end: str | None = None,
         amount_min: float | None = None,
         amount_max: float | None = None,
         # Advanced filters
@@ -325,8 +325,8 @@ class ScenarioResults:
         posting_side: str | list[str] | None,
         iteration_min: int | None,
         iteration_max: int | None,
-        timestamp_start: str | "datetime" | None,
-        timestamp_end: str | "datetime" | None,
+        timestamp_start: str | None,
+        timestamp_end: str | None,
         amount_min: float | None,
         amount_max: float | None,
         metadata_filter: dict | None,

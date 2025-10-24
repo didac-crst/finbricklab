@@ -178,7 +178,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Amortization period - constant monthly payment (annuity)
                     # Calculate principal payment as: total_payment - interest
                     principal_payment = monthly_payment - interest
-                    principal_payment = min(principal_payment, current_balance)  # Don't overpay
+                    principal_payment = min(
+                        principal_payment, current_balance
+                    )  # Don't overpay
                     current_balance -= principal_payment
                     current_balance = max(Decimal("0"), current_balance)
 
@@ -234,6 +236,6 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
     def _is_payment_month(self, month_date: date, start_date: date) -> bool:
         """Check if this month is a payment month."""
-        # For now, assume payments happen every month
-        # TODO: Implement proper day-of-month logic
-        return True
+        # For balloon loans, payments start the month after disbursement
+        # This matches the behavior of annuity loans
+        return month_date > start_date
