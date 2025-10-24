@@ -289,6 +289,7 @@ class TBrick(FinBrickABC):
 
     Attributes:
         transfer: The transfer strategy object (set automatically by registry)
+        transparent: Whether this transfer should be hidden in analysis views by default
 
     Examples:
         Lump sum transfer: kind='t.transfer.lumpsum'
@@ -297,6 +298,7 @@ class TBrick(FinBrickABC):
     """
 
     transfer: ITransferStrategy = None
+    transparent: bool = True  # Default to hidden in analysis views
 
     def __post_init__(self):
         """Set the family type to 't' for transfers."""

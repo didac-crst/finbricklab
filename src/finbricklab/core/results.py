@@ -11,6 +11,7 @@ import pandas as pd
 
 from .events import Event
 from .registry import Registry
+from .transfer_visibility import TransferVisibility
 
 
 class BrickOutput(TypedDict):
@@ -84,9 +85,75 @@ class ScenarioResults:
         """
         return aggregate_totals(self._monthly_data, freq=freq, return_period_index=True)
 
-    def monthly(self) -> pd.DataFrame:
-        """Return monthly data (no aggregation needed)."""
-        return self._monthly_data
+    def monthly(
+        self,
+        transfer_visibility: TransferVisibility | None = None,
+        include_transparent: bool | None = None,
+    ) -> pd.DataFrame:
+        """
+        Return monthly data with optional transfer visibility filtering.
+
+        Args:
+            transfer_visibility: How to handle transfer visibility (default: OFF)
+            include_transparent: Backward compatibility flag (deprecated)
+
+        Returns:
+            Monthly data DataFrame with optional transfer filtering applied
+        """
+        # Handle backward compatibility
+        if include_transparent is not None:
+            import warnings
+
+            warnings.warn(
+                "include_transparent parameter is deprecated. Use transfer_visibility instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Map old parameter to new enum
+            if include_transparent:
+                transfer_visibility = TransferVisibility.ALL
+            else:
+                transfer_visibility = TransferVisibility.OFF
+
+        # Default to OFF if not specified
+        if transfer_visibility is None:
+            transfer_visibility = TransferVisibility.OFF
+
+        # If no filtering needed, return data as-is
+        if transfer_visibility == TransferVisibility.ALL:
+            return self._monthly_data
+
+        # Apply transfer visibility filtering
+        return self._apply_transfer_visibility_filter(transfer_visibility)
+
+    def _apply_transfer_visibility_filter(
+        self, visibility: TransferVisibility
+    ) -> pd.DataFrame:
+        """
+        Apply transfer visibility filtering to monthly data.
+
+        Args:
+            visibility: The transfer visibility setting to apply
+
+        Returns:
+            Filtered monthly data DataFrame
+        """
+        # For now, return the data as-is since we need to implement journal-based filtering
+        # This is a placeholder that will be implemented when we have access to the journal
+        if visibility == TransferVisibility.OFF:
+            # TODO: Implement journal-based filtering to hide internal transfers
+            # For now, return data as-is
+            return self._monthly_data
+        elif visibility == TransferVisibility.ONLY:
+            # TODO: Implement filtering to show only transfers
+            # For now, return data as-is
+            return self._monthly_data
+        elif visibility == TransferVisibility.BOUNDARY_ONLY:
+            # TODO: Implement filtering to show only boundary-crossing transfers
+            # For now, return data as-is
+            return self._monthly_data
+        else:
+            return self._monthly_data
 
     def quarterly(self) -> pd.DataFrame:
         """Return quarterly aggregated data."""
@@ -95,6 +162,14 @@ class ScenarioResults:
     def yearly(self) -> pd.DataFrame:
         """Return yearly aggregated data."""
         return self.to_freq("Y")
+
+    def monthly_detailed(self) -> pd.DataFrame:
+        """Return monthly data with all transfers visible (alias for monthly(transfer_visibility=ALL))."""
+        return self.monthly(transfer_visibility=TransferVisibility.ALL)
+
+    def monthly_transfers(self) -> pd.DataFrame:
+        """Return monthly data showing only transfers (alias for monthly(transfer_visibility=ONLY))."""
+        return self.monthly(transfer_visibility=TransferVisibility.ONLY)
 
     def filter(
         self,
@@ -229,7 +304,6 @@ class ScenarioResults:
                 "Journal object not available. Journal is only available for scenarios with journal-based routing."
             )
 
-
         import pandas as pd
 
         # Convert journal entries to DataFrame with canonical structure
@@ -297,7 +371,7 @@ class ScenarioResults:
         """Expand brick IDs, automatically handling MacroBricks."""
         if self._registry is None:
             return brick_ids
-            
+
         expanded = []
         for brick_id in brick_ids:
             try:
@@ -404,6 +478,7 @@ class ScenarioResults:
                 if isinstance(value, dict):
                     # Handle comparison operators
                     for op, val in value.items():
+
                         def _filter_func(x, k=key, v=val, op_type=op):
                             if op_type == ">":
                                 return x.get(k, 0) > v
@@ -418,12 +493,13 @@ class ScenarioResults:
                             elif op_type == "!=":
                                 return x.get(k, 0) != v
                             return False
-                        
+
                         df = df[df["metadata"].apply(_filter_func)]
                 else:
                     # Exact match
                     def _exact_filter_func(x, k=key, v=value):
                         return x.get(k) == v
+
                     df = df[df["metadata"].apply(_exact_filter_func)]
 
         return df

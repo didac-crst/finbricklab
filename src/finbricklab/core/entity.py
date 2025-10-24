@@ -460,6 +460,7 @@ class Entity:
         spec: dict[str, Any] | None = None,
         links: dict[str, Any] | None = None,
         start_date: date | None = None,
+        transparent: bool = True,
     ) -> TBrick:
         """
         Create and register a new TBrick (Transfer Brick).
@@ -471,6 +472,7 @@ class Entity:
             spec: Strategy-specific parameters
             links: Links to other bricks (must include 'from' and 'to' accounts)
             start_date: Optional start date for the transfer
+            transparent: Whether this transfer should be hidden in analysis views by default
 
         Returns:
             The created TBrick object
@@ -497,6 +499,7 @@ class Entity:
             spec=spec or {},
             links=links,
             start_date=start_date,
+            transparent=transparent,
         )
         self._bricks[id] = brick
         return brick
@@ -589,22 +592,26 @@ class Entity:
                     if item_id in stack:
                         cycle_path = " → ".join(path + [item_id])
                         raise ScenarioValidationError(
-                            id, f"Cycle in MacroBricks: {cycle_path}", problem_ids=[item_id]
+                            id,
+                            f"Cycle in MacroBricks: {cycle_path}",
+                            problem_ids=[item_id],
                         )
                     stack.add(item_id)
                     path.append(item_id)
-                    
+
                     # Cap recursion depth
                     if len(path) > 64:
                         raise ScenarioValidationError(
-                            id, f"MacroBrick nesting too deep: {len(path)} levels", problem_ids=[item_id]
+                            id,
+                            f"MacroBrick nesting too deep: {len(path)} levels",
+                            problem_ids=[item_id],
                         )
-                    
+
                     # Get the MacroBrick and traverse its members directly
                     macro = reg_full.get_macrobrick(item_id)
                     for member_id in macro.members:
                         dfs(member_id, stack, path)
-                    
+
                     stack.remove(item_id)
                     path.pop()
                 elif reg_full.is_brick(item_id):
@@ -622,7 +629,7 @@ class Entity:
 
         # Build a **scenario-local** registry of only the included bricks + all macrobricks (for rollups)
         scen_bricks = [clone_brick(self._bricks[bid]) for bid in included_ids]
-        
+
         # Include all referenced MacroBricks for rollup analysis
         scen_mbs = [deepcopy(self._macrobricks[mid]) for mid in sorted(all_macrobricks)]
 
