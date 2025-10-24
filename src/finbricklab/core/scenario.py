@@ -574,9 +574,9 @@ class Scenario:
                 from .currency import create_amount
                 from .journal import JournalEntry, Posting
 
-                # Create opening balance entry
+                # Create opening balance entry with canonical format
                 opening_entry = JournalEntry(
-                    id=f"opening_{cash_id}",
+                    id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
                     postings=[
                         Posting(
@@ -585,7 +585,7 @@ class Scenario:
                             {"type": "opening_balance", "posting_side": "debit"},
                         ),
                         Posting(
-                            cash_id,
+                            f"Asset:{cash_id}",
                             create_amount(initial_balance, "EUR"),
                             {"type": "opening_balance", "posting_side": "credit"},
                         ),
@@ -593,9 +593,10 @@ class Scenario:
                     metadata={
                         "type": "opening_balance", 
                         "account": cash_id,
-                        "brick_id": None,  # Opening balances don't have brick_id
-                        "brick_type": None,  # Opening balances don't have brick_type
-                        "transaction_type": None,  # Opening balances don't have transaction_type
+                        "brick_id": cash_id,  # Use cash_id as brick_id for opening balances
+                        "brick_type": "opening",  # Special brick_type for opening balances
+                        "transaction_type": "opening",  # Special transaction_type for opening balances
+                        "iteration": 0,  # Opening balances are iteration 0
                     },
                 )
                 journal.post(opening_entry)
@@ -862,6 +863,7 @@ class Scenario:
                 "brick_type": "transfer",
                 "kind": brick.kind,
                 "month": month_idx,
+                "iteration": month_idx,  # Add iteration
                 "transaction_type": "transfer",
                 "amount_type": "credit" if cash_in > 0 else "debit",
             },
@@ -973,6 +975,7 @@ class Scenario:
                 "brick_type": "flow",
                 "kind": brick.kind,
                 "month": month_idx,
+                "iteration": month_idx,  # Add iteration
                 "transaction_type": transaction_type,
                 "amount_type": "credit" if cash_in > 0 else "debit",
                 "boundary_account": boundary_account,
@@ -1083,6 +1086,7 @@ class Scenario:
                 "brick_type": "liability",
                 "kind": brick.kind,
                 "month": month_idx,
+                "iteration": month_idx,  # Add iteration
                 "transaction_type": transaction_type,
                 "amount_type": "debit" if cash_out > 0 else "credit",
                 "boundary_account": boundary_account,
