@@ -594,7 +594,7 @@ class Scenario:
                         "type": "opening_balance", 
                         "account": cash_id,
                         "brick_id": cash_id,  # Use cash_id as brick_id for opening balances
-                        "brick_type": "opening",  # Special brick_type for opening balances
+                        "brick_type": "asset",  # Opening balances are asset-related
                         "transaction_type": "opening",  # Special transaction_type for opening balances
                         "iteration": 0,  # Opening balances are iteration 0
                     },

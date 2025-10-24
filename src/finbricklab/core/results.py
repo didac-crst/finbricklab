@@ -168,7 +168,7 @@ class ScenarioResults:
             DataFrame with canonical journal structure:
             - record_id: Clean, self-documenting unique ID (e.g., "income:salary:0", "opening:checking:0")
             - brick_id: Primary column for filtering by brick
-            - brick_type: Type of financial instrument (flow, transfer, liability, opening)
+            - brick_type: Type of financial instrument (flow, transfer, liability, asset)
             - transaction_type: Transaction type (income, expense, transfer, payment, disbursement, opening)
             - iteration: Iteration number (0, 1, 2, etc.) for recurring transactions
             - account_id: Where money flows (standardized format: Asset:brick_id, Income:brick_id, etc.)
