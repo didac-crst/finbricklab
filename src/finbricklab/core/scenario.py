@@ -548,6 +548,9 @@ class Scenario:
         # Create account registry and journal
         account_registry = AccountRegistry()
         journal = Journal(account_registry)
+        
+        # Track iteration count per brick and transaction type
+        brick_iteration_counters = {}
         # compiler = BrickCompiler(account_registry)  # No longer needed with new journal system
 
         # Register all cash accounts as internal assets
@@ -678,7 +681,7 @@ class Scenario:
             # No need to compile here as we use the new journal system
 
         # NEW: Capture monthly transactions for each month of simulation
-        self._capture_monthly_transactions(journal, outputs, ctx, execution_order)
+        self._capture_monthly_transactions(journal, outputs, ctx, execution_order, brick_iteration_counters)
 
         # Second pass: process cash accounts with all journal entries available
         for b in [ctx.registry[bid] for bid in execution_order]:
@@ -759,6 +762,7 @@ class Scenario:
         outputs: dict[str, BrickOutput],
         ctx: ScenarioContext,
         execution_order: list[str],
+        brick_iteration_counters: dict,
     ) -> None:
         """
         Capture monthly transactions for each month of the simulation.
@@ -799,17 +803,17 @@ class Scenario:
                 if isinstance(brick, TBrick):
                     # Transfer brick: create internal transfer entry
                     self._create_transfer_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp
+                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
                     )
                 elif isinstance(brick, FBrick):
                     # Flow brick: create external flow entry
                     self._create_flow_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp
+                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
                     )
                 elif isinstance(brick, LBrick):
                     # Liability brick: create loan payment entry
                     self._create_liability_journal_entry(
-                        journal, brick, brick_output, month_idx, month_timestamp
+                        journal, brick, brick_output, month_idx, month_timestamp, brick_iteration_counters
                     )
 
     def _create_transfer_journal_entry(
@@ -819,6 +823,7 @@ class Scenario:
         brick_output: BrickOutput,
         month_idx: int,
         month_timestamp: np.datetime64,
+        brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for transfer brick monthly transaction."""
         from .currency import create_amount
@@ -873,7 +878,7 @@ class Scenario:
                 "brick_type": "transfer",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": month_idx,  # Add iteration
+                "iteration": self._calculate_relative_iteration(brick, "transfer", brick_iteration_counters),  # Sequential enumeration
                 "transaction_type": "transfer",
                 "amount_type": "credit" if cash_in > 0 else "debit",
             },
@@ -888,6 +893,7 @@ class Scenario:
         brick_output: BrickOutput,
         month_idx: int,
         month_timestamp: np.datetime64,
+        brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for flow brick monthly transaction."""
         from .currency import create_amount
@@ -985,7 +991,7 @@ class Scenario:
                 "brick_type": "flow",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": month_idx,  # Add iteration
+                "iteration": self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters),  # Sequential enumeration
                 "transaction_type": transaction_type,
                 "amount_type": "credit" if cash_in > 0 else "debit",
                 "boundary_account": boundary_account,
@@ -1001,6 +1007,7 @@ class Scenario:
         brick_output: BrickOutput,
         month_idx: int,
         month_timestamp: np.datetime64,
+        brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for liability brick monthly transaction."""
         from .currency import create_amount
@@ -1096,7 +1103,7 @@ class Scenario:
                 "brick_type": "liability",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": month_idx,  # Add iteration
+                "iteration": self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters),  # Sequential enumeration
                 "transaction_type": transaction_type,
                 "amount_type": "debit" if cash_out > 0 else "credit",
                 "boundary_account": boundary_account,
@@ -1104,6 +1111,18 @@ class Scenario:
         )
 
         journal.post(entry)
+
+    def _calculate_relative_iteration(self, brick, transaction_type: str, brick_iteration_counters: dict) -> int:
+        """Calculate sequential iteration for each transaction type within each brick."""
+        # Create a key for this brick and transaction type
+        key = f"{brick.id}:{transaction_type}"
+        
+        # Get current count and increment
+        current_count = brick_iteration_counters.get(key, 0)
+        brick_iteration_counters[key] = current_count + 1
+        
+        # Return the current count (0-based) or current_count + 1 (1-based)
+        return current_count  # 0-based: first transaction is iteration 0
 
     def _simulate_single_brick(
         self, brick: FinBrickABC, ctx: ScenarioContext, t_index: np.ndarray
