@@ -855,7 +855,7 @@ class Scenario:
             )
 
         # Create canonical record ID
-        record_id = f"transfer:{brick.id}:{brick.links.get('to', 'unknown')}:{month_idx}:transfer:{month_timestamp.astype('datetime64[D]').astype(str)}"
+        record_id = f"transfer:transfer:{brick.id}:{brick.links.get('to', 'unknown')}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,
@@ -966,7 +966,7 @@ class Scenario:
             )
 
         # Create canonical record ID
-        record_id = f"flow:{brick.id}:{cash_account}:{month_idx}:{transaction_type}:{month_timestamp.astype('datetime64[D]').astype(str)}"
+        record_id = f"flow:{transaction_type}:{brick.id}:{cash_account}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,
@@ -1076,7 +1076,7 @@ class Scenario:
             transaction_type = "disbursement"
 
         # Create canonical record ID
-        record_id = f"liability:{brick.id}:{cash_account}:{month_idx}:{transaction_type}:{month_timestamp.astype('datetime64[D]').astype(str)}"
+        record_id = f"liability:{transaction_type}:{brick.id}:{cash_account}:{month_idx}"
 
         entry = JournalEntry(
             id=record_id,

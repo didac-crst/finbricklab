@@ -79,7 +79,7 @@ class ScenarioResults:
 
 def journal(self) -> pd.DataFrame:
     """Get complete journal of all transactions."""
-    # Returns DataFrame with canonical columns: record_id, brick_id, brick_type, account_id, posting_side, timestamp, amount, currency, metadata, entry_metadata
+    # Returns DataFrame with canonical columns: record_id (clean format), brick_id, brick_type, account_id, posting_side, timestamp, amount, currency, metadata, entry_metadata
 
     def transactions(self, account_id: str) -> pd.DataFrame:
         """Get all transactions for a specific account."""

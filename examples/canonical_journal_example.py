@@ -159,8 +159,8 @@ def main():
     print(f"   Columns: {list(journal_df.columns)}")
     print()
 
-    print("2. RECORD_ID PATTERNS:")
-    print("   Sample canonical record IDs:")
+    print("2. CLEAN RECORD_ID FORMAT:")
+    print("   Sample clean record IDs:")
     for record_id in journal_df["record_id"].unique()[:10]:
         print(f"     {record_id}")
     print()
@@ -202,7 +202,7 @@ def main():
     print("   Salary transactions:")
     salary_txns = journal_df[journal_df["brick_id"] == "salary"]
     print(f"     Found {len(salary_txns)} salary transactions")
-    for row in salary_txns.head(3).iterrows():
+    for i, row in salary_txns.head(3).iterrows():
         print(
             f"       {row['record_id']} | {row['account_id']} | {row['amount']:+.2f} €"
         )
@@ -241,19 +241,19 @@ def main():
     # === ADVANCED CANONICAL ANALYSIS ===
     print("=== ADVANCED CANONICAL ANALYSIS ===")
 
-    print("1. RECORD_ID PARSING:")
-    print("   Parse record IDs for detailed analysis:")
+    print("1. CLEAN RECORD_ID PARSING:")
+    print("   Parse clean record IDs for detailed analysis:")
     journal_df["parsed_record"] = journal_df["record_id"].str.split(":")
 
-    # Extract components from canonical record IDs
+    # Extract components from clean record IDs
     canonical_records = journal_df[journal_df["record_id"].str.contains(":", na=False)]
     if not canonical_records.empty:
-        print("   Sample parsed records:")
-        for row in canonical_records.head(5).iterrows():
+        print("   Sample parsed clean records:")
+        for i, row in canonical_records.head(5).iterrows():
             parsed = row["parsed_record"]
             if len(parsed) >= 5:
                 print(
-                    f"     {parsed[0]}:{parsed[1]} -> {parsed[2]} ({parsed[3]}) on {parsed[4]}"
+                    f"     {parsed[0]}:{parsed[1]} -> {parsed[2]}:{parsed[3]} (month {parsed[4]})"
                 )
     print()
 
@@ -286,7 +286,7 @@ def main():
 
     # === CANONICAL BENEFITS SUMMARY ===
     print("=== CANONICAL JOURNAL BENEFITS ===")
-    print("✅ Self-documenting record IDs: flow:salary:checking:0:income:2025-01-01")
+    print("✅ Clean, self-documenting record IDs: flow:income:salary:checking:0")
     print("✅ Primary brick_id column for easy filtering")
     print("✅ Clear brick_type classification")
     print("✅ Account_id shows where money flows")

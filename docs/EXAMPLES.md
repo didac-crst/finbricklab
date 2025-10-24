@@ -604,7 +604,7 @@ print(journal_df.iloc[0])
 ```
 
 **Canonical Structure Benefits:**
-- **record_id**: `"flow:salary:checking:0:income:2019-07-01"` - Self-documenting unique ID
+- **record_id**: `"flow:income:salary:checking:0"` - Clean, self-documenting unique ID
 - **brick_id**: `"salary"` - Primary column for filtering
 - **brick_type**: `"flow"` - Type of financial instrument
 - **account_id**: `"Asset:checking"` - Where money flows (standardized format)
