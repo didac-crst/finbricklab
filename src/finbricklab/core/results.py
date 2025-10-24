@@ -156,85 +156,107 @@ class ScenarioResults:
         )
 
         # Return new ScenarioResults with filtered data
-        return ScenarioResults(filtered_df, self._registry, self._outputs, self._journal)
+        return ScenarioResults(
+            filtered_df, self._registry, self._outputs, self._journal
+        )
 
     def journal(self) -> pd.DataFrame:
         """
         Convert journal entries to a DataFrame for analysis.
-        
+
         Returns:
-            DataFrame with journal entries and postings
-            
+            DataFrame with canonical journal structure:
+            - record_id: Self-documenting unique ID (e.g., "flow:salary:checking:0:income:2019-07-01")
+            - brick_id: Primary column for filtering by brick
+            - brick_type: Type of financial instrument (flow, transfer, liability, asset)
+            - account_id: Where money flows (cash account or boundary account)
+            - timestamp: Transaction timestamp
+            - amount: Transaction amount
+            - currency: Transaction currency
+            - metadata: Rich transaction information
+
         Raises:
             ValueError: If journal object is not available
         """
         if self._journal is None:
-            raise ValueError("Journal object not available. Journal is only available for scenarios with journal-based routing.")
-            
+            raise ValueError(
+                "Journal object not available. Journal is only available for scenarios with journal-based routing."
+            )
+
         import pandas as pd
-        from datetime import datetime
-        
-        # Convert journal entries to DataFrame
+
+        # Convert journal entries to DataFrame with canonical structure
         entries_data = []
         for entry in self._journal.entries:
             for posting in entry.postings:
-                entries_data.append({
-                    'entry_id': entry.id,
-                    'timestamp': entry.timestamp,
-                    'account_id': posting.account_id,
-                    'amount': float(posting.amount.value),
-                    'currency': posting.amount.currency.code,
-                    'metadata': posting.metadata,
-                    'entry_metadata': entry.metadata
-                })
-        
+                entries_data.append(
+                    {
+                        "record_id": entry.id,  # Canonical record ID
+                        "brick_id": entry.metadata.get("brick_id"),  # Primary column
+                        "brick_type": entry.metadata.get(
+                            "brick_type"
+                        ),  # Primary column
+                        "account_id": posting.account_id,  # Where money flows
+                        "timestamp": entry.timestamp,
+                        "amount": float(posting.amount.value),
+                        "currency": posting.amount.currency.code,
+                        "metadata": posting.metadata,
+                        "entry_metadata": entry.metadata,
+                    }
+                )
+
         df = pd.DataFrame(entries_data)
         if not df.empty:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp')
-        
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
         return df
-    
+
     def transactions(self, account_id: str) -> pd.DataFrame:
         """
         Get all transactions for a specific account.
-        
+
         Args:
             account_id: Account ID to filter by
-            
+
         Returns:
             DataFrame with transactions for the specified account
-            
+
         Raises:
             ValueError: If journal object is not available
         """
         if self._journal is None:
-            raise ValueError("Journal object not available. Journal is only available for scenarios with journal-based routing.")
-            
+            raise ValueError(
+                "Journal object not available. Journal is only available for scenarios with journal-based routing."
+            )
+
         # Get all entries affecting this account
         account_entries = self._journal.get_entries_by_account(account_id)
-        
+
         # Convert to DataFrame
         entries_data = []
         for entry in account_entries:
             for posting in entry.postings:
                 if posting.account_id == account_id:
-                    entries_data.append({
-                        'entry_id': entry.id,
-                        'timestamp': entry.timestamp,
-                        'account_id': posting.account_id,
-                        'amount': float(posting.amount.value),
-                        'currency': posting.amount.currency.code,
-                        'metadata': posting.metadata,
-                        'entry_metadata': entry.metadata
-                    })
-        
+                    entries_data.append(
+                        {
+                            "entry_id": entry.id,
+                            "timestamp": entry.timestamp,
+                            "account_id": posting.account_id,
+                            "amount": float(posting.amount.value),
+                            "currency": posting.amount.currency.code,
+                            "metadata": posting.metadata,
+                            "entry_metadata": entry.metadata,
+                        }
+                    )
+
         import pandas as pd
+
         df = pd.DataFrame(entries_data)
         if not df.empty:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp')
-        
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df.sort_values("timestamp")
+
         return df
 
 

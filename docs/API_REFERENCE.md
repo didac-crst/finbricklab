@@ -77,9 +77,9 @@ class ScenarioResults:
     def yearly(self) -> pd.DataFrame:
         """Get yearly aggregated results."""
 
-    def journal(self) -> pd.DataFrame:
-        """Get complete journal of all transactions."""
-        # Returns DataFrame with columns: entry_id, timestamp, account_id, amount, currency, metadata, entry_metadata
+def journal(self) -> pd.DataFrame:
+    """Get complete journal of all transactions."""
+    # Returns DataFrame with canonical columns: record_id, brick_id, brick_type, account_id, timestamp, amount, currency, metadata, entry_metadata
 
     def transactions(self, account_id: str) -> pd.DataFrame:
         """Get all transactions for a specific account."""
@@ -90,10 +90,11 @@ class ScenarioResults:
 
 **Key Features:**
 - **Time Aggregation**: Monthly, quarterly, yearly views
-- **Journal Analysis**: Complete transaction-level detail
+- **Journal Analysis**: Complete transaction-level detail with canonical structure
 - **Account Filtering**: Get transactions for specific accounts
 - **Component Filtering**: Focus on specific bricks or MacroBricks
 - **Double-Entry Validation**: Ensure proper accounting
+- **Canonical Structure**: Self-documenting record IDs and primary columns for easy analysis
 
 ### Account System
 

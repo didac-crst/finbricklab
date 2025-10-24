@@ -281,7 +281,9 @@ class Scenario:
             "outputs": outputs,
             "by_struct": by_struct,
             "totals": totals,
-            "views": ScenarioResults(totals, registry=self._registry, outputs=outputs, journal=journal),
+            "views": ScenarioResults(
+                totals, registry=self._registry, outputs=outputs, journal=journal
+            ),
             "journal": journal,
             "_scenario_bricks": self.bricks,
             "meta": {"execution_order": execution_order, "overlaps": overlaps},
@@ -535,7 +537,7 @@ class Scenario:
 
     def _simulate_bricks(
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
-    ) -> dict[str, BrickOutput]:
+    ):
         """Simulate all bricks using Journal-based system."""
         from .accounts import Account, AccountRegistry, AccountScope, AccountType
         from .compiler import BrickCompiler
@@ -657,6 +659,9 @@ class Scenario:
                 for entry in entries:
                     journal.post(entry)
 
+        # NEW: Capture monthly transactions for each month of simulation
+        self._capture_monthly_transactions(journal, outputs, ctx, execution_order)
+
         # Second pass: process cash accounts with all journal entries available
         for b in [ctx.registry[bid] for bid in execution_order]:
             if not (isinstance(b, ABrick) and b.kind == K.A_CASH):
@@ -729,6 +734,324 @@ class Scenario:
                 raise AssertionError(f"Journal validation failed: {errors}")
 
         return outputs, journal
+
+    def _capture_monthly_transactions(
+        self,
+        journal,
+        outputs: dict[str, BrickOutput],
+        ctx: ScenarioContext,
+        execution_order: list[str],
+    ) -> None:
+        """
+        Capture monthly transactions for each month of the simulation.
+
+        This method processes the brick outputs and creates journal entries
+        for all monthly transactions (transfers, salary, loan payments, etc.)
+        that occurred during the simulation.
+        """
+        from .compiler import BrickCompiler
+
+        # compiler = BrickCompiler(journal.account_registry)  # Not used in monthly capture
+
+        # Process each month of the simulation
+        for month_idx in range(len(ctx.t_index)):
+            month_timestamp = ctx.t_index[month_idx]
+
+            # Process each brick for this month
+            for brick_id in execution_order:
+                brick = ctx.registry[brick_id]
+
+                # Skip cash accounts (they're handled separately)
+                if isinstance(brick, ABrick) and brick.kind == K.A_CASH:
+                    continue
+
+                # Skip if brick output not available yet
+                if brick_id not in outputs:
+                    continue
+
+                brick_output = outputs[brick_id]
+
+                # Check if this brick has activity in this month
+                if (
+                    brick_output["cash_in"][month_idx] == 0
+                    and brick_output["cash_out"][month_idx] == 0
+                ):
+                    continue  # No activity this month
+
+                # Create journal entries for this month's transactions
+                if isinstance(brick, TBrick):
+                    # Transfer brick: create internal transfer entry
+                    self._create_transfer_journal_entry(
+                        journal, brick, brick_output, month_idx, month_timestamp
+                    )
+                elif isinstance(brick, FBrick):
+                    # Flow brick: create external flow entry
+                    self._create_flow_journal_entry(
+                        journal, brick, brick_output, month_idx, month_timestamp
+                    )
+                elif isinstance(brick, LBrick):
+                    # Liability brick: create loan payment entry
+                    self._create_liability_journal_entry(
+                        journal, brick, brick_output, month_idx, month_timestamp
+                    )
+
+    def _create_transfer_journal_entry(
+        self,
+        journal,
+        brick: TBrick,
+        brick_output: BrickOutput,
+        month_idx: int,
+        month_timestamp: np.datetime64,
+    ) -> None:
+        """Create journal entry for transfer brick monthly transaction."""
+        from .currency import create_amount
+        from .journal import JournalEntry, Posting
+
+        cash_in = brick_output["cash_in"][month_idx]
+        cash_out = brick_output["cash_out"][month_idx]
+
+        if cash_in == 0 and cash_out == 0:
+            return  # No activity this month
+
+        # Create postings for the transfer
+        postings = []
+
+        # Money goes out from source account
+        if cash_out > 0:
+            postings.append(
+                Posting(
+                    brick.links["from"],
+                    create_amount(-cash_out, "EUR"),
+                    {"type": "transfer_out", "month": month_idx},
+                )
+            )
+
+        # Money comes in to destination account
+        if cash_in > 0:
+            postings.append(
+                Posting(
+                    brick.links["to"],
+                    create_amount(cash_in, "EUR"),
+                    {"type": "transfer_in", "month": month_idx},
+                )
+            )
+
+        # Create canonical record ID
+        record_id = f"transfer:{brick.id}:{brick.links.get('to', 'unknown')}:{month_idx}:transfer:{month_timestamp.astype('datetime64[D]').astype(str)}"
+
+        entry = JournalEntry(
+            id=record_id,
+            timestamp=month_timestamp,
+            postings=postings,
+            metadata={
+                "brick_id": brick.id,
+                "brick_type": "transfer",
+                "kind": brick.kind,
+                "month": month_idx,
+                "transaction_type": "transfer",
+                "amount_type": "credit" if cash_in > 0 else "debit",
+            },
+        )
+
+        journal.post(entry)
+
+    def _create_flow_journal_entry(
+        self,
+        journal,
+        brick: FBrick,
+        brick_output: BrickOutput,
+        month_idx: int,
+        month_timestamp: np.datetime64,
+    ) -> None:
+        """Create journal entry for flow brick monthly transaction."""
+        from .currency import create_amount
+        from .journal import JournalEntry, Posting
+
+        cash_in = brick_output["cash_in"][month_idx]
+        cash_out = brick_output["cash_out"][month_idx]
+
+        if cash_in == 0 and cash_out == 0:
+            return  # No activity this month
+
+        # Create postings for the flow
+        postings = []
+
+        # Determine the cash account to route to
+        cash_account = brick.links.get("route", {}).get("to") if brick.links else None
+        if not cash_account:
+            return  # No routing specified
+
+        # Create boundary account for the flow
+        if brick.kind.startswith("f.income"):
+            boundary_account = f"Income:{brick.name}"
+            transaction_type = "income"
+        elif brick.kind.startswith("f.expense"):
+            boundary_account = f"Expense:{brick.name}"
+            transaction_type = "expense"
+        else:
+            boundary_account = f"Flow:{brick.name}"
+            transaction_type = "flow"
+
+        # Register boundary account if not already registered
+        if not journal.account_registry.has_account(boundary_account):
+            from .accounts import Account, AccountScope, AccountType
+
+            journal.account_registry.register_account(
+                Account(
+                    boundary_account,
+                    boundary_account,
+                    AccountScope.BOUNDARY,
+                    AccountType.INCOME
+                    if brick.kind.startswith("f.income")
+                    else AccountType.EXPENSE,
+                )
+            )
+
+        # Money flows from boundary to cash account (income) or vice versa (expense)
+        if cash_in > 0:  # Income
+            postings.append(
+                Posting(
+                    boundary_account,
+                    create_amount(-cash_in, "EUR"),
+                    {"type": "income", "month": month_idx},
+                )
+            )
+            postings.append(
+                Posting(
+                    cash_account,
+                    create_amount(cash_in, "EUR"),
+                    {"type": "income_allocation", "month": month_idx},
+                )
+            )
+        elif cash_out > 0:  # Expense
+            postings.append(
+                Posting(
+                    cash_account,
+                    create_amount(-cash_out, "EUR"),
+                    {"type": "expense_payment", "month": month_idx},
+                )
+            )
+            postings.append(
+                Posting(
+                    boundary_account,
+                    create_amount(cash_out, "EUR"),
+                    {"type": "expense", "month": month_idx},
+                )
+            )
+
+        # Create canonical record ID
+        record_id = f"flow:{brick.id}:{cash_account}:{month_idx}:{transaction_type}:{month_timestamp.astype('datetime64[D]').astype(str)}"
+
+        entry = JournalEntry(
+            id=record_id,
+            timestamp=month_timestamp,
+            postings=postings,
+            metadata={
+                "brick_id": brick.id,
+                "brick_type": "flow",
+                "kind": brick.kind,
+                "month": month_idx,
+                "transaction_type": transaction_type,
+                "amount_type": "credit" if cash_in > 0 else "debit",
+                "boundary_account": boundary_account,
+            },
+        )
+
+        journal.post(entry)
+
+    def _create_liability_journal_entry(
+        self,
+        journal,
+        brick: LBrick,
+        brick_output: BrickOutput,
+        month_idx: int,
+        month_timestamp: np.datetime64,
+    ) -> None:
+        """Create journal entry for liability brick monthly transaction."""
+        from .currency import create_amount
+        from .journal import JournalEntry, Posting
+
+        cash_in = brick_output["cash_in"][month_idx]
+        cash_out = brick_output["cash_out"][month_idx]
+
+        if cash_in == 0 and cash_out == 0:
+            return  # No activity this month
+
+        # Create postings for the liability
+        postings = []
+
+        # Determine the cash account to route to (use settlement default)
+        cash_account = self.settlement_default_cash_id or "cash"
+
+        # Create boundary account for the liability
+        boundary_account = f"Liability:{brick.name}"
+
+        # Register liability account if not already registered
+        if not journal.account_registry.has_account(boundary_account):
+            from .accounts import Account, AccountScope, AccountType
+
+            journal.account_registry.register_account(
+                Account(
+                    boundary_account,
+                    boundary_account,
+                    AccountScope.BOUNDARY,
+                    AccountType.LIABILITY,
+                )
+            )
+
+        # Money flows from cash to liability (payments) or vice versa (disbursements)
+        if cash_out > 0:  # Payment
+            postings.append(
+                Posting(
+                    cash_account,
+                    create_amount(-cash_out, "EUR"),
+                    {"type": "loan_payment", "month": month_idx},
+                )
+            )
+            postings.append(
+                Posting(
+                    boundary_account,
+                    create_amount(cash_out, "EUR"),
+                    {"type": "liability_payment", "month": month_idx},
+                )
+            )
+            transaction_type = "payment"
+        elif cash_in > 0:  # Disbursement
+            postings.append(
+                Posting(
+                    boundary_account,
+                    create_amount(-cash_in, "EUR"),
+                    {"type": "loan_disbursement", "month": month_idx},
+                )
+            )
+            postings.append(
+                Posting(
+                    cash_account,
+                    create_amount(cash_in, "EUR"),
+                    {"type": "liability_disbursement", "month": month_idx},
+                )
+            )
+            transaction_type = "disbursement"
+
+        # Create canonical record ID
+        record_id = f"liability:{brick.id}:{cash_account}:{month_idx}:{transaction_type}:{month_timestamp.astype('datetime64[D]').astype(str)}"
+
+        entry = JournalEntry(
+            id=record_id,
+            timestamp=month_timestamp,
+            postings=postings,
+            metadata={
+                "brick_id": brick.id,
+                "brick_type": "liability",
+                "kind": brick.kind,
+                "month": month_idx,
+                "transaction_type": transaction_type,
+                "amount_type": "debit" if cash_out > 0 else "credit",
+                "boundary_account": boundary_account,
+            },
+        )
+
+        journal.post(entry)
 
     def _simulate_single_brick(
         self, brick: FinBrickABC, ctx: ScenarioContext, t_index: np.ndarray

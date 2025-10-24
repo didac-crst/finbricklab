@@ -568,9 +568,9 @@ print(f"Investment transactions: {len(investment_journal)}")
 ```python
 # Monthly transaction analysis
 monthly_stats = journal_df.groupby('timestamp').agg({
-    'entry_id': 'count',
+    'record_id': 'count',
     'amount': 'sum'
-}).rename(columns={'entry_id': 'transactions', 'amount': 'net_amount'})
+}).rename(columns={'record_id': 'transactions', 'amount': 'net_amount'})
 
 # Account balance analysis
 account_stats = journal_df.groupby('account_id').agg({
@@ -581,9 +581,48 @@ account_stats = journal_df.groupby('account_id').agg({
 transaction_types = journal_df['metadata'].apply(lambda x: x.get('type', 'unknown')).value_counts()
 
 # Double-entry validation
-entry_balances = journal_df.groupby('entry_id')['amount'].sum()
+entry_balances = journal_df.groupby('record_id')['amount'].sum()
 unbalanced_entries = entry_balances[entry_balances.abs() > 1e-6]
 print(f"Unbalanced entries: {len(unbalanced_entries)}")
+```
+
+### Canonical Journal Structure
+
+The enhanced journal system now provides a canonical structure for better analysis:
+
+```python
+# Get journal with canonical structure
+journal_df = results["views"].journal()
+
+# New canonical columns:
+print("Canonical columns:", list(journal_df.columns))
+# ['record_id', 'brick_id', 'brick_type', 'account_id', 'timestamp', 'amount', 'currency', 'metadata', 'entry_metadata']
+
+# Example canonical record:
+print("Sample record:")
+print(journal_df.iloc[0])
+```
+
+**Canonical Structure Benefits:**
+- **record_id**: `"flow:salary:checking:0:income:2019-07-01"` - Self-documenting unique ID
+- **brick_id**: `"salary"` - Primary column for filtering
+- **brick_type**: `"flow"` - Type of financial instrument
+- **account_id**: `"checking"` - Where money flows
+- **metadata**: Rich transaction information
+
+**Example Queries:**
+```python
+# Filter by brick
+salary_transactions = journal_df[journal_df['brick_id'] == 'salary']
+
+# Filter by brick type
+flow_transactions = journal_df[journal_df['brick_type'] == 'flow']
+
+# Filter by account
+checking_transactions = journal_df[journal_df['account_id'] == 'checking']
+
+# Parse record_id for complex analysis
+journal_df['parsed_record'] = journal_df['record_id'].str.split(':')
 ```
 
 ### Journal Benefits
