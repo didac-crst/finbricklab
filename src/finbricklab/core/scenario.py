@@ -1043,7 +1043,60 @@ class Scenario:
                 )
             )
 
-        # Money flows from cash to liability (payments) or vice versa (disbursements)
+        # Handle disbursements first (cash_in > 0)
+        if cash_in > 0:  # Disbursement
+            postings.append(
+                Posting(
+                    boundary_account,
+                    create_amount(-cash_in, "EUR"),
+                    {
+                        "type": "loan_disbursement",
+                        "month": month_idx,
+                        "posting_side": "debit",
+                    },
+                )
+            )
+            postings.append(
+                Posting(
+                    f"asset:{cash_account}",
+                    create_amount(cash_in, "EUR"),
+                    {
+                        "type": "liability_disbursement",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
+                )
+            )
+            transaction_type = "disbursement"
+            
+            # Create disbursement journal entry
+            disbursement_iteration = self._calculate_relative_iteration(brick, "disbursement", brick_iteration_counters)
+            disbursement_record_id = f"disbursement:{brick.id}:{disbursement_iteration}"
+            
+            disbursement_metadata = {
+                "brick_id": brick.id,
+                "brick_type": "liability",
+                "kind": brick.kind,
+                "month": month_idx,
+                "iteration": disbursement_iteration,
+                "transaction_type": "disbursement",
+                "amount_type": "credit",
+                "boundary_account": boundary_account,
+                "total_disbursement": cash_in,
+            }
+            
+            disbursement_entry = JournalEntry(
+                id=disbursement_record_id,
+                timestamp=month_timestamp,
+                postings=postings.copy(),
+                metadata=disbursement_metadata,
+            )
+            journal.post(disbursement_entry)
+            
+            # Reset postings for payment entry
+            postings = []
+        
+        # Handle payments (cash_out > 0) - can be in same month as disbursement
         if cash_out > 0:  # Payment
             # Calculate interest and amortization breakdown
             interest_amount = abs(brick_output["interest"][month_idx])  # Interest is negative, make positive
@@ -1076,49 +1129,26 @@ class Scenario:
                 )
             )
             transaction_type = "payment"
-        elif cash_in > 0:  # Disbursement
-            postings.append(
-                Posting(
-                    boundary_account,
-                    create_amount(-cash_in, "EUR"),
-                    {
-                        "type": "loan_disbursement",
-                        "month": month_idx,
-                        "posting_side": "debit",
-                    },
-                )
-            )
-            postings.append(
-                Posting(
-                    f"asset:{cash_account}",
-                    create_amount(cash_in, "EUR"),
-                    {
-                        "type": "liability_disbursement",
-                        "month": month_idx,
-                        "posting_side": "credit",
-                    },
-                )
-            )
-            transaction_type = "disbursement"
 
-        # Create canonical record ID using sequential iteration
-        iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
-        record_id = f"{transaction_type}:{brick.id}:{iteration}"
-
-        # Prepare metadata with interest and amortization breakdown for payments
-        metadata = {
-            "brick_id": brick.id,
-            "brick_type": "liability",
-            "kind": brick.kind,
-            "month": month_idx,
-            "iteration": iteration,  # Sequential enumeration
-            "transaction_type": transaction_type,
-            "amount_type": "debit" if cash_out > 0 else "credit",
-            "boundary_account": boundary_account,
-        }
-        
-        # Add interest and amortization breakdown for payments
+        # Create payment journal entry (if there are payments)
         if cash_out > 0:  # Payment
+            # Create canonical record ID using sequential iteration
+            iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
+            record_id = f"{transaction_type}:{brick.id}:{iteration}"
+
+            # Prepare metadata with interest and amortization breakdown for payments
+            metadata = {
+                "brick_id": brick.id,
+                "brick_type": "liability",
+                "kind": brick.kind,
+                "month": month_idx,
+                "iteration": iteration,  # Sequential enumeration
+                "transaction_type": transaction_type,
+                "amount_type": "debit",
+                "boundary_account": boundary_account,
+            }
+            
+            # Add interest and amortization breakdown for payments
             interest_amount = abs(brick_output["interest"][month_idx])
             amortization_amount = cash_out - interest_amount
             metadata.update({
@@ -1126,15 +1156,15 @@ class Scenario:
                 "amortization_amount": amortization_amount,
                 "total_payment": cash_out,
             })
-        
-        entry = JournalEntry(
-            id=record_id,
-            timestamp=month_timestamp,
-            postings=postings,
-            metadata=metadata,
-        )
+            
+            entry = JournalEntry(
+                id=record_id,
+                timestamp=month_timestamp,
+                postings=postings,
+                metadata=metadata,
+            )
 
-        journal.post(entry)
+            journal.post(entry)
 
     def _calculate_relative_iteration(self, brick, transaction_type: str, brick_iteration_counters: dict) -> int:
         """Calculate sequential iteration for each transaction type within each brick."""
