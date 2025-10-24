@@ -519,4 +519,80 @@ print(final_results)
 - Access via `results["by_struct"][macrobrick_id]`
 - Proper handling of overlapping bricks
 
+### 7. **Enhanced Journal System** 🆕
+- **Complete transaction-level detail** for all financial activities
+- **Double-entry bookkeeping** with proper account tracking
+- **Time-series analysis** of financial flows throughout simulation
+- **Account-level reconciliation** and debugging capabilities
+- **Filtered journal analysis** for specific components
+- **Transaction type classification** and comprehensive audit trail
+
+## Journal Analysis Examples
+
+### Basic Journal Access
+
+```python
+# Get complete journal of all transactions
+journal_df = results["views"].journal()
+print(f"Total transactions: {len(journal_df)}")
+print(f"Date range: {journal_df['timestamp'].min()} to {journal_df['timestamp'].max()}")
+
+# Show sample transactions
+print(journal_df.head())
+```
+
+### Account-Specific Transactions
+
+```python
+# Get all transactions for a specific account
+checking_txns = results["views"].transactions("checking")
+savings_txns = results["views"].transactions("savings")
+
+print("Checking account transactions:")
+print(checking_txns[['timestamp', 'amount', 'metadata']].head())
+```
+
+### Filtered Journal Analysis
+
+```python
+# Get journal for specific components
+income_journal = results["views"].filter(brick_ids=["income_sources"]).journal()
+investment_journal = results["views"].filter(brick_ids=["investment_strategy"]).journal()
+
+print(f"Income transactions: {len(income_journal)}")
+print(f"Investment transactions: {len(investment_journal)}")
+```
+
+### Advanced Journal Analysis
+
+```python
+# Monthly transaction analysis
+monthly_stats = journal_df.groupby('timestamp').agg({
+    'entry_id': 'count',
+    'amount': 'sum'
+}).rename(columns={'entry_id': 'transactions', 'amount': 'net_amount'})
+
+# Account balance analysis
+account_stats = journal_df.groupby('account_id').agg({
+    'amount': ['count', 'sum']
+}).round(2)
+
+# Transaction type analysis
+transaction_types = journal_df['metadata'].apply(lambda x: x.get('type', 'unknown')).value_counts()
+
+# Double-entry validation
+entry_balances = journal_df.groupby('entry_id')['amount'].sum()
+unbalanced_entries = entry_balances[entry_balances.abs() > 1e-6]
+print(f"Unbalanced entries: {len(unbalanced_entries)}")
+```
+
+### Journal Benefits
+
+- **🔍 Complete Audit Trail**: Every financial transaction is recorded
+- **📊 Account Reconciliation**: Track all account balance changes
+- **⏰ Time-Series Analysis**: Analyze financial flows over time
+- **🔧 Debugging Support**: Identify issues in financial logic
+- **📋 Compliance**: Meet accounting and regulatory requirements
+- **🎯 Filtered Analysis**: Focus on specific components or time periods
+
 This new architecture provides a more intuitive and powerful way to model complex financial scenarios while maintaining backward compatibility where possible.

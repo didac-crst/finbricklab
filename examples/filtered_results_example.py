@@ -148,6 +148,30 @@ def main():
     print(real_estate_yearly)
     print()
 
+    # NEW: Demonstrate journal functionality
+    print("=== JOURNAL ANALYSIS ===")
+    print("Full scenario journal entries:")
+    journal_df = results["views"].journal()
+    print(f"Total journal entries: {len(journal_df)}")
+    print(
+        f"Date range: {journal_df['timestamp'].min()} to {journal_df['timestamp'].max()}"
+    )
+    print()
+
+    # Show sample journal entries
+    print("Sample journal entries (first 5):")
+    print(journal_df.head())
+    print()
+
+    # Show journal for filtered view
+    print("=== FILTERED JOURNAL: Investment Portfolio ===")
+    investments_journal = investments_view.journal()
+    print(f"Investment portfolio journal entries: {len(investments_journal)}")
+    if not investments_journal.empty:
+        print("Investment journal sample:")
+        print(investments_journal.head())
+    print()
+
     print("=== SUMMARY ===")
     print("✅ Successfully demonstrated filtered results functionality!")
     print(
@@ -156,6 +180,8 @@ def main():
     print("✅ Can filter by unified brick_ids (bricks and MacroBricks mixed)")
     print("✅ MacroBricks are automatically expanded to their constituent bricks")
     print("✅ Filtered results maintain the same structure as full results")
+    print("✅ NEW: Journal functionality provides transaction-level detail!")
+    print("✅ NEW: Filtered views also support journal analysis!")
 
 
 if __name__ == "__main__":

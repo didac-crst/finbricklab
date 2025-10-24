@@ -59,6 +59,42 @@ class Journal:
         """Validate journal invariants and return any errors."""
 ```
 
+### ScenarioResults
+
+```python
+class ScenarioResults:
+    """Results container with time aggregation and journal analysis capabilities."""
+
+    def __init__(self, totals: pd.DataFrame, registry: Registry = None, outputs: Dict = None, journal: Journal = None):
+        """Initialize with monthly totals and optional journal."""
+
+    def monthly(self) -> pd.DataFrame:
+        """Get monthly aggregated results."""
+
+    def quarterly(self) -> pd.DataFrame:
+        """Get quarterly aggregated results."""
+
+    def yearly(self) -> pd.DataFrame:
+        """Get yearly aggregated results."""
+
+    def journal(self) -> pd.DataFrame:
+        """Get complete journal of all transactions."""
+        # Returns DataFrame with columns: entry_id, timestamp, account_id, amount, currency, metadata, entry_metadata
+
+    def transactions(self, account_id: str) -> pd.DataFrame:
+        """Get all transactions for a specific account."""
+
+    def filter(self, brick_ids: List[str]) -> ScenarioResults:
+        """Filter results to specific bricks or MacroBricks."""
+```
+
+**Key Features:**
+- **Time Aggregation**: Monthly, quarterly, yearly views
+- **Journal Analysis**: Complete transaction-level detail
+- **Account Filtering**: Get transactions for specific accounts
+- **Component Filtering**: Focus on specific bricks or MacroBricks
+- **Double-Entry Validation**: Ensure proper accounting
+
 ### Account System
 
 ```python
