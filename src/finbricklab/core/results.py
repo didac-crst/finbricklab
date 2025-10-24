@@ -115,9 +115,9 @@ class ScenarioResults:
             else:
                 transfer_visibility = TransferVisibility.OFF
 
-        # Default to OFF if not specified
+        # If no transfer visibility specified, return data as-is
         if transfer_visibility is None:
-            transfer_visibility = TransferVisibility.OFF
+            return self._monthly_data
 
         # If no filtering needed, return data as-is
         if transfer_visibility == TransferVisibility.ALL:
