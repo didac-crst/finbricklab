@@ -1569,8 +1569,9 @@ class Scenario:
         # Use the stored results from the last run
         validate_run(self._last_results, self.bricks, mode=mode, tol=tol)
 
-    def to_canonical_frame(self, 
-                          transfer_visibility: "TransferVisibility | None" = None) -> pd.DataFrame:
+    def to_canonical_frame(
+        self, transfer_visibility: TransferVisibility | None = None
+    ) -> pd.DataFrame:
         """
         Convert scenario results to canonical schema for Entity comparison.
 

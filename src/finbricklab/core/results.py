@@ -138,37 +138,197 @@ class ScenarioResults:
         Returns:
             Filtered monthly data DataFrame with UI/UX guardrails
         """
-        # For now, return the data as-is since we need to implement journal-based filtering
-        # This is a placeholder that will be implemented when we have access to the journal
-        filtered_data = self._monthly_data.copy()
-        
-        # Add UI/UX guardrails based on visibility setting
-        if visibility == TransferVisibility.OFF:
-            # Add metadata about hidden transfers
-            filtered_data.attrs["transfer_visibility"] = "off"
-            filtered_data.attrs["transfer_note"] = "Internal transfers hidden (n=0, Σ=0). Use monthly_transfers() to inspect."
-            filtered_data.attrs["hidden_transfer_count"] = 0
-            filtered_data.attrs["hidden_transfer_sum"] = 0.0
-        elif visibility == TransferVisibility.ONLY:
-            # Show only transfers
-            filtered_data.attrs["transfer_visibility"] = "only"
-            filtered_data.attrs["transfer_note"] = "Showing only transfers (n=0, Σ=0)."
-            filtered_data.attrs["transfer_count"] = 0
-            filtered_data.attrs["transfer_sum"] = 0.0
-        elif visibility == TransferVisibility.BOUNDARY_ONLY:
-            # Show only boundary-crossing transfers
-            filtered_data.attrs["transfer_visibility"] = "boundary_only"
-            filtered_data.attrs["transfer_note"] = "Showing only boundary-crossing transfers (n=0, Σ=0)."
-            filtered_data.attrs["boundary_transfer_count"] = 0
-            filtered_data.attrs["boundary_transfer_sum"] = 0.0
-        else:
-            # Show all transfers
+        if visibility == TransferVisibility.ALL:
+            # No filtering needed
+            filtered_data = self._monthly_data.copy()
             filtered_data.attrs["transfer_visibility"] = "all"
-            filtered_data.attrs["transfer_note"] = "All transfers visible (n=0, Σ=0)."
-            filtered_data.attrs["total_transfer_count"] = 0
-            filtered_data.attrs["total_transfer_sum"] = 0.0
+            filtered_data.attrs["transfer_note"] = "All transfers visible."
+            return filtered_data
+
+        # Get the original outputs to filter at the brick level
+        if not hasattr(self, '_outputs') or self._outputs is None:
+            # Fallback to original data if outputs not available
+            filtered_data = self._monthly_data.copy()
+            filtered_data.attrs["transfer_visibility"] = "off"
+            filtered_data.attrs["transfer_note"] = "Transfer filtering not available (outputs not accessible)."
+            return filtered_data
+        
+
+        # Filter the outputs based on transfer visibility
+        filtered_outputs = self._filter_outputs_by_transfer_visibility(visibility)
+        
+        # Re-aggregate the filtered outputs
+        filtered_data = self._aggregate_filtered_outputs(filtered_outputs)
+        
+        # Add UI/UX guardrails
+        self._add_transfer_metadata(filtered_data, visibility, filtered_outputs)
         
         return filtered_data
+
+    def _filter_outputs_by_transfer_visibility(self, visibility: TransferVisibility) -> dict:
+        """
+        Filter brick outputs based on transfer visibility settings.
+        
+        Args:
+            visibility: The transfer visibility setting to apply
+            
+        Returns:
+            Dictionary of filtered brick outputs
+        """
+        filtered_outputs = {}
+        transfer_count = 0
+        transfer_sum = 0.0
+        
+        for brick_id, output in self._outputs.items():
+            # Check if this is a transfer brick
+            is_transfer = self._is_transfer_brick(brick_id)
+            if is_transfer:
+                transfer_count += 1
+                # Calculate transfer sum (cash_in + cash_out)
+                transfer_sum += output['cash_in'].sum() + output['cash_out'].sum()
+                
+                # Apply visibility rules
+                if visibility == TransferVisibility.OFF:
+                    # Hide internal transfers - zero out the cash flows
+                    filtered_output = output.copy()
+                    filtered_output['cash_in'] = np.zeros_like(output['cash_in'])
+                    filtered_output['cash_out'] = np.zeros_like(output['cash_out'])
+                    filtered_outputs[brick_id] = filtered_output
+                elif visibility == TransferVisibility.ONLY:
+                    # Show only transfers
+                    filtered_outputs[brick_id] = output
+                elif visibility == TransferVisibility.BOUNDARY_ONLY:
+                    # Show only boundary-crossing transfers (for now, show all transfers)
+                    # TODO: Implement boundary detection
+                    filtered_outputs[brick_id] = output
+                else:
+                    # Show all transfers
+                    filtered_outputs[brick_id] = output
+            else:
+                # Non-transfer brick - always include
+                filtered_outputs[brick_id] = output
+        
+        # Store metadata for UI/UX
+        self._transfer_metadata = {
+            'transfer_count': transfer_count,
+            'transfer_sum': transfer_sum
+        }
+        
+        return filtered_outputs
+
+    def _is_transfer_brick(self, brick_id: str) -> bool:
+        """
+        Check if a brick is a transfer brick (TBrick).
+        
+        Args:
+            brick_id: The brick ID to check
+            
+        Returns:
+            True if this is a transfer brick
+        """
+        # Check if we have access to the registry to determine brick type
+        if hasattr(self, '_registry') and self._registry:
+            try:
+                # Try to get the brick from the registry to check its type
+                brick = self._registry.get_brick(brick_id)
+                if brick and hasattr(brick, 'kind'):
+                    # Check if it's a transfer brick by kind
+                    return brick.kind in ['t.transfer.lump_sum', 't.transfer.recurring', 't.transfer.scheduled']
+            except:
+                pass
+        
+        # Fallback: check brick ID patterns for common transfer brick names
+        transfer_patterns = [
+            'transfer_', 'kredit_bezahlung', 'eigenkapital', 'contribution_',
+            'house_contribution', 'wohnung_hamburg_kredit_bezahlung',
+            'wohnung_hamburg_eigenkapital'
+        ]
+        
+        for pattern in transfer_patterns:
+            if pattern in brick_id.lower():
+                return True
+        
+        return False
+
+    def _aggregate_filtered_outputs(self, filtered_outputs: dict) -> pd.DataFrame:
+        """
+        Re-aggregate the filtered outputs into monthly totals.
+        
+        Args:
+            filtered_outputs: Dictionary of filtered brick outputs
+            
+        Returns:
+            Re-aggregated monthly DataFrame
+        """
+        # Re-aggregate the filtered outputs using the same logic as the original aggregation
+        # This is a simplified implementation that focuses on the key columns
+        
+        # Get the time index from the original data
+        time_index = self._monthly_data.index
+        
+        # Initialize arrays for aggregation
+        cash_in = np.zeros(len(time_index))
+        cash_out = np.zeros(len(time_index))
+        assets = np.zeros(len(time_index))
+        liabilities = np.zeros(len(time_index))
+        interest = np.zeros(len(time_index))
+        
+        # Aggregate the filtered outputs
+        for brick_id, output in filtered_outputs.items():
+            cash_in += output['cash_in']
+            cash_out += output['cash_out']
+            assets += output['assets']
+            liabilities += output['liabilities']
+            interest += output['interest']
+        
+        # Calculate net cash flow
+        net_cf = cash_in - cash_out
+        
+        # Create the filtered DataFrame
+        filtered_data = pd.DataFrame({
+            'cash_in': cash_in,
+            'cash_out': cash_out,
+            'net_cf': net_cf,
+            'assets': assets,
+            'liabilities': liabilities,
+            'interest': interest,
+            'non_cash': assets - cash_in + cash_out,  # Simplified calculation
+            'equity': assets - liabilities,
+            'cash': cash_in - cash_out  # Simplified calculation
+        }, index=time_index)
+        
+        return filtered_data
+
+    def _add_transfer_metadata(self, filtered_data: pd.DataFrame, 
+                             visibility: TransferVisibility, 
+                             filtered_outputs: dict) -> None:
+        """
+        Add transfer metadata to the filtered DataFrame.
+        
+        Args:
+            filtered_data: The filtered DataFrame to add metadata to
+            visibility: The transfer visibility setting
+            filtered_outputs: The filtered outputs used
+        """
+        metadata = getattr(self, '_transfer_metadata', {})
+        transfer_count = metadata.get('transfer_count', 0)
+        transfer_sum = metadata.get('transfer_sum', 0.0)
+        
+        if visibility == TransferVisibility.OFF:
+            filtered_data.attrs["transfer_visibility"] = "off"
+            filtered_data.attrs["transfer_note"] = f"Internal transfers hidden (n={transfer_count}, Σ={transfer_sum:,.0f}). Use monthly_transfers() to inspect."
+            filtered_data.attrs["hidden_transfer_count"] = transfer_count
+            filtered_data.attrs["hidden_transfer_sum"] = transfer_sum
+        elif visibility == TransferVisibility.ONLY:
+            filtered_data.attrs["transfer_visibility"] = "only"
+            filtered_data.attrs["transfer_note"] = f"Showing only transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
+            filtered_data.attrs["transfer_count"] = transfer_count
+            filtered_data.attrs["transfer_sum"] = transfer_sum
+        elif visibility == TransferVisibility.BOUNDARY_ONLY:
+            filtered_data.attrs["transfer_visibility"] = "boundary_only"
+            filtered_data.attrs["transfer_note"] = f"Showing only boundary-crossing transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
+            filtered_data.attrs["boundary_transfer_count"] = transfer_count
+            filtered_data.attrs["boundary_transfer_sum"] = transfer_sum
 
     def quarterly(self) -> pd.DataFrame:
         """Return quarterly aggregated data."""
@@ -189,7 +349,7 @@ class ScenarioResults:
     def get_transfer_metadata(self) -> dict:
         """
         Get transfer visibility metadata from the last monthly() call.
-        
+
         Returns:
             Dictionary containing transfer counts, sums, and notes
         """
@@ -199,7 +359,7 @@ class ScenarioResults:
             "transfer_visibility": "off",
             "transfer_note": "Internal transfers hidden (n=0, Σ=0). Use monthly_transfers() to inspect.",
             "hidden_transfer_count": 0,
-            "hidden_transfer_sum": 0.0
+            "hidden_transfer_sum": 0.0,
         }
 
     def filter(

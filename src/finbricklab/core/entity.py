@@ -64,9 +64,11 @@ class Entity:
     _macrobricks: dict[str, MacroBrick] = field(default_factory=dict, repr=False)
     _scenarios: dict[str, Scenario] = field(default_factory=dict, repr=False)
 
-    def compare(self, 
-                scenario_ids: list[str] | None = None,
-                transfer_visibility: "TransferVisibility | None" = None) -> pd.DataFrame:
+    def compare(
+        self,
+        scenario_ids: list[str] | None = None,
+        transfer_visibility: TransferVisibility | None = None,
+    ) -> pd.DataFrame:
         """
         Compare multiple scenarios and return a tidy DataFrame with canonical columns.
 
@@ -104,7 +106,9 @@ class Entity:
         for scenario in self.scenarios:
             if scenario.id in scenario_ids:
                 # Get canonical frame from scenario
-                df = scenario.to_canonical_frame(transfer_visibility=transfer_visibility)
+                df = scenario.to_canonical_frame(
+                    transfer_visibility=transfer_visibility
+                )
 
                 # Add scenario metadata
                 df = df.copy()
