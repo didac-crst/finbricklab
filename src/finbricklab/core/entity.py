@@ -468,6 +468,8 @@ class Entity:
         spec: dict[str, Any] | None = None,
         links: dict[str, Any] | None = None,
         start_date: date | None = None,
+        end_date: date | None = None,
+        duration_m: int | None = None,
         transparent: bool = True,
     ) -> TBrick:
         """
@@ -480,6 +482,8 @@ class Entity:
             spec: Strategy-specific parameters
             links: Links to other bricks (must include 'from' and 'to' accounts)
             start_date: Optional start date for the transfer
+            end_date: Optional end date for the transfer
+            duration_m: Optional duration in months (alternative to end_date)
             transparent: Whether this transfer should be hidden in analysis views by default
 
         Returns:
@@ -507,6 +511,8 @@ class Entity:
             spec=spec or {},
             links=links,
             start_date=start_date,
+            end_date=end_date,
+            duration_m=duration_m,
             transparent=transparent,
         )
         self._bricks[id] = brick

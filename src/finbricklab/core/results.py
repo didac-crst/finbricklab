@@ -233,7 +233,13 @@ class ScenarioResults:
                 brick = self._registry.get_brick(brick_id)
                 if brick and hasattr(brick, 'kind'):
                     # Check if it's a transfer brick by kind
-                    return brick.kind in ['t.transfer.lump_sum', 't.transfer.recurring', 't.transfer.scheduled']
+                    is_transfer_kind = brick.kind in ['t.transfer.lump_sum', 't.transfer.recurring', 't.transfer.scheduled']
+                    if is_transfer_kind:
+                        # For transfer bricks, also check the transparent flag
+                        # If transparent=True, it should be hidden by default
+                        # If transparent=False, it should be visible even in OFF mode
+                        return True  # It's a transfer brick, let the visibility logic handle transparency
+                    return False
             except:
                 pass
         
