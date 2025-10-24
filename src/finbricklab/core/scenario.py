@@ -866,8 +866,9 @@ class Scenario:
                 )
             )
 
-        # Create canonical record ID
-        record_id = f"transfer:{brick.id}:{month_idx}"
+        # Create canonical record ID using sequential iteration
+        iteration = self._calculate_relative_iteration(brick, "transfer", brick_iteration_counters)
+        record_id = f"transfer:{brick.id}:{iteration}"
 
         entry = JournalEntry(
             id=record_id,
@@ -878,7 +879,7 @@ class Scenario:
                 "brick_type": "transfer",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": self._calculate_relative_iteration(brick, "transfer", brick_iteration_counters),  # Sequential enumeration
+                "iteration": iteration,  # Sequential enumeration
                 "transaction_type": "transfer",
                 "amount_type": "credit" if cash_in > 0 else "debit",
             },
@@ -979,8 +980,9 @@ class Scenario:
                 )
             )
 
-        # Create canonical record ID
-        record_id = f"{transaction_type}:{brick.id}:{month_idx}"
+        # Create canonical record ID using sequential iteration
+        iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
+        record_id = f"{transaction_type}:{brick.id}:{iteration}"
 
         entry = JournalEntry(
             id=record_id,
@@ -991,7 +993,7 @@ class Scenario:
                 "brick_type": "flow",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters),  # Sequential enumeration
+                "iteration": iteration,  # Sequential enumeration
                 "transaction_type": transaction_type,
                 "amount_type": "credit" if cash_in > 0 else "debit",
                 "boundary_account": boundary_account,
@@ -1091,8 +1093,9 @@ class Scenario:
             )
             transaction_type = "disbursement"
 
-        # Create canonical record ID
-        record_id = f"{transaction_type}:{brick.id}:{month_idx}"
+        # Create canonical record ID using sequential iteration
+        iteration = self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters)
+        record_id = f"{transaction_type}:{brick.id}:{iteration}"
 
         entry = JournalEntry(
             id=record_id,
@@ -1103,7 +1106,7 @@ class Scenario:
                 "brick_type": "liability",
                 "kind": brick.kind,
                 "month": month_idx,
-                "iteration": self._calculate_relative_iteration(brick, transaction_type, brick_iteration_counters),  # Sequential enumeration
+                "iteration": iteration,  # Sequential enumeration
                 "transaction_type": transaction_type,
                 "amount_type": "debit" if cash_out > 0 else "credit",
                 "boundary_account": boundary_account,
