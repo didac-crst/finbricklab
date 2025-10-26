@@ -841,15 +841,36 @@ class Scenario:
 
                     # Calculate the transfer amount: balance before interest + contribution
                     # This ensures we transfer the principal + contribution, and let interest be earned on the remaining balance
+                    # Use Decimal to maintain precision through currency quantization
+                    from decimal import Decimal
+
                     idx_prev = max(0, end_month_idx - 1)
-                    prev_balance = float(temp_output["assets"][idx_prev])
+                    raw_prev = temp_output["assets"][idx_prev]
+                    prev_bal_dec = (
+                        Decimal(str(raw_prev))
+                        if not isinstance(raw_prev, Decimal)
+                        else raw_prev
+                    )
+
                     monthly_contribution = brick.spec.get(
                         "external_in", np.zeros(len(ctx.t_index))
                     )[end_month_idx]
-                    transfer_amount = prev_balance + monthly_contribution
+                    contrib_dec = (
+                        Decimal(str(monthly_contribution))
+                        if not isinstance(monthly_contribution, Decimal)
+                        else monthly_contribution
+                    )
+
+                    # Sum as Decimal to maintain precision
+                    transfer_amount_dec = prev_bal_dec + contrib_dec
+                    # Convert to float for numpy array assignment (arrays use float64)
+                    transfer_amount = float(transfer_amount_dec)
 
                     if transfer_amount > 0:
                         dest_brick_id = brick.links["route"]["to"]
+
+                        # Get currency from brick spec (default to scenario currency)
+                        currency = brick.spec.get("currency", self.currency)
 
                         # EOM_POST_INTEREST policy: Source transfers at end of month (external_out)
                         # Destination receives post-interest (post_interest_in)
@@ -921,7 +942,7 @@ class Scenario:
                             postings=[
                                 Posting(
                                     f"asset:{brick.id}",
-                                    create_amount(-transfer_amount, "EUR"),
+                                    create_amount(-transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,
@@ -933,7 +954,7 @@ class Scenario:
                                 ),
                                 Posting(
                                     f"asset:{dest_brick_id}",
-                                    create_amount(transfer_amount, "EUR"),
+                                    create_amount(transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,

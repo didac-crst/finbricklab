@@ -101,10 +101,13 @@ class BrickCompiler:
                 Posting(to_account, +dest_amount_obj, {"type": "fx_transfer_in"})
             )
 
-            # Add balancing P&L legs so each currency zero-sums
-            # Source currency: debit P&L (negative = credit, but Amount convention is positive=debit)
+            # Add balancing P&L legs so each currency zero-sums independently
+            # Amount sign convention: positive = debit, negative = credit
+            # Source currency: P&L gets -amount (credit) to balance the -amount (credit) on source account
+            # This makes source currency legs sum to zero: asset(-) + pnl(-) = 0
             postings.append(Posting(pnl_account, -amount_obj, {"type": "fx_source"}))
-            # Dest currency: credit P&L (positive = debit)
+            # Dest currency: P&L gets +dest_amount (debit) to balance the +dest_amount (debit) on dest account
+            # This makes dest currency legs sum to zero: asset(+) + pnl(+) = 0
             postings.append(Posting(pnl_account, +dest_amount_obj, {"type": "fx_dest"}))
 
         # Create journal entry

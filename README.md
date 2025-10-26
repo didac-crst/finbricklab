@@ -642,7 +642,7 @@ finbrick validate -i demo.json
 | Asset     | `K.A_PRIVATE_EQUITY`      | Private equity investment        | `initial_value`, `drift_pa`, `valuation_frequency` |
 | Liability | `K.L_LOAN_ANNUITY`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
 | Liability | `K.L_LOAN_BALLOON`  | Balloon payment loan             | `principal`, `rate_pa`, `term_months`, `amortization`, `balloon_at_maturity` |
-| Liability | `K.L_CREDIT_LINE`  | Revolving credit line            | `credit_limit`, `rate_pa`, `min_payment`, `billing_day` |
+| Liability | `K.L_CREDIT_LINE`  | Revolving credit line            | `credit_limit`, `rate_pa`, `min_payment`, `billing_day`; `initial_draw` (default: 0) |
 | Liability | `K.L_CREDIT_FIXED`  | Fixed-term credit                | `principal`, `rate_pa`, `term_months`, `start_date` |
 | Flow      | `K.F_INCOME_RECURRING`      | Fixed recurring income           | `amount_monthly`, `start_date?`, `end_date?`                                            |
 | Flow      | `K.F_INCOME_ONE_TIME`      | One-time income                  | `amount`, `date`, `tax_rate?` |

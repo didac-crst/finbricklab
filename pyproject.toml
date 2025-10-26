@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "finbricklab"
-version = "0.1.0"
+version = "0.1.1"
 description = "Strategy-Driven Brick Architecture for Financial Scenarios"
 authors = ["FinBrickLab Team"]
 license = "Apache-2.0"
@@ -28,6 +28,7 @@ kaleido = "^1.1.0"
 
 [tool.poetry.extras]
 viz = ["plotly", "kaleido"]
+dev = ["pytest", "ruff", "mypy", "mkdocs", "mkdocs-material", "hypothesis"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

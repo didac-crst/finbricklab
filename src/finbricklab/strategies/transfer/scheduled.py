@@ -145,23 +145,34 @@ class TransferScheduled(ITransferStrategy):
             # Create amount object
             amount_obj = create_amount(amount, currency)
 
-            # Find the month index for this transfer
-            month_idx = None
-            for i, t in enumerate(ctx.t_index):
-                if t.astype("datetime64[D]").astype(date) >= transfer_date:
-                    month_idx = i
-                    break
+            # Convert transfer date to month precision and find exact match in timeline
+            transfer_m = np.datetime64(transfer_date, "M")
+            # Find the exact month index using binary search
+            month_idx = np.searchsorted(ctx.t_index, transfer_m)
 
-            if month_idx is not None and month_idx < T:
+            # Check if transfer date is within the scenario window
+            # If month_idx >= T, the date is after the scenario end
+            # If month_idx < T but ctx.t_index[month_idx] != transfer_m, the date doesn't match exactly
+            if month_idx >= T or (
+                month_idx < T and ctx.t_index[month_idx] != transfer_m
+            ):
+                # Transfer date is out of window - skip this transfer
+                # No postings, events, fees, or FX for out-of-window transfers
+                continue
+
+            # Use the canonical timeline timestamp for all postings (transfer, fees, FX)
+            event_t = ctx.t_index[month_idx]
+
+            if month_idx < T:
                 # Record cash flows for the transfer
                 # Money goes out from source account (cash_out)
                 # Money comes in to destination account (cash_in)
                 cash_out[month_idx] += float(amount)
                 cash_in[month_idx] += float(amount)
 
-            # Create transfer event
+            # Create transfer event using canonical timeline timestamp
             event = Event(
-                np.datetime64(transfer_date, "M"),
+                event_t,
                 "transfer",
                 f"Scheduled transfer: {amount_obj}",
                 {
@@ -174,7 +185,7 @@ class TransferScheduled(ITransferStrategy):
             )
             events.append(event)
 
-            # Add fee event if specified
+            # Add fee event if specified (using same event_t)
             if "fees" in brick.spec:
                 fees = brick.spec["fees"]
                 fee_amount = Decimal(str(fees["amount"]))
@@ -182,7 +193,7 @@ class TransferScheduled(ITransferStrategy):
                 fee_amount_obj = create_amount(fee_amount, fee_currency)
 
                 fee_event = Event(
-                    np.datetime64(transfer_date, "M"),
+                    event_t,
                     "transfer_fee",
                     f"Transfer fee: {fee_amount_obj}",
                     {
@@ -193,11 +204,11 @@ class TransferScheduled(ITransferStrategy):
                 )
                 events.append(fee_event)
 
-            # Add FX event if specified
+            # Add FX event if specified (using same event_t)
             if "fx" in brick.spec:
                 fx = brick.spec["fx"]
                 fx_event = Event(
-                    np.datetime64(transfer_date, "M"),
+                    event_t,
                     "fx_transfer",
                     f"FX transfer: {fx['pair']} @ {fx['rate']}",
                     {

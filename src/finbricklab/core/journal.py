@@ -197,6 +197,7 @@ class Journal:
             et_normalized = at_timestamp
 
         # Calculate balance at specific timestamp
+        # TODO: Performance - cache sorted entries to avoid re-sorting on every call
         # Sort entries by timestamp to handle out-of-order posting
         sorted_entries = sorted(self.entries, key=lambda e: e.timestamp)
         balance = Decimal("0")

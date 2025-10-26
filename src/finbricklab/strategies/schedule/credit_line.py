@@ -32,6 +32,7 @@ class ScheduleCreditLine(IScheduleStrategy):
 
     Optional Parameters:
         - fees: Fee structure (currently only annual fee supported)
+        - initial_draw: Initial debt balance (default: 0). Set explicitly to avoid surprises.
     """
 
     def simulate(
@@ -72,11 +73,18 @@ class ScheduleCreditLine(IScheduleStrategy):
         interest_paid = np.zeros(months, dtype=float)
 
         # Extract credit limit and initial draw
-        # Default to 10% of credit limit if not specified (typical credit card usage)
         credit_limit = Decimal(str(brick.spec["credit_limit"]))
-        initial_draw = Decimal(
-            str(brick.spec.get("initial_draw", float(credit_limit) * 0.1))
-        )
+
+        # Default to 0 (no initial draw) - users must explicitly set initial_draw
+        # Log warning if initial_draw is None to alert users to the default behavior
+        initial_draw_value = brick.spec.get("initial_draw")
+        if initial_draw_value is None:
+            initial_draw = Decimal("0")
+            # Note: Could add logging here in the future if desired
+            # import logging
+            # logging.warning(f"credit_line {brick.id}: initial_draw not specified, defaulting to 0. Set explicitly to avoid surprises.")
+        else:
+            initial_draw = Decimal(str(initial_draw_value))
 
         # Validate initial draw
         if initial_draw < 0:
