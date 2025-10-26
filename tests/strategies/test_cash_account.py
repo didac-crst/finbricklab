@@ -39,7 +39,8 @@ class TestValuationCash:
 
         assert brick.spec["initial_balance"] == 1000.0
         assert brick.spec["interest_pa"] == 0.02
-        assert brick.spec["overdraft_limit"] == 0.0
+        assert brick.spec["overdraft_limit"] is None  # Default is None (unlimited)
+        assert brick.spec["overdraft_policy"] == "ignore"  # Default policy
         assert brick.spec["min_buffer"] == 0.0
 
     def test_cash_simulate_no_external_flows(self):
@@ -136,8 +137,9 @@ class TestValuationCash:
 
         strategy = ValuationCash()
 
-        # Should raise ValueError for negative overdraft limit
-        with pytest.raises(ValueError, match="overdraft_limit must be >= 0"):
+        # Should raise ConfigError for negative overdraft limit
+        from finbricklab.core.errors import ConfigError
+        with pytest.raises(ConfigError, match="overdraft_limit must be >= 0"):
             strategy.prepare(brick, ctx)
 
     def test_cash_min_buffer_validation(self):

@@ -2121,11 +2121,16 @@ def validate_run(
         for b in bricks:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
                 bal = outputs[b.id]["assets"]
-                overdraft = float((b.spec or {}).get("overdraft_limit", 0.0))
+                overdraft_limit = (b.spec or {}).get("overdraft_limit")
+                # Only check overdraft if a limit is explicitly set (None = unlimited)
+                if overdraft_limit is not None:
+                    overdraft = float(overdraft_limit)
+                else:
+                    overdraft = float("inf")  # No limit
                 minbuf = float((b.spec or {}).get("min_buffer", 0.0))
 
-                # Overdraft breach
-                if (bal < -overdraft - tol).any():
+                # Overdraft breach (skip if unlimited)
+                if overdraft != float("inf") and (bal < -overdraft - tol).any():
                     t_idx = int(np.where(bal < -overdraft - tol)[0][0])
                     amt = float(bal[t_idx])
                     msg = (
