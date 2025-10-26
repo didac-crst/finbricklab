@@ -18,7 +18,7 @@ def test_no_legacy_tokens_left():
     """Ensure no legacy kind names remain in registries."""
     bad = {
         "a.etf_unitized",
-        "a.property_discrete", 
+        "a.property_discrete",
         "f.income.fixed",
         "f.expense.fixed",
         "l.mortgage.annuity",

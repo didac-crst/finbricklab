@@ -46,7 +46,7 @@ class FlowIncomeOneTime(IFlowStrategy):
         # Use the brick's start_date for the event date
         if not brick.start_date:
             raise ValueError(f"One-time income brick '{brick.id}' must have a start_date")
-        
+
         event_date = brick.start_date
 
         # Calculate net amount after tax

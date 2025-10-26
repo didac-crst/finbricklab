@@ -16,10 +16,10 @@ making them available for use by bricks with matching kind discriminators.
 """
 
 from .flow import (
-    FlowExpenseRecurring,
-    FlowIncomeRecurring,
     FlowExpenseOneTime,
+    FlowExpenseRecurring,
     FlowIncomeOneTime,
+    FlowIncomeRecurring,
 )
 from .registry import register_defaults
 from .schedule import (
@@ -27,8 +27,8 @@ from .schedule import (
 )
 from .valuation import (
     ValuationCash,
-    ValuationSecurityUnitized,
     ValuationProperty,
+    ValuationSecurityUnitized,
 )
 
 # Register all default strategies when module is imported
