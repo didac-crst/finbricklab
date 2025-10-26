@@ -19,7 +19,7 @@ from .currency import Amount
 def _norm_ts(ts: Any) -> np.datetime64:
     """
     Normalize timestamp to month-precision numpy datetime64.
-    
+
     Accepts: str | date | datetime | np.datetime64
     Returns: np.datetime64 with 'M' precision for consistent sorting/comparison
     """
@@ -386,7 +386,9 @@ def generate_transaction_id(
         ts_norm = _norm_ts(timestamp)
         timestamp_str = str(ts_norm)
     except Exception:
-        timestamp_str = timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
+        timestamp_str = (
+            timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
+        )
 
     # Handle None links
     links_str = str(sorted(links.items())) if links else "None"
