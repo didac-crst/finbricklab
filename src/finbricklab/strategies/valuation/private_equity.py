@@ -4,7 +4,7 @@ Private equity valuation strategy with deterministic marking.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 import numpy as np
@@ -28,7 +28,6 @@ class ValuationPrivateEquity(IValuationStrategy):
 
     Optional Parameters:
         - nav_series: List of monthly NAV values (overrides drift calculation)
-        - lockup_end_date: Lockup end date for analytics (YYYY-MM-DD format)
     """
 
     def simulate(
@@ -49,19 +48,12 @@ class ValuationPrivateEquity(IValuationStrategy):
         initial_value = Decimal(str(brick.spec["initial_value"]))
         drift_pa = Decimal(str(brick.spec["drift_pa"]))
 
-        # Optional parameters
+        # Optional NAV series override
         nav_series = brick.spec.get("nav_series")
-        lockup_end_date = brick.spec.get("lockup_end_date")
 
         # Get months from context if not provided
         if months is None:
             months = len(ctx.t_index)
-
-        # Parse lockup end date if provided
-        if lockup_end_date:
-            lockup_date = datetime.strptime(lockup_end_date, "%Y-%m-%d").date()
-        else:
-            lockup_date = None
 
         # Initialize arrays
         asset_value = np.zeros(months, dtype=float)
@@ -102,9 +94,3 @@ class ValuationPrivateEquity(IValuationStrategy):
             ),  # Private equity doesn't generate regular interest
             events=[],
         )
-
-    def _is_locked_up(self, month_date: date, lockup_date: date | None) -> bool:
-        """Check if the investment is still in lockup period."""
-        if lockup_date is None:
-            return False
-        return month_date < lockup_date

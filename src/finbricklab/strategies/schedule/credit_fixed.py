@@ -68,19 +68,37 @@ class ScheduleCreditFixed(IScheduleStrategy):
         cash_out = np.zeros(months, dtype=float)
         interest_paid = np.zeros(months, dtype=float)
 
-        # Track running balance
-        current_balance = principal
+        # Track running balance (starts at 0, only becomes principal after disbursement)
+        current_balance = Decimal("0")
 
-        # Generate initial disbursement cash flow
-        if start_date <= ctx.t_index[0].astype("datetime64[D]").astype(date):
-            cash_in[0] = float(principal)
+        # Find the start month index
+        start_month_idx = None
+        for i, t in enumerate(ctx.t_index):
+            if t.astype("datetime64[D]").astype(date) >= start_date:
+                start_month_idx = i
+                break
 
         for month_idx in range(months):
+            # Record loan disbursement at start month (if we found one)
+            if start_month_idx is not None and month_idx == start_month_idx:
+                current_balance = principal
+                cash_in[month_idx] = float(principal)
+
+            # Skip payments if we haven't reached the disbursement month yet
+            if start_month_idx is not None and month_idx < start_month_idx:
+                debt_balance[month_idx] = 0.0
+                continue
+
             # Get the date for this month - convert from numpy datetime64 to Python date
             month_date = ctx.t_index[month_idx].astype("datetime64[D]").astype(date)
 
-            # Check if this is a payment month
-            is_payment_month = self._is_payment_month(month_date, start_date)
+            # Calculate month delta from start for billing logic
+            ms = (month_date.year * 12 + month_date.month) - (
+                start_date.year * 12 + start_date.month
+            )
+
+            # Billing starts from ms >= 1 (month after disbursement)
+            is_payment_month = ms >= 1
 
             if is_payment_month and current_balance > 0:
                 # Calculate interest on outstanding balance
@@ -120,9 +138,3 @@ class ScheduleCreditFixed(IScheduleStrategy):
             interest=-interest_paid,  # Negative for interest expense
             events=[],
         )
-
-    def _is_payment_month(self, month_date: date, start_date: date) -> bool:
-        """Check if this month is a payment month."""
-        # For now, assume payments happen every month
-        # TODO: Implement proper day-of-month logic
-        return True

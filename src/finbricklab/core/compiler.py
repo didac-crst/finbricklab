@@ -91,21 +91,24 @@ class BrickCompiler:
             dest_currency = pair.split("/")[1]  # Extract destination currency
             dest_amount_obj = create_amount(dest_amount, dest_currency)
 
-            # Replace destination posting with FX-adjusted amount
+            # Remove original positive dest posting and replace with FX-adjusted dest leg
             postings = [
-                p for p in postings if p.account_id != to_account or p.amount.value > 0
+                p
+                for p in postings
+                if not (p.account_id == to_account and p.amount.value > 0)
             ]
             postings.append(
                 Posting(to_account, +dest_amount_obj, {"type": "fx_transfer_in"})
             )
 
-            # Add FX P&L posting for any residual
-            residual = amount - dest_amount / rate  # Convert back to source currency
-            if residual != 0:
-                residual_amount_obj = create_amount(residual, currency)
-                postings.append(
-                    Posting(pnl_account, +residual_amount_obj, {"type": "fx_pnl"})
-                )
+            # Add balancing P&L legs so each currency zero-sums independently
+            # Amount sign convention: positive = debit, negative = credit
+            # Source currency: P&L gets -amount (credit) to balance the -amount (credit) on source account
+            # This makes source currency legs sum to zero: asset(-) + pnl(-) = 0
+            postings.append(Posting(pnl_account, -amount_obj, {"type": "fx_source"}))
+            # Dest currency: P&L gets +dest_amount (debit) to balance the +dest_amount (debit) on dest account
+            # This makes dest currency legs sum to zero: asset(+) + pnl(+) = 0
+            postings.append(Posting(pnl_account, +dest_amount_obj, {"type": "fx_dest"}))
 
         # Create journal entry
         timestamp = brick.start_date if brick.start_date else ctx.t_index[0]

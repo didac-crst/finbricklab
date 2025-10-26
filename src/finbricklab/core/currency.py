@@ -4,7 +4,7 @@ Currency and precision handling for FinBrickLab.
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 from enum import Enum
 
 
@@ -12,7 +12,7 @@ class RoundingPolicy(Enum):
     """Rounding policies for currency calculations."""
 
     BANKERS = ROUND_HALF_EVEN
-    HALF_UP = "HALF_UP"  # Not available in Decimal, would need custom implementation
+    HALF_UP = ROUND_HALF_UP
 
 
 class Currency:
@@ -37,11 +37,8 @@ class Currency:
 
     def quantize(self, amount: Decimal) -> Decimal:
         """Quantize amount to currency precision."""
-        from decimal import getcontext
-
-        context = getcontext()
-        context.rounding = self.rounding.value
-        return amount.quantize(Decimal("0." + "0" * self.decimals))
+        quantum = Decimal("1").scaleb(-self.decimals)  # e.g., 0.01 for 2 dp, 1 for 0 dp
+        return amount.quantize(quantum, rounding=self.rounding.value)
 
     def __str__(self) -> str:
         return self.code
@@ -61,7 +58,10 @@ class Amount:
 
     def __init__(self, value: Decimal | float | str | int, currency: Currency | str):
         if isinstance(currency, str):
-            currency = Currency(currency)
+            # Use get_currency to honor known precisions from registry
+            from .currency import get_currency  # local import to avoid cycles
+
+            currency = get_currency(currency)
 
         if isinstance(value, (int, float, str)):
             value = Decimal(str(value))

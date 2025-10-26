@@ -50,7 +50,7 @@ class TestCreditLineStrategy:
             "checking", "Checking Account", K.A_CASH, {"initial_balance": 10000.0}
         )
 
-        # Create credit line
+        # Create credit line with initial draw
         entity.new_LBrick(
             "credit_card",
             "Credit Card",
@@ -58,6 +58,7 @@ class TestCreditLineStrategy:
             {
                 "credit_limit": 5000.0,
                 "rate_pa": 0.24,  # 24% APR
+                "initial_draw": 500.0,  # Start with 500 debt
                 "min_payment": {
                     "type": "percent",
                     "percent": 0.03,  # 3% minimum
@@ -97,7 +98,7 @@ class TestCreditLineStrategy:
             "checking", "Checking Account", K.A_CASH, {"initial_balance": 10000.0}
         )
 
-        # Test percent policy
+        # Test percent policy with initial draw
         entity.new_LBrick(
             "credit_percent",
             "Credit Percent",
@@ -105,13 +106,14 @@ class TestCreditLineStrategy:
             {
                 "credit_limit": 10000.0,
                 "rate_pa": 0.20,
+                "initial_draw": 1000.0,  # Start with 1000 debt
                 "min_payment": {"type": "percent", "percent": 0.05},
                 "billing_day": 1,
                 "start_date": "2026-01-01",
             },
         )
 
-        # Test fixed_or_percent policy
+        # Test fixed_or_percent policy with initial draw
         entity.new_LBrick(
             "credit_fixed_percent",
             "Credit Fixed Percent",
@@ -119,6 +121,7 @@ class TestCreditLineStrategy:
             {
                 "credit_limit": 10000.0,
                 "rate_pa": 0.20,
+                "initial_draw": 800.0,  # Start with 800 debt
                 "min_payment": {
                     "type": "fixed_or_percent",
                     "percent": 0.03,

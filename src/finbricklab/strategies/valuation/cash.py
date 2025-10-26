@@ -127,8 +127,17 @@ class ValuationCash(IValuationStrategy):
         cash_out = brick.spec["external_out"]
 
         # Support for post-interest adjustments (for maturity transfers)
-        post_interest_in = brick.spec.get("post_interest_in", np.zeros(T))
-        post_interest_out = brick.spec.get("post_interest_out", np.zeros(T))
+        # Coerce and validate arrays
+        post_interest_in = np.asarray(
+            brick.spec.get("post_interest_in", np.zeros(T)), dtype=float
+        )
+        post_interest_out = np.asarray(
+            brick.spec.get("post_interest_out", np.zeros(T)), dtype=float
+        )
+
+        # Validate length matches timeline
+        if len(post_interest_in) != T or len(post_interest_out) != T:
+            raise ValueError(f"{brick.id}: 'post_interest_in/out' must have length {T}")
 
         # Initialize interest tracking array
         interest_earned = np.zeros(T)

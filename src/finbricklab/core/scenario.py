@@ -580,6 +580,7 @@ class Scenario:
                 from .journal import JournalEntry, Posting
 
                 # Create opening balance entry with canonical format
+                # Positive amount = debit for assets, credit for equity
                 opening_entry = JournalEntry(
                     id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
@@ -587,12 +588,12 @@ class Scenario:
                         Posting(
                             "equity:opening",
                             create_amount(-initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "debit"},
+                            {"type": "opening_balance", "posting_side": "credit"},
                         ),
                         Posting(
                             f"asset:{cash_id}",
                             create_amount(initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "credit"},
+                            {"type": "opening_balance", "posting_side": "debit"},
                         ),
                     ],
                     metadata={
@@ -815,10 +816,13 @@ class Scenario:
                 and brick.links
                 and "route" in brick.links
             ):
-                # Find the end month index
+                # Find the end month index - normalize end_date to np.datetime64[M]
+                import numpy as np
+
+                end_m = np.datetime64(brick.end_date, "M")
                 end_month_idx = None
                 for i, t in enumerate(ctx.t_index):
-                    if t >= brick.end_date:
+                    if t >= end_m:
                         end_month_idx = i
                         break
 
@@ -837,14 +841,36 @@ class Scenario:
 
                     # Calculate the transfer amount: balance before interest + contribution
                     # This ensures we transfer the principal + contribution, and let interest be earned on the remaining balance
-                    prev_balance = temp_output["assets"][end_month_idx - 1]
+                    # Use Decimal to maintain precision through currency quantization
+                    from decimal import Decimal
+
+                    idx_prev = max(0, end_month_idx - 1)
+                    raw_prev = temp_output["assets"][idx_prev]
+                    prev_bal_dec = (
+                        Decimal(str(raw_prev))
+                        if not isinstance(raw_prev, Decimal)
+                        else raw_prev
+                    )
+
                     monthly_contribution = brick.spec.get(
                         "external_in", np.zeros(len(ctx.t_index))
                     )[end_month_idx]
-                    transfer_amount = prev_balance + monthly_contribution
+                    contrib_dec = (
+                        Decimal(str(monthly_contribution))
+                        if not isinstance(monthly_contribution, Decimal)
+                        else monthly_contribution
+                    )
+
+                    # Sum as Decimal to maintain precision
+                    transfer_amount_dec = prev_bal_dec + contrib_dec
+                    # Convert to float for numpy array assignment (arrays use float64)
+                    transfer_amount = float(transfer_amount_dec)
 
                     if transfer_amount > 0:
                         dest_brick_id = brick.links["route"]["to"]
+
+                        # Get currency from brick spec (default to scenario currency)
+                        currency = brick.spec.get("currency", self.currency)
 
                         # EOM_POST_INTEREST policy: Source transfers at end of month (external_out)
                         # Destination receives post-interest (post_interest_in)
@@ -916,11 +942,11 @@ class Scenario:
                             postings=[
                                 Posting(
                                     f"asset:{brick.id}",
-                                    create_amount(-transfer_amount, "EUR"),
+                                    create_amount(-transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,
-                                        "posting_side": "debit",
+                                        "posting_side": "credit",
                                         "from": brick.id,
                                         "to": dest_brick_id,
                                         "policy": "EOM_POST_INTEREST",
@@ -928,11 +954,11 @@ class Scenario:
                                 ),
                                 Posting(
                                     f"asset:{dest_brick_id}",
-                                    create_amount(transfer_amount, "EUR"),
+                                    create_amount(transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,
-                                        "posting_side": "credit",
+                                        "posting_side": "debit",
                                         "from": brick.id,
                                         "to": dest_brick_id,
                                         "policy": "EOM_POST_INTEREST",
@@ -1133,8 +1159,22 @@ class Scenario:
 
         # Determine the cash account to route to
         cash_account = brick.links.get("route", {}).get("to") if brick.links else None
+
+        # Fallback to settlement_default_cash_id or first cash account
         if not cash_account:
-            return  # No routing specified
+            if self.settlement_default_cash_id:
+                cash_account = self.settlement_default_cash_id
+            else:
+                # Fallback to first cash brick in scenario
+                cash_ids = [
+                    b.id
+                    for b in self.bricks
+                    if isinstance(b, ABrick) and b.kind == K.A_CASH
+                ]
+                cash_account = cash_ids[0] if cash_ids else None
+
+        if not cash_account:
+            return  # Still no cash account available
 
         # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
@@ -1248,8 +1288,20 @@ class Scenario:
         # Create postings for the liability
         postings = []
 
-        # Determine the cash account to route to (use settlement default)
-        cash_account = self.settlement_default_cash_id or "cash"
+        # Determine the cash account to route to
+        if self.settlement_default_cash_id:
+            cash_account = self.settlement_default_cash_id
+        else:
+            # Fallback to first cash account in scenario
+            cash_ids = [
+                b.id
+                for b in self.bricks
+                if isinstance(b, ABrick) and b.kind == K.A_CASH
+            ]
+            if not cash_ids:
+                # No cash account available - skip journal entry
+                return
+            cash_account = cash_ids[0]
 
         # Create boundary account for the liability using brick_id
         boundary_account = f"liability:{brick.id}"

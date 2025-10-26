@@ -238,12 +238,8 @@ class ScenarioResults:
                 # Try to get the brick from the registry to check its type
                 brick = self._registry.get_brick(brick_id)
                 if brick and hasattr(brick, "kind"):
-                    # Check if it's a transfer brick by kind
-                    is_transfer_kind = brick.kind in [
-                        "t.transfer.lump_sum",
-                        "t.transfer.recurring",
-                        "t.transfer.scheduled",
-                    ]
+                    # Check if it's a transfer brick by kind using prefix check
+                    is_transfer_kind = brick.kind.startswith("t.transfer.")
                     if is_transfer_kind:
                         # For transfer bricks, also check the transparent flag
                         # If transparent=True, it should be hidden by default
@@ -313,12 +309,16 @@ class ScenarioResults:
                 "assets": assets,
                 "liabilities": liabilities,
                 "interest": interest,
-                "non_cash": assets - cash_in + cash_out,  # Simplified calculation
                 "equity": assets - liabilities,
-                "cash": cash_in - cash_out,  # Simplified calculation
             },
             index=time_index,
         )
+
+        # Preserve original cash to keep identities consistent
+        if "cash" in self._monthly_data.columns:
+            filtered_data["cash"] = self._monthly_data["cash"]
+        if "assets" in filtered_data.columns and "cash" in filtered_data.columns:
+            filtered_data["non_cash"] = filtered_data["assets"] - filtered_data["cash"]
 
         return filtered_data
 

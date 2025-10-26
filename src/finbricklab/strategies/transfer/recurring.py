@@ -4,7 +4,6 @@ Recurring transfer strategy.
 
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal
 
 import numpy as np
@@ -148,36 +147,37 @@ class TransferRecurring(ITransferStrategy):
 
         # Generate transfer events and cash flows
         events = []
-        # Convert numpy.datetime64 to Python date object
+
+        # Normalize start_date to month precision and find index
         if brick.start_date:
-            current_date = brick.start_date
+            start_m = np.datetime64(brick.start_date, "M")
+            start_idx = np.searchsorted(ctx.t_index, start_m)
         else:
-            current_date = ctx.t_index[0].astype("datetime64[D]").astype(date)
+            start_idx = 0
+
+        # Normalize end_date to month precision
         end_date = brick.spec.get("end_date")
+        scenario_end_m = ctx.t_index[-1]
+        end_m = np.datetime64(end_date, "M") if end_date else scenario_end_m
+        end_m = min(end_m, scenario_end_m)  # Don't go past scenario end
 
-        # Convert end date to Python date for comparison
-        end_date_py = ctx.t_index[-1].astype("datetime64[D]").astype(date)
-        while current_date <= end_date_py:
-            if end_date and current_date > end_date:
-                break
+        # Build month sequence aligned to timeline
+        current_month_idx = start_idx
+        while current_month_idx < T and ctx.t_index[current_month_idx] <= end_m:
+            # Use the canonical timeline month for this transfer
+            month_idx = current_month_idx
+            event_t = ctx.t_index[month_idx]
 
-            # Find the month index for this transfer
-            month_idx = None
-            for i, t in enumerate(ctx.t_index):
-                if t.astype("datetime64[D]").astype(date) >= current_date:
-                    month_idx = i
-                    break
-
-            if month_idx is not None and month_idx < T:
+            if month_idx < T:
                 # Record cash flows for the transfer
                 # Money goes out from source account (cash_out)
                 # Money comes in to destination account (cash_in)
                 cash_out[month_idx] += float(amount)
                 cash_in[month_idx] += float(amount)
 
-            # Create transfer event
+            # Create transfer event using canonical timeline timestamp
             event = Event(
-                np.datetime64(current_date, "M"),
+                event_t,
                 "transfer",
                 f"Recurring transfer: {amount_obj}",
                 {
@@ -191,7 +191,7 @@ class TransferRecurring(ITransferStrategy):
             )
             events.append(event)
 
-            # Add fee event if specified
+            # Add fee event if specified (using same event_t)
             if "fees" in brick.spec:
                 fees = brick.spec["fees"]
                 fee_amount = Decimal(str(fees["amount"]))
@@ -199,7 +199,7 @@ class TransferRecurring(ITransferStrategy):
                 fee_amount_obj = create_amount(fee_amount, fee_currency)
 
                 fee_event = Event(
-                    np.datetime64(current_date, "M"),
+                    event_t,
                     "transfer_fee",
                     f"Transfer fee: {fee_amount_obj}",
                     {
@@ -211,45 +211,8 @@ class TransferRecurring(ITransferStrategy):
                 )
                 events.append(fee_event)
 
-            # Move to next transfer date
-            if frequency == "MONTHLY":
-                # Add one month
-                if current_date.month == 12:
-                    current_date = current_date.replace(
-                        year=current_date.year + 1, month=1
-                    )
-                else:
-                    current_date = current_date.replace(month=current_date.month + 1)
-            elif frequency == "BIMONTHLY":
-                # Add two months
-                if current_date.month >= 11:
-                    current_date = current_date.replace(
-                        year=current_date.year + 1, month=current_date.month + 2 - 12
-                    )
-                else:
-                    current_date = current_date.replace(month=current_date.month + 2)
-            elif frequency == "QUARTERLY":
-                # Add three months
-                if current_date.month <= 9:
-                    current_date = current_date.replace(month=current_date.month + 3)
-                else:
-                    current_date = current_date.replace(
-                        year=current_date.year + 1, month=current_date.month + 3 - 12
-                    )
-            elif frequency == "SEMIANNUALLY":
-                # Add six months
-                if current_date.month <= 6:
-                    current_date = current_date.replace(month=current_date.month + 6)
-                else:
-                    current_date = current_date.replace(
-                        year=current_date.year + 1, month=current_date.month + 6 - 12
-                    )
-            elif frequency == "YEARLY":
-                # Add one year
-                current_date = current_date.replace(year=current_date.year + 1)
-            elif frequency == "BIYEARLY":
-                # Add two years
-                current_date = current_date.replace(year=current_date.year + 2)
+            # Move to next transfer month by adding interval
+            current_month_idx += interval_months
 
         return BrickOutput(
             cash_in=cash_in,
