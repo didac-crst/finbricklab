@@ -55,8 +55,17 @@ class TestStrategyRegistryAlignment:
         for registry in (ValuationRegistry, ScheduleRegistry, FlowRegistry):
             all_registered.update(registry.keys())
 
-        for kind in expected_kinds:
-            assert kind in all_registered, f"Expected kind '{kind}' not registered"
+        # Compute diffs for better error messages
+        missing = expected_kinds - all_registered
+        extra = all_registered - expected_kinds
+        
+        assert not missing and not extra, (
+            f"Kind registry mismatch:\n"
+            f"Missing: {sorted(missing)}\n"
+            f"Extra: {sorted(extra)}\n"
+            f"Expected: {sorted(expected_kinds)}\n"
+            f"Actual: {sorted(all_registered)}"
+        )
 
     def test_kind_prefix_semantics(self):
         """Test that kind prefixes match their registry assignments."""

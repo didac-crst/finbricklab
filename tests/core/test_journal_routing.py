@@ -38,7 +38,7 @@ class TestJournalRouting:
             "savings", "Savings", K.A_CASH, {"initial_balance": 0.0, "interest_pa": 0.0}
         )
 
-        # Create income that splits 70% to checking, 30% to savings
+        # Create income that routes to all cash accounts by default
         income = entity.new_FBrick(
             "income", "Salary", K.F_INCOME_RECURRING, {"amount_monthly": 3000.0}
         )
