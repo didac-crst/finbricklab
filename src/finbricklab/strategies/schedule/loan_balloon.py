@@ -83,7 +83,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         events: list[Event] = []
 
         # Track running balance
-        current_balance = principal
+        current_balance = Decimal("0")
 
         # Find start month index
         start_month_idx = None
@@ -105,6 +105,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
         # Record loan disbursement event and cash flow
         if start_month_idx < months:
+            # Set principal from start month onward
+            current_balance = principal
+
             events.append(
                 Event(
                     ctx.t_index[start_month_idx],

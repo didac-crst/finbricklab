@@ -71,26 +71,40 @@ class ScheduleCreditLine(IScheduleStrategy):
         cash_out = np.zeros(months, dtype=float)
         interest_paid = np.zeros(months, dtype=float)
 
+        # Extract credit limit and initial draw
+        # Default to 10% of credit limit if not specified (typical credit card usage)
+        credit_limit = Decimal(str(brick.spec["credit_limit"]))
+        initial_draw = Decimal(
+            str(brick.spec.get("initial_draw", float(credit_limit) * 0.1))
+        )
+
+        # Validate initial draw
+        if initial_draw < 0:
+            raise ValueError("initial_draw must be >= 0")
+        if initial_draw > credit_limit:
+            raise ValueError("initial_draw exceeds credit_limit")
+
         # Calculate monthly interest rate
         i_m = rate_pa / Decimal("12")
 
-        # Track running balance - start with some initial balance for testing
-        current_balance = Decimal("2000.0")  # Start with $2000 balance
-
-        # Generate initial disbursement cash flow
-        if start_date <= ctx.t_index[0].astype("datetime64[D]").astype(date):
-            cash_in[0] = float(current_balance)
+        # Track running balance
+        current_balance = initial_draw
 
         for month_idx in range(months):
             # Get the date for this month - convert from numpy datetime64 to Python date
             month_date = ctx.t_index[month_idx].astype("datetime64[D]").astype(date)
 
-            # Check if this is a billing cycle month
-            is_billing_cycle = self._is_billing_cycle(
-                month_date, start_date, billing_day
+            # Month delta from start_date (month granularity)
+            ms = (month_date.year * 12 + month_date.month) - (
+                start_date.year * 12 + start_date.month
             )
 
-            if is_billing_cycle:
+            # Record initial draw at start month (ms == 0)
+            if ms == 0 and initial_draw > 0:
+                cash_in[month_idx] = float(initial_draw)
+
+            # Bill monthly starting month after start (ms >= 1)
+            if ms >= 1:
                 # 1. Accrue interest on previous month's closing balance
                 if current_balance > 0:  # Only accrue interest on positive balance
                     interest = current_balance * i_m
@@ -101,15 +115,17 @@ class ScheduleCreditLine(IScheduleStrategy):
                     # Track interest paid
                     interest_paid[month_idx] = float(interest)
 
-                # 2. Add annual fee (prorated monthly)
+                # 2. Add annual fee (prorated monthly) - quantized
                 if annual_fee > 0:
-                    monthly_fee = annual_fee / Decimal("12")
+                    monthly_fee = (annual_fee / Decimal("12")).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
                     current_balance += monthly_fee
 
-                # 3. Calculate minimum payment
+                # 3. Calculate minimum payment (with i_m)
                 min_payment = self._calculate_minimum_payment(
-                    current_balance, min_payment_config
-                )
+                    current_balance, min_payment_config, i_m
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
                 # 4. Apply minimum payment
                 if min_payment > 0:
@@ -138,7 +154,7 @@ class ScheduleCreditLine(IScheduleStrategy):
         return True  # Simplified: bill every month
 
     def _calculate_minimum_payment(
-        self, balance: Decimal, min_payment_config: dict[str, Any]
+        self, balance: Decimal, min_payment_config: dict[str, Any], i_m: Decimal
     ) -> Decimal:
         """Calculate minimum payment based on policy."""
         if balance <= 0:
@@ -155,9 +171,8 @@ class ScheduleCreditLine(IScheduleStrategy):
             return min_payment
 
         elif payment_type == "interest_only":
-            # For interest-only, we need to calculate interest on current balance
-            # This is a simplified version - in practice, you'd track interest separately
-            return balance * Decimal("0.01")  # Simplified: 1% of balance
+            # Pay exactly the accrued monthly interest
+            return balance * i_m
 
         elif payment_type == "fixed_or_percent":
             percent = Decimal(str(min_payment_config["percent"]))
