@@ -45,7 +45,9 @@ class FlowIncomeOneTime(IFlowStrategy):
 
         # Use the brick's start_date for the event date
         if not brick.start_date:
-            raise ValueError(f"One-time income brick '{brick.id}' must have a start_date")
+            raise ValueError(
+                f"One-time income brick '{brick.id}' must have a start_date"
+            )
 
         event_date = brick.start_date
 
@@ -77,6 +79,8 @@ class FlowIncomeOneTime(IFlowStrategy):
             cash_out=cash_out,
             assets=np.zeros(months, dtype=float),
             liabilities=np.zeros(months, dtype=float),
-            interest=np.zeros(months, dtype=float),  # Flow bricks don't generate interest
+            interest=np.zeros(
+                months, dtype=float
+            ),  # Flow bricks don't generate interest
             events=[],
         )

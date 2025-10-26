@@ -48,14 +48,14 @@ def main():
         "salary",
         "Salary",
         K.F_INCOME_RECURRING,
-        {"amount_monthly": 8000.0}
+        {"amount_monthly": 8000.0},
         # No routing needed - Journal system handles automatically
     )
     e.new_FBrick(
         "expenses",
         "Monthly Expenses",
         K.F_EXPENSE_RECURRING,
-        {"amount_monthly": 3000.0}
+        {"amount_monthly": 3000.0},
         # No routing needed - Journal system handles automatically
     )
 

@@ -12,8 +12,12 @@ def mk_entity():
     """Create a test entity with basic bricks and MacroBricks."""
     e = Entity(id="e", name="E")
     e.new_ABrick("cash", "Cash", K.A_CASH, {"initial_balance": 1000.0})
-    e.new_ABrick("etf", "ETF", K.A_SECURITY_UNITIZED,
-                 {"initial_units": 10.0, "initial_price": 100.0, "drift_pa": 0.05})
+    e.new_ABrick(
+        "etf",
+        "ETF",
+        K.A_SECURITY_UNITIZED,
+        {"initial_units": 10.0, "initial_price": 100.0, "drift_pa": 0.05},
+    )
     e.new_MacroBrick("liquid", "Liquid", ["cash", "etf"])
     return e
 
@@ -40,7 +44,7 @@ def test_cycle_detection():
     e = mk_entity()
     # Create MacroBricks first, then add the cycle
     e.new_MacroBrick("A", "A", ["cash"])  # Start with valid member
-    e.new_MacroBrick("B", "B", ["etf"])   # Start with valid member
+    e.new_MacroBrick("B", "B", ["etf"])  # Start with valid member
 
     # Now create the cycle by updating the members
     e._macrobricks["A"].members = ["B"]
@@ -48,6 +52,7 @@ def test_cycle_detection():
 
     # The cycle detection happens during registry creation
     from finbricklab.core.errors import ConfigError
+
     with pytest.raises(ConfigError) as exc:
         e.create_scenario(id="s", name="S", brick_ids=["A"])
     assert "Cycle detected in MacroBrick membership" in str(exc.value)
@@ -67,8 +72,12 @@ def test_equivalence_macro_vs_explicit():
 def test_mixed_brick_and_macro():
     """Test that mixed brick and MacroBrick references work correctly."""
     e = mk_entity()
-    e.new_ABrick("bond", "Bond", K.A_SECURITY_UNITIZED,
-                 {"initial_units": 5.0, "initial_price": 200.0, "drift_pa": 0.03})
+    e.new_ABrick(
+        "bond",
+        "Bond",
+        K.A_SECURITY_UNITIZED,
+        {"initial_units": 5.0, "initial_price": 200.0, "drift_pa": 0.03},
+    )
 
     s = e.create_scenario(id="mixed", name="Mixed", brick_ids=["bond", "liquid"])
     ids = [b.id for b in s.bricks]
@@ -125,10 +134,18 @@ def test_macrobrick_preservation():
 def test_complex_nested_structure():
     """Test a complex nested MacroBrick structure."""
     e = mk_entity()
-    e.new_ABrick("bond", "Bond", K.A_SECURITY_UNITIZED,
-                 {"initial_units": 5.0, "initial_price": 200.0, "drift_pa": 0.03})
-    e.new_ABrick("property", "Property", K.A_PROPERTY,
-                 {"initial_value": 500000.0, "appreciation_pa": 0.03})
+    e.new_ABrick(
+        "bond",
+        "Bond",
+        K.A_SECURITY_UNITIZED,
+        {"initial_units": 5.0, "initial_price": 200.0, "drift_pa": 0.03},
+    )
+    e.new_ABrick(
+        "property",
+        "Property",
+        K.A_PROPERTY,
+        {"initial_value": 500000.0, "appreciation_pa": 0.03},
+    )
 
     e.new_MacroBrick("stocks", "Stocks", ["etf"])
     e.new_MacroBrick("bonds", "Bonds", ["bond"])

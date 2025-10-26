@@ -146,13 +146,14 @@ class ScenarioResults:
             return filtered_data
 
         # Get the original outputs to filter at the brick level
-        if not hasattr(self, '_outputs') or self._outputs is None:
+        if not hasattr(self, "_outputs") or self._outputs is None:
             # Fallback to original data if outputs not available
             filtered_data = self._monthly_data.copy()
             filtered_data.attrs["transfer_visibility"] = "off"
-            filtered_data.attrs["transfer_note"] = "Transfer filtering not available (outputs not accessible)."
+            filtered_data.attrs[
+                "transfer_note"
+            ] = "Transfer filtering not available (outputs not accessible)."
             return filtered_data
-
 
         # Filter the outputs based on transfer visibility
         filtered_outputs = self._filter_outputs_by_transfer_visibility(visibility)
@@ -165,7 +166,9 @@ class ScenarioResults:
 
         return filtered_data
 
-    def _filter_outputs_by_transfer_visibility(self, visibility: TransferVisibility) -> dict:
+    def _filter_outputs_by_transfer_visibility(
+        self, visibility: TransferVisibility
+    ) -> dict:
         """
         Filter brick outputs based on transfer visibility settings.
 
@@ -185,14 +188,14 @@ class ScenarioResults:
             if is_transfer:
                 transfer_count += 1
                 # Calculate transfer sum (cash_in + cash_out)
-                transfer_sum += output['cash_in'].sum() + output['cash_out'].sum()
+                transfer_sum += output["cash_in"].sum() + output["cash_out"].sum()
 
                 # Apply visibility rules
                 if visibility == TransferVisibility.OFF:
                     # Hide internal transfers - zero out the cash flows
                     filtered_output = output.copy()
-                    filtered_output['cash_in'] = np.zeros_like(output['cash_in'])
-                    filtered_output['cash_out'] = np.zeros_like(output['cash_out'])
+                    filtered_output["cash_in"] = np.zeros_like(output["cash_in"])
+                    filtered_output["cash_out"] = np.zeros_like(output["cash_out"])
                     filtered_outputs[brick_id] = filtered_output
                 elif visibility == TransferVisibility.ONLY:
                     # Show only transfers
@@ -210,8 +213,8 @@ class ScenarioResults:
 
         # Store metadata for UI/UX
         self._transfer_metadata = {
-            'transfer_count': transfer_count,
-            'transfer_sum': transfer_sum
+            "transfer_count": transfer_count,
+            "transfer_sum": transfer_sum,
         }
 
         return filtered_outputs
@@ -227,13 +230,17 @@ class ScenarioResults:
             True if this is a transfer brick
         """
         # Check if we have access to the registry to determine brick type
-        if hasattr(self, '_registry') and self._registry:
+        if hasattr(self, "_registry") and self._registry:
             try:
                 # Try to get the brick from the registry to check its type
                 brick = self._registry.get_brick(brick_id)
-                if brick and hasattr(brick, 'kind'):
+                if brick and hasattr(brick, "kind"):
                     # Check if it's a transfer brick by kind
-                    is_transfer_kind = brick.kind in ['t.transfer.lump_sum', 't.transfer.recurring', 't.transfer.scheduled']
+                    is_transfer_kind = brick.kind in [
+                        "t.transfer.lump_sum",
+                        "t.transfer.recurring",
+                        "t.transfer.scheduled",
+                    ]
                     if is_transfer_kind:
                         # For transfer bricks, also check the transparent flag
                         # If transparent=True, it should be hidden by default
@@ -245,9 +252,13 @@ class ScenarioResults:
 
         # Fallback: check brick ID patterns for common transfer brick names
         transfer_patterns = [
-            'transfer_', 'kredit_bezahlung', 'eigenkapital', 'contribution_',
-            'house_contribution', 'wohnung_hamburg_kredit_bezahlung',
-            'wohnung_hamburg_eigenkapital'
+            "transfer_",
+            "kredit_bezahlung",
+            "eigenkapital",
+            "contribution_",
+            "house_contribution",
+            "wohnung_hamburg_kredit_bezahlung",
+            "wohnung_hamburg_eigenkapital",
         ]
 
         for pattern in transfer_patterns:
@@ -281,33 +292,39 @@ class ScenarioResults:
 
         # Aggregate the filtered outputs
         for output in filtered_outputs.values():
-            cash_in += output['cash_in']
-            cash_out += output['cash_out']
-            assets += output['assets']
-            liabilities += output['liabilities']
-            interest += output['interest']
+            cash_in += output["cash_in"]
+            cash_out += output["cash_out"]
+            assets += output["assets"]
+            liabilities += output["liabilities"]
+            interest += output["interest"]
 
         # Calculate net cash flow
         net_cf = cash_in - cash_out
 
         # Create the filtered DataFrame
-        filtered_data = pd.DataFrame({
-            'cash_in': cash_in,
-            'cash_out': cash_out,
-            'net_cf': net_cf,
-            'assets': assets,
-            'liabilities': liabilities,
-            'interest': interest,
-            'non_cash': assets - cash_in + cash_out,  # Simplified calculation
-            'equity': assets - liabilities,
-            'cash': cash_in - cash_out  # Simplified calculation
-        }, index=time_index)
+        filtered_data = pd.DataFrame(
+            {
+                "cash_in": cash_in,
+                "cash_out": cash_out,
+                "net_cf": net_cf,
+                "assets": assets,
+                "liabilities": liabilities,
+                "interest": interest,
+                "non_cash": assets - cash_in + cash_out,  # Simplified calculation
+                "equity": assets - liabilities,
+                "cash": cash_in - cash_out,  # Simplified calculation
+            },
+            index=time_index,
+        )
 
         return filtered_data
 
-    def _add_transfer_metadata(self, filtered_data: pd.DataFrame,
-                             visibility: TransferVisibility,
-                             filtered_outputs: dict) -> None:
+    def _add_transfer_metadata(
+        self,
+        filtered_data: pd.DataFrame,
+        visibility: TransferVisibility,
+        filtered_outputs: dict,
+    ) -> None:
         """
         Add transfer metadata to the filtered DataFrame.
 
@@ -316,23 +333,29 @@ class ScenarioResults:
             visibility: The transfer visibility setting
             filtered_outputs: The filtered outputs used
         """
-        metadata = getattr(self, '_transfer_metadata', {})
-        transfer_count = metadata.get('transfer_count', 0)
-        transfer_sum = metadata.get('transfer_sum', 0.0)
+        metadata = getattr(self, "_transfer_metadata", {})
+        transfer_count = metadata.get("transfer_count", 0)
+        transfer_sum = metadata.get("transfer_sum", 0.0)
 
         if visibility == TransferVisibility.OFF:
             filtered_data.attrs["transfer_visibility"] = "off"
-            filtered_data.attrs["transfer_note"] = f"Internal transfers hidden (n={transfer_count}, Σ={transfer_sum:,.0f}). Use monthly_transfers() to inspect."
+            filtered_data.attrs[
+                "transfer_note"
+            ] = f"Internal transfers hidden (n={transfer_count}, Σ={transfer_sum:,.0f}). Use monthly_transfers() to inspect."
             filtered_data.attrs["hidden_transfer_count"] = transfer_count
             filtered_data.attrs["hidden_transfer_sum"] = transfer_sum
         elif visibility == TransferVisibility.ONLY:
             filtered_data.attrs["transfer_visibility"] = "only"
-            filtered_data.attrs["transfer_note"] = f"Showing only transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
+            filtered_data.attrs[
+                "transfer_note"
+            ] = f"Showing only transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
             filtered_data.attrs["transfer_count"] = transfer_count
             filtered_data.attrs["transfer_sum"] = transfer_sum
         elif visibility == TransferVisibility.BOUNDARY_ONLY:
             filtered_data.attrs["transfer_visibility"] = "boundary_only"
-            filtered_data.attrs["transfer_note"] = f"Showing only boundary-crossing transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
+            filtered_data.attrs[
+                "transfer_note"
+            ] = f"Showing only boundary-crossing transfers (n={transfer_count}, Σ={transfer_sum:,.0f})."
             filtered_data.attrs["boundary_transfer_count"] = transfer_count
             filtered_data.attrs["boundary_transfer_sum"] = transfer_sum
 

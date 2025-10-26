@@ -43,7 +43,10 @@ class TestEntityBuilder:
         scenario = entity.create_scenario(
             id="base_case",
             name="Base Case",
-            brick_ids=["salary", "portfolio"],  # mix of direct bricks and macrobrick expansion
+            brick_ids=[
+                "salary",
+                "portfolio",
+            ],  # mix of direct bricks and macrobrick expansion
             settlement_default_cash_id="checking",
         )
 
@@ -291,9 +294,7 @@ class TestEntityBuilder:
 
         # Attempt to create scenario with non-existent MacroBrick should fail
         with pytest.raises(ScenarioValidationError) as exc_info:
-            entity.create_scenario(
-                id="test", name="Test", brick_ids=["nonexistent"]
-            )
+            entity.create_scenario(id="test", name="Test", brick_ids=["nonexistent"])
 
         error = exc_info.value
         assert error.scenario_id == "test"
@@ -327,7 +328,11 @@ class TestEntityBuilder:
         scenario = entity.create_scenario(
             id="mixed",
             name="Mixed Scenario",
-            brick_ids=["cash", "salary", "investments"],  # Individual bricks and MacroBrick
+            brick_ids=[
+                "cash",
+                "salary",
+                "investments",
+            ],  # Individual bricks and MacroBrick
         )
 
         # Verify all expected bricks are included

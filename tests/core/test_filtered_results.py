@@ -386,7 +386,11 @@ def test_compute_filtered_totals_empty_selection():
 
     # Test with empty selection
     result = _compute_filtered_totals(
-        outputs, set(), t_index, True, set()  # Empty selection
+        outputs,
+        set(),
+        t_index,
+        True,
+        set(),  # Empty selection
     )
 
     assert isinstance(result, pd.DataFrame)

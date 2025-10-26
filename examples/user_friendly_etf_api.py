@@ -32,7 +32,7 @@ def main():
         name="Salary",
         kind=K.F_INCOME_RECURRING,
         start_date=date(2026, 2, 1),
-        spec={"amount_monthly": 5000.0}
+        spec={"amount_monthly": 5000.0},
         # No routing needed - Journal system handles automatically
     )
 
