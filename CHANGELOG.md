@@ -11,12 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FX transfers**: Per-currency zero-sum with correct P&L signs; FX pair base validation
 - **Journal timestamps**: Normalized to month granularity for deterministic ordering across mixed types
 - **Debit/credit**: Corrected posting_side labels for transfers, flows, and liabilities; removed hardcoded currency
-- **Config validation**: Scheduled/recurring transfer validations now use ConfigError instead of assertions
+- **Config validation**: Scheduled/recurring/lumpsum transfer validations now use ConfigError instead of assertions
 - **Private equity**: Monthly compounding with integer exponent (no fractional Decimal**)
+- **Flow strategies**: Added prepare() to expense_onetime and income_onetime with proper numeric coercion
+- **Transfer strategies**: Fixed month precision alignment, out-of-window guards, and isinstance compatibility
+- **Security valuation**: Added price0 division-by-zero guard for initial_amount conversion
+- **Balloon loans**: Fix balloon month payment to include interest (not just principal)
+- **Loan strategies**: Coerce credit_end_date strings to month precision; disallow balloon_after_months=0
+- **Recurring transfers**: Honor brick.end_date with validation; check both attribute and spec
+- **Liability routing**: Raise ConfigError instead of silently skipping when no cash account available
+- **Cash validation**: Change post_interest shape validation to ConfigError (not ValueError)
 
 ### Added
 - **Credit line strategy**: Added `prepare()` method with full config validation
 - **Private equity strategy**: Added `prepare()` method with config validation
+- **Flow strategies**: Added `prepare()` methods to expense_onetime and income_onetime strategies
+- **Transfer strategies**: Added `prepare()` method to lumpsum strategy
+- **Balloon loans**: Added `prepare()` method to validate balloon_after_months parameter
 - **Overdraft policy**: Configurable `overdraft_policy` = ignore|warn|raise (default: ignore); `overdraft_limit=None` (unlimited default)
 - **BOUNDARY_ONLY mode**: Filters transfers that touch boundary accounts
 
