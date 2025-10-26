@@ -8,6 +8,7 @@ import numpy as np
 
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IValuationStrategy
 from finbricklab.core.results import BrickOutput
@@ -70,10 +71,16 @@ class ValuationSecurityUnitized(IValuationStrategy):
         """
         s = brick.spec
 
+        # Validate price0 before using it
+        price0 = s.get("price0", 100.0)
+        if price0 <= 0:
+            raise ConfigError(
+                f"{brick.id}: price0 must be > 0, got {price0!r}. Cannot convert initial_amount to units."
+            )
+
         # Handle user-friendly initial_amount parameter
         if "initial_amount" in s and "initial_units" not in s:
             # Convert initial_amount to initial_units
-            price0 = s.get("price0", 100.0)
             s["initial_units"] = s["initial_amount"] / price0
             # Remove the user-friendly parameter to avoid confusion
             del s["initial_amount"]

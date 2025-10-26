@@ -167,13 +167,17 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         Event(
                             ctx.t_index[month_idx],
                             "balloon_payment",
-                            f"Balloon payment: €{balloon_payment:,.2f}",
-                            {"amount": float(balloon_payment), "type": "balloon"},
+                            f"Balloon payment: €{balloon_payment:,.2f} + interest €{interest:,.2f}",
+                            {
+                                "principal": float(balloon_payment),
+                                "interest": float(interest),
+                                "type": "balloon",
+                            },
                         )
                     )
 
-                    # Generate cash flow for balloon payment
-                    cash_out[month_idx] = float(balloon_payment)
+                    # Generate cash flow for balloon payment (includes interest + principal)
+                    cash_out[month_idx] = float(balloon_payment + interest)
                     # Track interest paid (balloon payment includes interest)
                     interest_paid[month_idx] = float(interest)
 

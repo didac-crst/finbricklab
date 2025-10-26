@@ -4,10 +4,13 @@ One-time expense flow strategy.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import numpy as np
 
 from finbricklab.core.bricks import FBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.results import BrickOutput
 
@@ -29,6 +32,57 @@ class FlowExpenseOneTime(IFlowStrategy):
         - tax_rate: Tax rate for deduction (default: 0.0)
     """
 
+    def prepare(self, brick: FBrick, ctx: ScenarioContext) -> None:
+        """
+        Prepare the one-time expense strategy.
+
+        Validates required parameters and coerces numeric values.
+
+        Args:
+            brick: The flow brick
+            ctx: The simulation context
+
+        Raises:
+            ConfigError: If required parameters are missing or invalid
+        """
+        # Validate required parameters
+        if "amount" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'amount'")
+
+        if "date" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'date'")
+
+        # Coerce amount to Decimal
+        amount = brick.spec["amount"]
+        if not isinstance(amount, (int, float, Decimal, str)):
+            raise ConfigError(
+                f"{brick.id}: amount must be numeric, got {type(amount).__name__}"
+            )
+        amount_decimal = Decimal(str(amount))
+
+        # Validate amount is positive
+        if amount_decimal <= 0:
+            raise ConfigError(
+                f"{brick.id}: amount must be positive, got {amount_decimal!r}"
+            )
+
+        # Validate tax_rate if provided
+        tax_deductible = brick.spec.get("tax_deductible", False)
+        if tax_deductible:
+            tax_rate = brick.spec.get("tax_rate", 0.0)
+            if not isinstance(tax_rate, (int, float, Decimal, str)):
+                raise ConfigError(
+                    f"{brick.id}: tax_rate must be numeric, got {type(tax_rate).__name__}"
+                )
+            tax_rate_float = float(tax_rate)
+            if not 0 <= tax_rate_float <= 1:
+                raise ConfigError(
+                    f"{brick.id}: tax_rate must be in [0, 1], got {tax_rate_float!r}"
+                )
+
+        # Store normalized values in spec
+        brick.spec["_normalized_amount"] = float(amount_decimal)
+
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Simulate one-time expense flow.
@@ -40,11 +94,15 @@ class FlowExpenseOneTime(IFlowStrategy):
         Returns:
             BrickOutput with cash flow data
         """
-        # Extract parameters
-        amount = brick.spec["amount"]
+        # Extract parameters (use normalized values if available from prepare)
+        if "_normalized_amount" in brick.spec:
+            amount = brick.spec["_normalized_amount"]
+        else:
+            amount = float(brick.spec["amount"])
+
         date_str = brick.spec["date"]
         tax_deductible = brick.spec.get("tax_deductible", False)
-        tax_rate = brick.spec.get("tax_rate", 0.0)
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
 
         # Parse the date
         from datetime import datetime
