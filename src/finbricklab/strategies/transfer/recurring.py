@@ -11,6 +11,7 @@ import numpy as np
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import ITransferStrategy
 from finbricklab.core.results import BrickOutput
@@ -56,22 +57,30 @@ class TransferRecurring(ITransferStrategy):
             ctx: The simulation context
 
         Raises:
-            AssertionError: If required parameters are missing
+            ConfigError: If required parameters are missing or invalid
         """
         # Validate required parameters
-        assert "amount" in brick.spec, "Missing required parameter: amount"
-        assert "frequency" in brick.spec, "Missing required parameter: frequency"
+        if "amount" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'amount'")
+        if "frequency" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'frequency'")
 
         # Validate required links
-        assert brick.links is not None, "Missing required links"
-        assert "from" in brick.links, "Missing required link: from"
-        assert "to" in brick.links, "Missing required link: to"
+        if not brick.links:
+            raise ConfigError(f"{brick.id}: Missing required links")
+        if "from" not in brick.links:
+            raise ConfigError(f"{brick.id}: Missing required link 'from'")
+        if "to" not in brick.links:
+            raise ConfigError(f"{brick.id}: Missing required link 'to'")
 
         # Validate amount is positive
         amount = brick.spec["amount"]
-        if isinstance(amount, int | float):
+        if isinstance(amount, (int, float)):
             amount = Decimal(str(amount))
-        assert amount > 0, "Transfer amount must be positive"
+        if amount <= 0:
+            raise ConfigError(
+                f"{brick.id}: Transfer amount must be positive, got {amount!r}"
+            )
 
         # Validate frequency
         frequency = brick.spec["frequency"]
@@ -83,22 +92,26 @@ class TransferRecurring(ITransferStrategy):
             "YEARLY",
             "BIYEARLY",
         ]
-        assert (
-            frequency in valid_frequencies
-        ), f"Frequency must be one of {valid_frequencies}"
+        if frequency not in valid_frequencies:
+            raise ConfigError(
+                f"{brick.id}: Frequency must be one of {valid_frequencies}, got {frequency!r}"
+            )
 
         # Validate accounts are different
         from_account = brick.links["from"]
         to_account = brick.links["to"]
-        assert (
-            from_account != to_account
-        ), "Source and destination accounts must be different"
+        if from_account == to_account:
+            raise ConfigError(
+                f"{brick.id}: Source and destination accounts must be different (got {from_account})"
+            )
 
         # Validate optional parameters
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
-            assert "amount" in fees, "Fee amount is required"
-            assert "account" in fees, "Fee account is required"
+            if "amount" not in fees:
+                raise ConfigError(f"{brick.id}: Fee 'amount' is required")
+            if "account" not in fees:
+                raise ConfigError(f"{brick.id}: Fee 'account' is required")
 
     def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
         """
@@ -125,21 +138,19 @@ class TransferRecurring(ITransferStrategy):
         # Create amount object
         amount_obj = create_amount(amount, currency)
 
-        # Determine transfer frequency in months
-        if frequency == "MONTHLY":
-            interval_months = 1
-        elif frequency == "BIMONTHLY":
-            interval_months = 2
-        elif frequency == "QUARTERLY":
-            interval_months = 3
-        elif frequency == "SEMIANNUALLY":
-            interval_months = 6
-        elif frequency == "YEARLY":
-            interval_months = 12
-        elif frequency == "BIYEARLY":
-            interval_months = 24  # Used in loop below
-        else:
-            raise ValueError(f"Invalid frequency: {frequency}")
+        # Map frequency to interval in months
+        freq_map = {
+            "MONTHLY": 1,
+            "BIMONTHLY": 2,
+            "QUARTERLY": 3,
+            "SEMIANNUALLY": 6,
+            "YEARLY": 12,
+            "BIYEARLY": 24,
+        }
+        try:
+            interval_months = freq_map[frequency]
+        except KeyError as e:
+            raise ValueError(f"Invalid frequency: {frequency}") from e
 
         # Initialize cash flow arrays
         cash_in = np.zeros(T, dtype=float)
