@@ -1,3 +1,8 @@
-# finbricklab.strategies.flow.income
+# finbricklab.strategies.flow (Income)
 
-::: finbricklab.strategies.flow.income
+Flow strategies for income modeling.
+
+## Income Strategies
+
+::: finbricklab.strategies.flow.income_onetime
+::: finbricklab.strategies.flow.income_recurring
