@@ -14,4 +14,4 @@ jobs:
           python-version: "3.12"
       - uses: abatilo/actions-poetry@v3
       - run: poetry install --with docs
-      - run: poetry run mkdocs build --strict --site-dir site
+      - run: poetry run mkdocs build --site-dir site

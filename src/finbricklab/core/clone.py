@@ -8,9 +8,10 @@ to ensure immutability and prevent cross-scenario state bleed.
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
 
 
-def clone_brick(brick):
+def clone_brick(brick: Any) -> Any:
     """
     Return a deep, scenario-local clone of a brick.
 
