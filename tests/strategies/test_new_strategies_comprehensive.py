@@ -568,5 +568,6 @@ class TestStrategyIntegration:
 
         # Should fail during simulation due to missing parameters
         from finbricklab.core.errors import ConfigError
+
         with pytest.raises((KeyError, ValueError, ConfigError)):
             scenario.run(start=date(2026, 1, 1), months=6)

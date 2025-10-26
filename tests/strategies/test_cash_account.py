@@ -139,6 +139,7 @@ class TestValuationCash:
 
         # Should raise ConfigError for negative overdraft limit
         from finbricklab.core.errors import ConfigError
+
         with pytest.raises(ConfigError, match="overdraft_limit must be >= 0"):
             strategy.prepare(brick, ctx)
 

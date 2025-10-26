@@ -62,7 +62,9 @@ class ScheduleCreditLine(IScheduleStrategy):
         if isinstance(credit_limit, (int, float, str)):
             credit_limit = Decimal(str(credit_limit))
         if credit_limit <= 0:
-            raise ConfigError(f"{brick.id}: credit_limit must be > 0, got {credit_limit!r}")
+            raise ConfigError(
+                f"{brick.id}: credit_limit must be > 0, got {credit_limit!r}"
+            )
 
         # Validate and coerce rate_pa
         rate_pa = brick.spec["rate_pa"]
