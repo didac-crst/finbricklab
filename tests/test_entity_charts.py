@@ -88,6 +88,12 @@ class TestEntityCharts:
 
     def test_chart_functions_with_plotly_available(self, sample_entity):
         """Test that chart functions work when Plotly is available."""
+        # Skip if Plotly is not available
+        try:
+            import plotly
+        except ImportError:
+            pytest.skip("Plotly not available")
+
         from finbricklab.charts import net_worth_vs_time
 
         # Get comparison data
