@@ -10,8 +10,23 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional
 
+import numpy as np
+
 from .accounts import AccountScope
 from .currency import Amount
+
+
+def _norm_ts(ts: Any) -> np.datetime64:
+    """
+    Normalize timestamp to month-precision numpy datetime64.
+    
+    Accepts: str | date | datetime | np.datetime64
+    Returns: np.datetime64 with 'M' precision for consistent sorting/comparison
+    """
+    if isinstance(ts, np.datetime64):
+        return ts.astype("datetime64[M]")
+    # Convert string, date, or datetime to numpy datetime64
+    return np.datetime64(str(ts), "M")
 
 
 @dataclass
@@ -188,29 +203,16 @@ class Journal:
             # Return current balance
             return self._balances.get(account_id, {}).get(currency, Decimal("0"))
 
-        # Normalize timestamp to month precision for comparison
-        try:
-            import numpy as np
-
-            et_normalized_np = np.datetime64(at_timestamp, "M")
-        except (ImportError, TypeError, ValueError):
-            et_normalized_np = at_timestamp  # type: ignore
-
         # Calculate balance at specific timestamp
         # TODO: Performance - cache sorted entries to avoid re-sorting on every call
-        # Sort entries by timestamp to handle out-of-order posting
-        sorted_entries = sorted(self.entries, key=lambda e: e.timestamp)
+        # Sort entries by normalized timestamp to handle out-of-order posting and mixed types
+        et_normalized = _norm_ts(at_timestamp)
+        sorted_entries = sorted(self.entries, key=lambda e: _norm_ts(e.timestamp))
         balance = Decimal("0")
 
         for entry in sorted_entries:
-            try:
-                import numpy as np
-
-                entry_timestamp_np = np.datetime64(entry.timestamp, "M")
-            except (ImportError, TypeError, ValueError):
-                entry_timestamp_np = entry.timestamp  # type: ignore
-
-            if entry_timestamp_np <= et_normalized_np:
+            entry_ts_norm = _norm_ts(entry.timestamp)
+            if entry_ts_norm <= et_normalized:
                 for posting in entry.postings:
                     if (
                         posting.account_id == account_id
@@ -236,10 +238,14 @@ class Journal:
             return self._balances.copy()
 
         # Calculate balances at specific timestamp
+        # Normalize timestamps for consistent comparison across types
+        at_ts_norm = _norm_ts(at_timestamp)
         balances: dict[str, dict[str, Decimal]] = {}
 
-        for entry in self.entries:
-            if entry.timestamp <= at_timestamp:
+        # Sort by normalized timestamp to handle out-of-order entries
+        for entry in sorted(self.entries, key=lambda e: _norm_ts(e.timestamp)):
+            entry_ts_norm = _norm_ts(entry.timestamp)
+            if entry_ts_norm <= at_ts_norm:
                 for posting in entry.postings:
                     account_id = posting.account_id
                     currency = posting.amount.currency.code
@@ -252,6 +258,7 @@ class Journal:
 
                     balances[account_id][currency] += amount
             else:
+                # Entries are sorted, safe to break
                 break
 
         return balances
@@ -275,8 +282,13 @@ class Journal:
         """
         cashflow: dict[str, Decimal] = {}
 
+        # Normalize timestamps for consistent comparison across types
+        start_ts_norm = _norm_ts(start_timestamp)
+        end_ts_norm = _norm_ts(end_timestamp)
+
         for entry in self.entries:
-            if start_timestamp <= entry.timestamp <= end_timestamp:
+            entry_ts_norm = _norm_ts(entry.timestamp)
+            if start_ts_norm <= entry_ts_norm <= end_ts_norm:
                 for posting in entry.postings:
                     # Filter by scope if specified
                     if by_scope and self.account_registry:
@@ -369,12 +381,12 @@ def generate_transaction_id(
         Deterministic transaction ID
     """
     # Create deterministic hash
-    # Handle numpy datetime64 objects
-    if hasattr(timestamp, "isoformat"):
-        timestamp_str = timestamp.isoformat()
-    else:
-        # Convert numpy datetime64 to string
-        timestamp_str = str(timestamp)
+    # Normalize timestamp to month precision to ensure consistent hashing for same month
+    try:
+        ts_norm = _norm_ts(timestamp)
+        timestamp_str = str(ts_norm)
+    except Exception:
+        timestamp_str = timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
 
     # Handle None links
     links_str = str(sorted(links.items())) if links else "None"

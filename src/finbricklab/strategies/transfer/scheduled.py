@@ -12,6 +12,7 @@ import numpy as np
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import ITransferStrategy
 from finbricklab.core.results import BrickOutput
@@ -60,57 +61,75 @@ class TransferScheduled(ITransferStrategy):
             ctx: The simulation context
 
         Raises:
-            AssertionError: If required parameters are missing
+            ConfigError: If required parameters are missing or invalid
         """
         # Validate required parameters
-        assert "schedule" in brick.spec, "Missing required parameter: schedule"
+        if "schedule" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'schedule'")
 
         # Validate required links
-        assert brick.links is not None, "Missing required links"
-        assert "from" in brick.links, "Missing required link: from"
-        assert "to" in brick.links, "Missing required link: to"
+        if not brick.links:
+            raise ConfigError(f"{brick.id}: Missing required links")
+        if "from" not in brick.links:
+            raise ConfigError(f"{brick.id}: Missing required link 'from'")
+        if "to" not in brick.links:
+            raise ConfigError(f"{brick.id}: Missing required link 'to'")
 
         # Validate schedule format
         schedule = brick.spec["schedule"]
-        assert isinstance(schedule, list), "Schedule must be a list"
-        assert len(schedule) > 0, "Schedule cannot be empty"
+        if not isinstance(schedule, list):
+            raise ConfigError(
+                f"{brick.id}: 'schedule' must be a list, got {type(schedule).__name__}"
+            )
+        if len(schedule) == 0:
+            raise ConfigError(f"{brick.id}: Schedule cannot be empty")
 
         for i, entry in enumerate(schedule):
-            assert "date" in entry, f"Schedule entry {i} missing 'date'"
-            assert "amount" in entry, f"Schedule entry {i} missing 'amount'"
+            if "date" not in entry:
+                raise ConfigError(f"{brick.id}: Schedule entry {i} missing 'date'")
+            if "amount" not in entry:
+                raise ConfigError(f"{brick.id}: Schedule entry {i} missing 'amount'")
 
             # Validate amount is positive
             amount = entry["amount"]
-            if isinstance(amount, int | float):
+            if isinstance(amount, (int, float)):
                 amount = Decimal(str(amount))
-            assert amount > 0, f"Schedule entry {i} amount must be positive"
+            if amount <= 0:
+                raise ConfigError(
+                    f"{brick.id}: Schedule entry {i} amount must be positive, got {amount!r}"
+                )
 
             # Validate date format
             date_str = entry["date"]
             try:
                 date.fromisoformat(date_str)
             except ValueError as e:
-                raise ValueError(
-                    f"Schedule entry {i} has invalid date format: {date_str}"
+                raise ConfigError(
+                    f"{brick.id}: Schedule entry {i} has invalid date format: {date_str}"
                 ) from e
 
         # Validate accounts are different
         from_account = brick.links["from"]
         to_account = brick.links["to"]
-        assert (
-            from_account != to_account
-        ), "Source and destination accounts must be different"
+        if from_account == to_account:
+            raise ConfigError(
+                f"{brick.id}: Source and destination accounts must be different (got {from_account})"
+            )
 
         # Validate optional parameters
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
-            assert "amount" in fees, "Fee amount is required"
-            assert "account" in fees, "Fee account is required"
+            if "amount" not in fees:
+                raise ConfigError(f"{brick.id}: Fee 'amount' is required")
+            if "account" not in fees:
+                raise ConfigError(f"{brick.id}: Fee 'account' is required")
 
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
-            assert "rate" in fx, "FX rate is required"
-            assert "pair" in fx, "FX pair is required"
+            if "rate" not in fx:
+                raise ConfigError(f"{brick.id}: FX 'rate' is required")
+            if "pair" not in fx:
+                raise ConfigError(f"{brick.id}: FX 'pair' is required")
 
     def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
         """

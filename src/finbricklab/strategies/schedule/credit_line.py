@@ -12,6 +12,7 @@ import numpy as np
 
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IScheduleStrategy
 from finbricklab.core.results import BrickOutput
 
@@ -34,6 +35,58 @@ class ScheduleCreditLine(IScheduleStrategy):
         - fees: Fee structure (currently only annual fee supported)
         - initial_draw: Initial debt balance (default: 0). Set explicitly to avoid surprises.
     """
+
+    def prepare(self, brick: LBrick, ctx: ScenarioContext) -> None:
+        """
+        Prepare and validate credit line strategy.
+
+        Args:
+            brick: The LBrick instance
+            ctx: Scenario context
+
+        Raises:
+            ConfigError: If required parameters are missing or invalid
+        """
+        # Validate required parameters
+        if "credit_limit" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'credit_limit'")
+        if "rate_pa" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'rate_pa'")
+        if "min_payment" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'min_payment'")
+        if "billing_day" not in brick.spec:
+            raise ConfigError(f"{brick.id}: Missing required parameter 'billing_day'")
+
+        # Validate and coerce credit_limit
+        credit_limit = brick.spec["credit_limit"]
+        if isinstance(credit_limit, (int, float, str)):
+            credit_limit = Decimal(str(credit_limit))
+        if credit_limit <= 0:
+            raise ConfigError(f"{brick.id}: credit_limit must be > 0, got {credit_limit!r}")
+
+        # Validate and coerce rate_pa
+        rate_pa = brick.spec["rate_pa"]
+        if isinstance(rate_pa, (int, float, str)):
+            rate_pa = Decimal(str(rate_pa))
+        if rate_pa < 0:
+            raise ConfigError(f"{brick.id}: rate_pa must be >= 0, got {rate_pa!r}")
+
+        # Validate initial_draw if provided
+        initial_draw = brick.spec.get("initial_draw")
+        if initial_draw is not None:
+            if isinstance(initial_draw, (int, float, str)):
+                initial_draw = Decimal(str(initial_draw))
+            if initial_draw < 0:
+                raise ConfigError(
+                    f"{brick.id}: initial_draw must be >= 0, got {initial_draw!r}"
+                )
+            if initial_draw > credit_limit:
+                raise ConfigError(
+                    f"{brick.id}: initial_draw {initial_draw!r} exceeds credit_limit {credit_limit!r}"
+                )
+
+        # billing_day is reserved for future calendar-accurate cycles
+        # No validation needed yet as it's not used in current implementation
 
     def simulate(
         self, brick: LBrick, ctx: ScenarioContext, months: int | None = None
@@ -95,8 +148,8 @@ class ScheduleCreditLine(IScheduleStrategy):
         # Calculate monthly interest rate
         i_m = rate_pa / Decimal("12")
 
-        # Track running balance
-        current_balance = initial_draw
+        # Track running balance (no balance before start)
+        current_balance = Decimal("0")
 
         for month_idx in range(months):
             # Get the date for this month - convert from numpy datetime64 to Python date
@@ -109,6 +162,7 @@ class ScheduleCreditLine(IScheduleStrategy):
 
             # Record initial draw at start month (ms == 0)
             if ms == 0 and initial_draw > 0:
+                current_balance = initial_draw
                 cash_in[month_idx] = float(initial_draw)
 
             # Bill monthly starting month after start (ms >= 1)

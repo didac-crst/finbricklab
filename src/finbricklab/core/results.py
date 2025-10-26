@@ -9,9 +9,35 @@ from typing import TypedDict
 import numpy as np
 import pandas as pd
 
+from .accounts import AccountScope
 from .events import Event
+from .journal import JournalEntry
 from .registry import Registry
 from .transfer_visibility import TransferVisibility
+
+
+def _entry_touches_boundary(entry: JournalEntry, registry: Registry | None) -> bool:
+    """
+    Check if a journal entry touches a boundary account.
+
+    Args:
+        entry: The journal entry to check
+        registry: The account registry
+
+    Returns:
+        True if the entry has any posting to a boundary account
+    """
+    if not registry:
+        return False
+    for posting in entry.postings:
+        try:
+            account = registry.get_account(posting.account_id)
+            if account and getattr(account, "scope", None) == AccountScope.BOUNDARY:
+                return True
+        except Exception:
+            # If account not found in registry, treat as INTERNAL
+            continue
+    return False
 
 
 class BrickOutput(TypedDict):

@@ -57,17 +57,23 @@ class Amount:
     """
 
     def __init__(self, value: Decimal | float | str | int, currency: Currency | str):
+        # Forward reference: get_currency is defined later in this file
         if isinstance(currency, str):
-            # Use get_currency to honor known precisions from registry
-            from .currency import get_currency  # local import to avoid cycles
-
-            currency = get_currency(currency)
+            currency = Amount._get_currency(currency)
 
         if isinstance(value, (int, float, str)):
             value = Decimal(str(value))
 
         self.value = currency.quantize(value)
         self.currency = currency
+
+    @staticmethod
+    def _get_currency(code: str) -> Currency:
+        """Get currency by code (forward reference helper)."""
+        if code not in CURRENCIES:
+            # Default to 2 decimal places for unknown currencies
+            return Currency(code, decimals=2)
+        return CURRENCIES[code]
 
     def __add__(self, other: Amount) -> Amount:
         if self.currency.code != other.currency.code:

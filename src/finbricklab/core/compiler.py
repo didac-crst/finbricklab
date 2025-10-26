@@ -86,9 +86,16 @@ class BrickCompiler:
             pair = fx["pair"]
             pnl_account = fx.get("pnl_account", "P&L:FX")
 
+            # Validate FX pair base matches source currency
+            base_ccy, dest_ccy = pair.split("/", 1)
+            if base_ccy != currency:
+                raise ValueError(
+                    f"FX pair base '{base_ccy}' does not match source currency '{currency}'"
+                )
+
             # Calculate destination amount in different currency
             dest_amount = amount * rate
-            dest_currency = pair.split("/")[1]  # Extract destination currency
+            dest_currency = dest_ccy  # Use extracted destination currency
             dest_amount_obj = create_amount(dest_amount, dest_currency)
 
             # Remove original positive dest posting and replace with FX-adjusted dest leg
@@ -102,13 +109,12 @@ class BrickCompiler:
             )
 
             # Add balancing P&L legs so each currency zero-sums independently
-            # Amount sign convention: positive = debit, negative = credit
-            # Source currency: P&L gets -amount (credit) to balance the -amount (credit) on source account
-            # This makes source currency legs sum to zero: asset(-) + pnl(-) = 0
-            postings.append(Posting(pnl_account, -amount_obj, {"type": "fx_source"}))
-            # Dest currency: P&L gets +dest_amount (debit) to balance the +dest_amount (debit) on dest account
-            # This makes dest currency legs sum to zero: asset(+) + pnl(+) = 0
-            postings.append(Posting(pnl_account, +dest_amount_obj, {"type": "fx_dest"}))
+            # Asset legs: source_account -= amount (source ccy), dest_account += dest_amount (dest ccy)
+            # P&L legs must mirror those signs per currency:
+            # Source currency: P&L debits +amount to offset the source credit
+            postings.append(Posting(pnl_account, +amount_obj, {"type": "fx_source"}))
+            # Dest currency: P&L credits -dest_amount to offset the destination debit
+            postings.append(Posting(pnl_account, -dest_amount_obj, {"type": "fx_dest"}))
 
         # Create journal entry
         timestamp = brick.start_date if brick.start_date else ctx.t_index[0]
@@ -325,17 +331,20 @@ class BrickCompiler:
             ]
 
         # Create journal entry
-        timestamp = ctx.t_index[-1]  # Valuation at end of period
-        if isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp)
+        # Valuation at end of period; normalize to datetime
+        ts = ctx.t_index[-1]
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts)
+        elif isinstance(ts, date) and not isinstance(ts, datetime):
+            ts = datetime.combine(ts, datetime.min.time())
 
         txn_id = generate_transaction_id(
-            f"{brick.id}_valuation", timestamp, brick.spec, brick.links, sequence
+            f"{brick.id}_valuation", ts, brick.spec, brick.links, sequence
         )
 
         entry = JournalEntry(
             id=txn_id,
-            timestamp=timestamp,
+            timestamp=ts,
             postings=postings,
             metadata={
                 "brick_id": brick.id,

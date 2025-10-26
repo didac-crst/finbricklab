@@ -622,18 +622,7 @@ class Scenario:
             "Expenses:Interest",
             "P&L:Unrealized",
             "P&L:FX",
-            "Equity:Opening",
         ]
-
-        # Register Equity:Opening first since it's used for opening balances
-        account_registry.register_account(
-            Account(
-                "Equity:Opening",
-                "Opening Equity",
-                AccountScope.BOUNDARY,
-                AccountType.EQUITY,
-            )
-        )
 
         for account_id in boundary_accounts:
             account_type = (
@@ -660,7 +649,7 @@ class Scenario:
                 )
             )
 
-        # Register equity:opening account
+        # Register canonical equity:opening account (used by opening balances)
         account_registry.register_account(
             Account(
                 "equity:opening",
@@ -1084,30 +1073,33 @@ class Scenario:
         # Create postings for the transfer
         postings = []
 
-        # Money goes out from source account (debit)
+        # Get currency from brick spec (default to scenario currency)
+        currency = brick.spec.get("currency", self.currency)
+
+        # Money goes out from source account (credit)
         if cash_out > 0:
             postings.append(
                 Posting(
                     f"asset:{brick.links['from']}",
-                    create_amount(-cash_out, "EUR"),
+                    create_amount(-cash_out, currency),
                     {
                         "type": "transfer_out",
                         "month": month_idx,
-                        "posting_side": "debit",
+                        "posting_side": "credit",
                     },
                 )
             )
 
-        # Money comes in to destination account (credit)
+        # Money comes in to destination account (debit)
         if cash_in > 0:
             postings.append(
                 Posting(
                     f"asset:{brick.links['to']}",
-                    create_amount(cash_in, "EUR"),
+                    create_amount(cash_in, currency),
                     {
                         "type": "transfer_in",
                         "month": month_idx,
-                        "posting_side": "credit",
+                        "posting_side": "debit",
                     },
                 )
             )
@@ -1202,43 +1194,48 @@ class Scenario:
                 )
             )
 
+        # Get currency from brick spec (default to scenario currency)
+        currency = brick.spec.get("currency", self.currency)
+
         # Money flows from boundary to cash account (income) or vice versa (expense)
         if cash_in > 0:  # Income
+            # Income: credit income (boundary), debit asset cash
             postings.append(
                 Posting(
                     boundary_account,
-                    create_amount(-cash_in, "EUR"),
-                    {"type": "income", "month": month_idx, "posting_side": "debit"},
+                    create_amount(-cash_in, currency),
+                    {"type": "income", "month": month_idx, "posting_side": "credit"},
                 )
             )
             postings.append(
                 Posting(
                     f"asset:{cash_account}",
-                    create_amount(cash_in, "EUR"),
+                    create_amount(cash_in, currency),
                     {
                         "type": "income_allocation",
-                        "month": month_idx,
-                        "posting_side": "credit",
-                    },
-                )
-            )
-        elif cash_out > 0:  # Expense
-            postings.append(
-                Posting(
-                    f"asset:{cash_account}",
-                    create_amount(-cash_out, "EUR"),
-                    {
-                        "type": "expense_payment",
                         "month": month_idx,
                         "posting_side": "debit",
                     },
                 )
             )
+        elif cash_out > 0:  # Expense
+            # Expense: credit asset cash, debit expense (boundary)
+            postings.append(
+                Posting(
+                    f"asset:{cash_account}",
+                    create_amount(-cash_out, currency),
+                    {
+                        "type": "expense_payment",
+                        "month": month_idx,
+                        "posting_side": "credit",
+                    },
+                )
+            )
             postings.append(
                 Posting(
                     boundary_account,
-                    create_amount(cash_out, "EUR"),
-                    {"type": "expense", "month": month_idx, "posting_side": "credit"},
+                    create_amount(cash_out, currency),
+                    {"type": "expense", "month": month_idx, "posting_side": "debit"},
                 )
             )
 
@@ -1259,7 +1256,7 @@ class Scenario:
                 "month": month_idx,
                 "iteration": iteration,  # Sequential enumeration
                 "transaction_type": transaction_type,
-                "amount_type": "credit" if cash_in > 0 else "debit",
+                "amount_type": "credit" if transaction_type == "income" else "debit",
                 "boundary_account": boundary_account,
             },
         )
@@ -1319,27 +1316,31 @@ class Scenario:
                 )
             )
 
+        # Get currency from brick spec (default to scenario currency)
+        currency = brick.spec.get("currency", self.currency)
+
         # Handle disbursements first (cash_in > 0)
         if cash_in > 0:  # Disbursement
+            # Disbursement: debit asset cash, credit liability (boundary)
             postings.append(
                 Posting(
                     boundary_account,
-                    create_amount(-cash_in, "EUR"),
+                    create_amount(-cash_in, currency),
                     {
                         "type": "loan_disbursement",
                         "month": month_idx,
-                        "posting_side": "debit",
+                        "posting_side": "credit",
                     },
                 )
             )
             postings.append(
                 Posting(
                     f"asset:{cash_account}",
-                    create_amount(cash_in, "EUR"),
+                    create_amount(cash_in, currency),
                     {
                         "type": "liability_disbursement",
                         "month": month_idx,
-                        "posting_side": "credit",
+                        "posting_side": "debit",
                     },
                 )
             )
@@ -1384,14 +1385,15 @@ class Scenario:
                 cash_out - interest_amount
             )  # Total payment - interest = principal
 
+            # Payment: credit asset cash, debit liability (boundary)
             postings.append(
                 Posting(
                     f"asset:{cash_account}",
-                    create_amount(-cash_out, "EUR"),
+                    create_amount(-cash_out, currency),
                     {
                         "type": "loan_payment",
                         "month": month_idx,
-                        "posting_side": "debit",
+                        "posting_side": "credit",
                         "interest_amount": interest_amount,
                         "amortization_amount": amortization_amount,
                     },
@@ -1400,11 +1402,11 @@ class Scenario:
             postings.append(
                 Posting(
                     boundary_account,
-                    create_amount(cash_out, "EUR"),
+                    create_amount(cash_out, currency),
                     {
                         "type": "liability_payment",
                         "month": month_idx,
-                        "posting_side": "credit",
+                        "posting_side": "debit",
                         "interest_amount": interest_amount,
                         "amortization_amount": amortization_amount,
                     },
@@ -2119,11 +2121,16 @@ def validate_run(
         for b in bricks:
             if isinstance(b, ABrick) and b.kind == K.A_CASH:
                 bal = outputs[b.id]["assets"]
-                overdraft = float((b.spec or {}).get("overdraft_limit", 0.0))
+                overdraft_limit = (b.spec or {}).get("overdraft_limit")
+                # Only check overdraft if a limit is explicitly set (None = unlimited)
+                if overdraft_limit is not None:
+                    overdraft = float(overdraft_limit)
+                else:
+                    overdraft = float("inf")  # No limit
                 minbuf = float((b.spec or {}).get("min_buffer", 0.0))
 
-                # Overdraft breach
-                if (bal < -overdraft - tol).any():
+                # Overdraft breach (skip if unlimited)
+                if overdraft != float("inf") and (bal < -overdraft - tol).any():
                     t_idx = int(np.where(bal < -overdraft - tol)[0][0])
                     amt = float(bal[t_idx])
                     msg = (
@@ -2298,7 +2305,14 @@ def export_run_json(
     series = {}
     for brick_id, output in res["outputs"].items():
         series[brick_id] = {}
-        for key in ["cash_in", "cash_out", "asset_value", "debt_balance"]:
+        for key in [
+            "cash_in",
+            "cash_out",
+            "assets",
+            "liabilities",
+            "asset_value",
+            "debt_balance",
+        ]:
             if key in output:
                 # Convert to list and round to specified precision
                 if hasattr(output[key], "tolist"):
