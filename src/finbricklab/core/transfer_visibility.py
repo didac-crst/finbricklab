@@ -96,22 +96,31 @@ def filter_entries_by_visibility(
     if visibility == TransferVisibility.ALL:
         return entries
 
+    # Helper to check if entry is a transfer
+    def _is_transfer(e: "JournalEntry") -> bool:
+        return e.metadata.get("transaction_type") in {
+            "transfer",
+            "tbrick",
+            "maturity_transfer",
+        }
+
     filtered = []
     for entry in entries:
         is_internal = is_internal_transfer(entry, account_registry)
         touches_bound = touches_boundary(entry, account_registry)
+        is_transfer_entry = _is_transfer(entry)
 
         if visibility == TransferVisibility.OFF:
             # Hide internal transfers, show boundary-crossing transfers
             if not is_internal:
                 filtered.append(entry)
         elif visibility == TransferVisibility.ONLY:
-            # Show only transfers
-            if is_internal or touches_bound:
+            # Show only transfer entries (not income/expense just because they touch boundary)
+            if is_transfer_entry and (is_internal or touches_bound):
                 filtered.append(entry)
         elif visibility == TransferVisibility.BOUNDARY_ONLY:
-            # Show only boundary-crossing transfers
-            if touches_bound and not is_internal:
+            # Show only boundary-crossing transfers (not internal transfers)
+            if is_transfer_entry and touches_bound and not is_internal:
                 filtered.append(entry)
 
     return filtered

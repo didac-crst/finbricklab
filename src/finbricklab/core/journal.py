@@ -22,7 +22,6 @@ class Posting:
     Attributes:
         account_id: Account identifier
         amount: Monetary amount (positive for debit, negative for credit)
-        currency: Currency code
         metadata: Optional metadata for the posting
     """
 
@@ -189,18 +188,34 @@ class Journal:
             # Return current balance
             return self._balances.get(account_id, {}).get(currency, Decimal("0"))
 
+        # Normalize timestamp to month precision for comparison
+        try:
+            import numpy as np
+
+            et_normalized = np.datetime64(at_timestamp, "M")
+        except (ImportError, TypeError, ValueError):
+            et_normalized = at_timestamp
+
         # Calculate balance at specific timestamp
+        # Sort entries by timestamp to handle out-of-order posting
+        sorted_entries = sorted(self.entries, key=lambda e: e.timestamp)
         balance = Decimal("0")
-        for entry in self.entries:
-            if entry.timestamp <= at_timestamp:
+
+        for entry in sorted_entries:
+            try:
+                import numpy as np
+
+                entry_timestamp = np.datetime64(entry.timestamp, "M")
+            except (ImportError, TypeError, ValueError):
+                entry_timestamp = entry.timestamp
+
+            if entry_timestamp <= et_normalized:
                 for posting in entry.postings:
                     if (
                         posting.account_id == account_id
                         and posting.amount.currency.code == currency
                     ):
                         balance += posting.amount.value
-            else:
-                break
 
         return balance
 

@@ -580,6 +580,7 @@ class Scenario:
                 from .journal import JournalEntry, Posting
 
                 # Create opening balance entry with canonical format
+                # Positive amount = debit for assets, credit for equity
                 opening_entry = JournalEntry(
                     id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
@@ -587,12 +588,12 @@ class Scenario:
                         Posting(
                             "equity:opening",
                             create_amount(-initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "debit"},
+                            {"type": "opening_balance", "posting_side": "credit"},
                         ),
                         Posting(
                             f"asset:{cash_id}",
                             create_amount(initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "credit"},
+                            {"type": "opening_balance", "posting_side": "debit"},
                         ),
                     ],
                     metadata={
@@ -815,10 +816,13 @@ class Scenario:
                 and brick.links
                 and "route" in brick.links
             ):
-                # Find the end month index
+                # Find the end month index - normalize end_date to np.datetime64[M]
+                import numpy as np
+
+                end_m = np.datetime64(brick.end_date, "M")
                 end_month_idx = None
                 for i, t in enumerate(ctx.t_index):
-                    if t >= brick.end_date:
+                    if t >= end_m:
                         end_month_idx = i
                         break
 
@@ -837,7 +841,8 @@ class Scenario:
 
                     # Calculate the transfer amount: balance before interest + contribution
                     # This ensures we transfer the principal + contribution, and let interest be earned on the remaining balance
-                    prev_balance = temp_output["assets"][end_month_idx - 1]
+                    idx_prev = max(0, end_month_idx - 1)
+                    prev_balance = float(temp_output["assets"][idx_prev])
                     monthly_contribution = brick.spec.get(
                         "external_in", np.zeros(len(ctx.t_index))
                     )[end_month_idx]
@@ -920,7 +925,7 @@ class Scenario:
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,
-                                        "posting_side": "debit",
+                                        "posting_side": "credit",
                                         "from": brick.id,
                                         "to": dest_brick_id,
                                         "policy": "EOM_POST_INTEREST",
@@ -932,7 +937,7 @@ class Scenario:
                                     {
                                         "type": "maturity_transfer",
                                         "month": end_month_idx,
-                                        "posting_side": "credit",
+                                        "posting_side": "debit",
                                         "from": brick.id,
                                         "to": dest_brick_id,
                                         "policy": "EOM_POST_INTEREST",
