@@ -166,11 +166,27 @@ class TransferRecurring(ITransferStrategy):
         else:
             start_idx = 0
 
-        # Normalize end_date to month precision
-        end_date = brick.spec.get("end_date")
-        scenario_end_m = ctx.t_index[-1]
-        end_m = np.datetime64(end_date, "M") if end_date else scenario_end_m
-        end_m = min(end_m, scenario_end_m)  # Don't go past scenario end
+        # Normalize end_date to month precision (check brick.end_date first, then spec)
+        end_m = None
+        if hasattr(brick, "end_date") and brick.end_date is not None:
+            end_m = np.datetime64(brick.end_date, "M")
+        elif brick.spec.get("end_date"):
+            end_m = np.datetime64(brick.spec["end_date"], "M")
+
+        # Validate end_date >= start_date if both are set
+        if end_m is not None and start_idx > 0:
+            start_m_np = np.datetime64(brick.start_date, "M")
+            if end_m < start_m_np:
+                raise ConfigError(
+                    f"{brick.id}: end_date {end_m} < start_date {start_m_np}"
+                )
+
+        # Default to scenario end if no end_date set
+        if end_m is None:
+            end_m = ctx.t_index[-1]
+        else:
+            # Don't go past scenario end
+            end_m = min(end_m, ctx.t_index[-1])
 
         # Build month sequence aligned to timeline
         current_month_idx = start_idx

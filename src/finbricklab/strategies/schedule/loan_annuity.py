@@ -170,6 +170,12 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         fix_rate = spec.get("fix_rate_months")
 
         if credit_end is not None:
+            # Coerce string dates to month-precision datetime64
+            if isinstance(credit_end, str):
+                credit_end = np.datetime64(credit_end, "M")
+            elif isinstance(credit_end, date):
+                credit_end = np.datetime64(credit_end, "M")
+
             if brick.end_date is not None:
                 warn_once(
                     "CREDIT_WINDOW_OVERRIDE",

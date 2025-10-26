@@ -11,6 +11,7 @@ import numpy as np
 
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IScheduleStrategy
 from finbricklab.core.results import BrickOutput
@@ -38,6 +39,26 @@ class ScheduleLoanBalloon(IScheduleStrategy):
         The loan continues with interest-only payments after the balloon payment
         until the simulation ends. No fixed term is required.
     """
+
+    def prepare(self, brick: LBrick, ctx: ScenarioContext) -> None:
+        """
+        Prepare the balloon loan schedule strategy.
+
+        Validates balloon_after_months parameter.
+
+        Args:
+            brick: The liability brick
+            ctx: The simulation context
+
+        Raises:
+            ConfigError: If balloon_after_months is 0
+        """
+        # Disallow balloon_after_months=0 (would create perpetual interest-only from the start)
+        balloon_after_months = brick.spec.get("balloon_after_months")
+        if balloon_after_months in (0, "0"):
+            raise ConfigError(
+                f"{brick.id}: balloon_after_months cannot be 0. For interest-only loans, use a very large value."
+            )
 
     def simulate(
         self, brick: LBrick, ctx: ScenarioContext, months: int | None = None

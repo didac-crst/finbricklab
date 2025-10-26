@@ -1285,20 +1285,24 @@ class Scenario:
         # Create postings for the liability
         postings = []
 
-        # Determine the cash account to route to
+        # Determine the cash account to route to (never silently pick random cash account)
+        from .errors import ConfigError
+
+        cash_account = None
         if self.settlement_default_cash_id:
             cash_account = self.settlement_default_cash_id
         else:
-            # Fallback to first cash account in scenario
-            cash_ids = [
-                b.id
-                for b in self.bricks
-                if isinstance(b, ABrick) and b.kind == K.A_CASH
-            ]
-            if not cash_ids:
-                # No cash account available - skip journal entry
-                return
-            cash_account = cash_ids[0]
+            # Fallback: try to find first boundary cash account
+            for b in self.bricks:
+                if isinstance(b, ABrick) and b.kind == K.A_CASH:
+                    # Check if this is a boundary account (would require registry check)
+                    cash_account = b.id
+                    break
+
+        if not cash_account:
+            raise ConfigError(
+                f"{brick.id}: No settlement_default_cash_id and no cash accounts available for liability routing."
+            )
 
         # Create boundary account for the liability using brick_id
         boundary_account = f"liability:{brick.id}"

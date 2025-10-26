@@ -149,7 +149,9 @@ class ValuationCash(IValuationStrategy):
 
         # Validate length matches timeline
         if len(post_interest_in) != T or len(post_interest_out) != T:
-            raise ValueError(f"{brick.id}: 'post_interest_in/out' must have length {T}")
+            raise ConfigError(
+                f"{brick.id}: 'post_interest_in/out' must have length {T}"
+            )
 
         # Initialize interest tracking array
         interest_earned = np.zeros(T)
