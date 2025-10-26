@@ -4,13 +4,13 @@ Thank you for your interest in contributing to FinBrickLab! This guide will help
 
 ## Table of Contents
 
-* [Development Setup](#development-setup)
-* [Project Structure](#project-structure)
-* [Adding New Strategies](#adding-new-strategies)
-* [Adding New Charts](#adding-new-charts-section)
-* [Testing Guidelines](#testing-guidelines)
-* [Code Style](#code-style)
-* [Pull Request Process](#pull-request-process)
+* Development Setup
+* Project Structure
+* Adding New Strategies
+* Adding New Charts
+* Testing Guidelines
+* Code Style
+* Pull Request Process
 
 ---
 
@@ -193,7 +193,7 @@ asset = ABrick(
 
 ---
 
-## Adding New Charts {#adding-new-charts-section}
+## Adding New Charts
 
 ### 1. Implement Chart Function
 
