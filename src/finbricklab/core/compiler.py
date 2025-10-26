@@ -4,7 +4,7 @@ Compilation system for converting bricks to journal entries.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from .accounts import Account, AccountRegistry, AccountScope, AccountType
@@ -111,10 +111,28 @@ class BrickCompiler:
         timestamp = brick.start_date if brick.start_date else ctx.t_index[0]
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
-
-        txn_id = generate_transaction_id(
-            brick.id, timestamp, brick.spec, brick.links, sequence
-        )
+        elif isinstance(timestamp, date) and not isinstance(timestamp, datetime):
+            # Convert date to datetime for the transaction ID generation
+            timestamp_dt = datetime.combine(timestamp, datetime.min.time())
+            txn_id = generate_transaction_id(
+                brick.id, timestamp_dt, brick.spec, brick.links, sequence
+            )
+            entry = JournalEntry(
+                id=txn_id,
+                timestamp=timestamp_dt,
+                postings=postings,
+                metadata={
+                    "brick_id": brick.id,
+                    "brick_type": "transfer",
+                    "kind": brick.kind,
+                },
+            )
+            entries.append(entry)
+            return entries
+        else:
+            txn_id = generate_transaction_id(
+                brick.id, timestamp, brick.spec, brick.links, sequence
+            )
 
         entry = JournalEntry(
             id=txn_id,
@@ -214,10 +232,25 @@ class BrickCompiler:
         timestamp = brick.start_date if brick.start_date else ctx.t_index[0]
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
-
-        txn_id = generate_transaction_id(
-            brick.id, timestamp, brick.spec, brick.links, sequence
-        )
+        elif isinstance(timestamp, date) and not isinstance(timestamp, datetime):
+            # Convert date to datetime for the transaction ID generation
+            timestamp_dt = datetime.combine(timestamp, datetime.min.time())
+            txn_id = generate_transaction_id(
+                brick.id, timestamp_dt, brick.spec, brick.links, sequence
+            )
+            postings = [boundary_posting] + internal_postings
+            entry = JournalEntry(
+                id=txn_id,
+                timestamp=timestamp_dt,
+                postings=postings,
+                metadata={"brick_id": brick.id, "brick_type": "flow", "kind": brick.kind},
+            )
+            entries.append(entry)
+            return entries
+        else:
+            txn_id = generate_transaction_id(
+                brick.id, timestamp, brick.spec, brick.links, sequence
+            )
 
         postings = [boundary_posting] + internal_postings
         entry = JournalEntry(

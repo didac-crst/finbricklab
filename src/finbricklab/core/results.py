@@ -178,9 +178,12 @@ class ScenarioResults:
         Returns:
             Dictionary of filtered brick outputs
         """
-        filtered_outputs = {}
+        filtered_outputs: dict[str, BrickOutput] = {}
         transfer_count = 0
         transfer_sum = 0.0
+
+        if self._outputs is None:
+            return filtered_outputs
 
         for brick_id, output in self._outputs.items():
             # Check if this is a transfer brick
@@ -670,17 +673,21 @@ class ScenarioResults:
 
         if timestamp_start is not None:
             if isinstance(timestamp_start, str):
-                timestamp_start = np.datetime64(timestamp_start, "M")
+                timestamp_start_np = np.datetime64(timestamp_start, "M")
             elif isinstance(timestamp_start, datetime):
-                timestamp_start = np.datetime64(timestamp_start, "M")
-            df = df[df["timestamp"] >= timestamp_start]
+                timestamp_start_np = np.datetime64(timestamp_start, "M")
+            else:
+                timestamp_start_np = timestamp_start
+            df = df[df["timestamp"] >= timestamp_start_np]
 
         if timestamp_end is not None:
             if isinstance(timestamp_end, str):
-                timestamp_end = np.datetime64(timestamp_end, "M")
+                timestamp_end_np = np.datetime64(timestamp_end, "M")
             elif isinstance(timestamp_end, datetime):
-                timestamp_end = np.datetime64(timestamp_end, "M")
-            df = df[df["timestamp"] <= timestamp_end]
+                timestamp_end_np = np.datetime64(timestamp_end, "M")
+            else:
+                timestamp_end_np = timestamp_end
+            df = df[df["timestamp"] <= timestamp_end_np]
 
         if amount_min is not None:
             df = df[df["amount"] >= amount_min]
