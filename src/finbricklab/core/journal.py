@@ -192,9 +192,9 @@ class Journal:
         try:
             import numpy as np
 
-            et_normalized = np.datetime64(at_timestamp, "M")
+            et_normalized_np = np.datetime64(at_timestamp, "M")
         except (ImportError, TypeError, ValueError):
-            et_normalized = at_timestamp
+            et_normalized_np = at_timestamp
 
         # Calculate balance at specific timestamp
         # TODO: Performance - cache sorted entries to avoid re-sorting on every call
@@ -206,11 +206,11 @@ class Journal:
             try:
                 import numpy as np
 
-                entry_timestamp = np.datetime64(entry.timestamp, "M")
+                entry_timestamp_np = np.datetime64(entry.timestamp, "M")
             except (ImportError, TypeError, ValueError):
-                entry_timestamp = entry.timestamp
+                entry_timestamp_np = entry.timestamp
 
-            if entry_timestamp <= et_normalized:
+            if entry_timestamp_np <= et_normalized_np:
                 for posting in entry.postings:
                     if (
                         posting.account_id == account_id

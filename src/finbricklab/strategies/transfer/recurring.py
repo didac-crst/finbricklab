@@ -151,7 +151,7 @@ class TransferRecurring(ITransferStrategy):
         # Normalize start_date to month precision and find index
         if brick.start_date:
             start_m = np.datetime64(brick.start_date, "M")
-            start_idx = np.searchsorted(ctx.t_index, start_m)
+            start_idx = int(np.searchsorted(ctx.t_index, start_m))
         else:
             start_idx = 0
 
