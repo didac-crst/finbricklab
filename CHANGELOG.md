@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-01-XX
+
+### Fixed
+- **FX transfers**: Per-currency zero-sum with correct P&L signs; FX pair base validation
+- **Journal timestamps**: Normalized to month granularity for deterministic ordering across mixed types
+- **Debit/credit**: Corrected posting_side labels for transfers, flows, and liabilities; removed hardcoded currency
+- **Config validation**: Scheduled/recurring transfer validations now use ConfigError instead of assertions
+- **Private equity**: Monthly compounding with integer exponent (no fractional Decimal**)
+
+### Added
+- **Credit line strategy**: Added `prepare()` method with full config validation
+- **Private equity strategy**: Added `prepare()` method with config validation
+- **Overdraft policy**: Configurable `overdraft_policy` = ignore|warn|raise (default: ignore); `overdraft_limit=None` (unlimited default)
+- **BOUNDARY_ONLY mode**: Filters transfers that touch boundary accounts
+
+### Changed
+- **Cash valuation**: Apply active mask before interest calculations (don't compute then zero out)
+- **Credit line**: Pre-start balance = 0; apply `initial_draw` only at `ms==0`; month-delta billing from `ms>=1`
+- **Private equity**: Monthly drift calculation using float math for fractional exponent, then integer Decimal** month_idx
+
+### Documentation
+- Documented `credit_line.initial_draw` defaults to 0 (set explicitly to avoid surprises)
+- Documented `billing_day` reserved for future calendar-accurate cycles
+- Documented `overdraft_limit=None` (unlimited default) and `overdraft_policy='ignore'` default
+- Added note that strict overdraft enforcement is opt-in via `overdraft_policy='raise'`
+
 ## [0.1.1] - 2025-10-25
 
 ### Fixed
