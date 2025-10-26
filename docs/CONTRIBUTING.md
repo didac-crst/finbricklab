@@ -7,7 +7,7 @@ Thank you for your interest in contributing to FinBrickLab! This guide will help
 * [Development Setup](#development-setup)
 * [Project Structure](#project-structure)
 * [Adding New Strategies](#adding-new-strategies)
-* [Adding New Charts](#adding-new-charts)
+* [Adding New Charts](#adding-new-charts-section)
 * [Testing Guidelines](#testing-guidelines)
 * [Code Style](#code-style)
 * [Pull Request Process](#pull-request-process)
@@ -193,7 +193,7 @@ asset = ABrick(
 
 ---
 
-## Adding New Charts
+## Adding New Charts {#adding-new-charts-section}
 
 ### 1. Implement Chart Function
 
