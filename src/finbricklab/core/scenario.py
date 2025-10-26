@@ -1138,8 +1138,22 @@ class Scenario:
 
         # Determine the cash account to route to
         cash_account = brick.links.get("route", {}).get("to") if brick.links else None
+
+        # Fallback to settlement_default_cash_id or first cash account
         if not cash_account:
-            return  # No routing specified
+            if self.settlement_default_cash_id:
+                cash_account = self.settlement_default_cash_id
+            else:
+                # Fallback to first cash brick in scenario
+                cash_ids = [
+                    b.id
+                    for b in self.bricks
+                    if isinstance(b, ABrick) and b.kind == K.A_CASH
+                ]
+                cash_account = cash_ids[0] if cash_ids else None
+
+        if not cash_account:
+            return  # Still no cash account available
 
         # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
@@ -1253,8 +1267,20 @@ class Scenario:
         # Create postings for the liability
         postings = []
 
-        # Determine the cash account to route to (use settlement default)
-        cash_account = self.settlement_default_cash_id or "cash"
+        # Determine the cash account to route to
+        if self.settlement_default_cash_id:
+            cash_account = self.settlement_default_cash_id
+        else:
+            # Fallback to first cash account in scenario
+            cash_ids = [
+                b.id
+                for b in self.bricks
+                if isinstance(b, ABrick) and b.kind == K.A_CASH
+            ]
+            if not cash_ids:
+                # No cash account available - skip journal entry
+                return
+            cash_account = cash_ids[0]
 
         # Create boundary account for the liability using brick_id
         boundary_account = f"liability:{brick.id}"
