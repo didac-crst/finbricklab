@@ -243,7 +243,11 @@ class BrickCompiler:
                 id=txn_id,
                 timestamp=timestamp_dt,
                 postings=postings,
-                metadata={"brick_id": brick.id, "brick_type": "flow", "kind": brick.kind},
+                metadata={
+                    "brick_id": brick.id,
+                    "brick_type": "flow",
+                    "kind": brick.kind,
+                },
             )
             entries.append(entry)
             return entries
