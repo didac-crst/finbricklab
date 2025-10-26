@@ -191,8 +191,9 @@ class Journal:
         # Normalize timestamp to month precision for comparison
         try:
             import numpy as np
+            from typing import Any
 
-            et_normalized_np = np.datetime64(at_timestamp, "M")
+            et_normalized_np: Any = np.datetime64(at_timestamp, "M")
         except (ImportError, TypeError, ValueError):
             et_normalized_np = at_timestamp
 
@@ -205,8 +206,9 @@ class Journal:
         for entry in sorted_entries:
             try:
                 import numpy as np
+                from typing import Any
 
-                entry_timestamp_np = np.datetime64(entry.timestamp, "M")
+                entry_timestamp_np: Any = np.datetime64(entry.timestamp, "M")
             except (ImportError, TypeError, ValueError):
                 entry_timestamp_np = entry.timestamp
 
