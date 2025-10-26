@@ -9,7 +9,7 @@ from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.schedule.mortgage_annuity import ScheduleMortgageAnnuity
+from finbricklab.strategies.schedule.loan_annuity import ScheduleLoanAnnuity
 
 
 class TestMortgageAnnuityMath:
@@ -26,7 +26,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -39,7 +39,7 @@ class TestMortgageAnnuityMath:
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
         # Create strategy and simulate
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -78,7 +78,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -90,12 +90,12 @@ class TestMortgageAnnuityMath:
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
         # Check that debt balance decreases over time
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
 
         # Initial balance should equal principal
         assert (
@@ -127,7 +127,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -138,12 +138,12 @@ class TestMortgageAnnuityMath:
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")  # 24 months
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
         # Debt balance should decrease monotonically
-        debt_balance = result["debt_balance"]
+        debt_balance = result["liabilities"]
         assert len(debt_balance) > 1, "Should have multiple time periods"
 
         # Check that balance decreases (or stays same due to rounding)
@@ -161,11 +161,12 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
                 "term_months": term_months,
+                "balloon_policy": "payoff",  # Explicitly request full payoff for this test
             },
         )
 
@@ -173,12 +174,12 @@ class TestMortgageAnnuityMath:
         t_index = np.arange("2026-01", "2031-01", dtype="datetime64[M]")  # 5 years
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
         # Final balance should be zero (within rounding tolerance)
-        final_balance = result["debt_balance"][-1]
+        final_balance = result["liabilities"][-1]
         assert abs(final_balance) < 1.0, f"Final balance not zero: {final_balance:.2f}"
 
     def test_interest_decreases_over_time(self):
@@ -190,7 +191,7 @@ class TestMortgageAnnuityMath:
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={
                 "principal": principal,
                 "rate_pa": rate_pa,
@@ -201,7 +202,7 @@ class TestMortgageAnnuityMath:
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")  # 24 months
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ScheduleMortgageAnnuity()
+        strategy = ScheduleLoanAnnuity()
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
@@ -230,7 +231,7 @@ class TestMortgageAnnuityMath:
             mortgage = LBrick(
                 id=f"mortgage_{rate_pa}",
                 name=f"Mortgage {rate_pa}%",
-                kind=K.L_MORT_ANN,
+                kind=K.L_LOAN_ANNUITY,
                 spec={
                     "principal": principal,
                     "rate_pa": rate_pa,
@@ -241,7 +242,7 @@ class TestMortgageAnnuityMath:
             t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
             ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-            strategy = ScheduleMortgageAnnuity()
+            strategy = ScheduleLoanAnnuity()
             strategy.prepare(mortgage, ctx)
             result = strategy.simulate(mortgage, ctx)
 
@@ -272,7 +273,7 @@ class TestMortgageScenarioIntegration:
         house = ABrick(
             id="house",
             name="Primary Residence",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 500000.0,
                 "fees_pct": 0.05,
@@ -284,7 +285,7 @@ class TestMortgageScenarioIntegration:
         mortgage = LBrick(
             id="mortgage",
             name="Home Loan",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.034, "term_months": 300},
         )
@@ -306,7 +307,7 @@ class TestMortgageScenarioIntegration:
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
         # Verify mortgage debt balance is reasonable
-        mortgage_balance = results["outputs"]["mortgage"]["debt_balance"]
+        mortgage_balance = results["outputs"]["mortgage"]["liabilities"]
         assert mortgage_balance[0] > 0, "Mortgage should have initial debt"
         assert (
             mortgage_balance[-1] < mortgage_balance[0]
@@ -323,14 +324,14 @@ class TestMortgageScenarioIntegration:
         house = ABrick(
             id="house",
             name="Property",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 300000.0, "fees_pct": 0.05, "appreciation_pa": 0.02},
         )
 
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.03, "term_months": 240},
         )

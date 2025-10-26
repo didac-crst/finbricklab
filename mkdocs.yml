@@ -37,6 +37,9 @@ plugins:
             merge_init_into_class: true
             separate_signature: true
             filters: ["!^_"]
+      watch: [src]
+      griffe:
+        warn_unknown_settings: false
 
 markdown_extensions:
   - admonition

@@ -1,3 +1,8 @@
-# finbricklab.strategies.flow.expense
+# finbricklab.strategies.flow (Expense)
 
-::: finbricklab.strategies.flow.expense
+Flow strategies for expense modeling.
+
+## Expense Strategies
+
+::: finbricklab.strategies.flow.expense_onetime
+::: finbricklab.strategies.flow.expense_recurring

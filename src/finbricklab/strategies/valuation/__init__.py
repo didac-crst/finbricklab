@@ -3,11 +3,13 @@ Valuation strategies for asset bricks.
 """
 
 from .cash import ValuationCash
-from .etf_unitized import ValuationETFUnitized
-from .property_discrete import ValuationPropertyDiscrete
+from .private_equity import ValuationPrivateEquity
+from .property import ValuationProperty
+from .security_unitized import ValuationSecurityUnitized
 
 __all__ = [
     "ValuationCash",
-    "ValuationPropertyDiscrete",
-    "ValuationETFUnitized",
+    "ValuationProperty",
+    "ValuationSecurityUnitized",
+    "ValuationPrivateEquity",
 ]

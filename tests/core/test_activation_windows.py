@@ -26,7 +26,7 @@ class TestActivationWindows:
         income = FBrick(
             id="income",
             name="Delayed Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 4000.0},
             start_date=date(2026, 3, 1),  # Starts in month 3
         )
@@ -66,7 +66,7 @@ class TestActivationWindows:
         income = FBrick(
             id="income",
             name="Temporary Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 3000.0},
             start_date=date(2026, 2, 1),
             end_date=date(2026, 4, 30),  # Ends in month 4
@@ -107,7 +107,7 @@ class TestActivationWindows:
         expense = FBrick(
             id="expense",
             name="Temporary Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 2000.0},
             start_date=date(2026, 2, 1),
             duration_m=4,  # Runs for 4 months
@@ -150,7 +150,7 @@ class TestActivationWindows:
         asset = ABrick(
             id="asset",
             name="Temporary Asset",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 100000.0,
                 "fees_pct": 0.05,
@@ -171,7 +171,7 @@ class TestActivationWindows:
 
         # Check asset behavior during window
         asset_output = results["outputs"]["asset"]
-        asset_value = asset_output["asset_value"]
+        asset_value = asset_output["assets"]
 
         # Month 1: no asset value (not active)
         assert asset_value[0] == 0, "Month 1 should have no asset value"
@@ -218,7 +218,7 @@ class TestActivationWindows:
         income = FBrick(
             id="income",
             name="Contract Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 5000.0},
             start_date=date(2026, 2, 1),
             end_date=date(2026, 6, 30),
@@ -228,7 +228,7 @@ class TestActivationWindows:
         expense = FBrick(
             id="expense",
             name="Project Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 3000.0},
             start_date=date(2026, 4, 1),
             end_date=date(2026, 8, 31),
@@ -290,7 +290,7 @@ class TestActivationWindows:
         asset = ABrick(
             id="asset",
             name="Temporary Asset",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 50000.0,
                 "fees_pct": 0.03,
@@ -337,7 +337,7 @@ class TestActivationWindows:
         income = FBrick(
             id="income",
             name="Income",
-            kind=K.F_INCOME_FIXED,
+            kind=K.F_INCOME_RECURRING,
             spec={"amount_monthly": 4000.0},
             start_date=date(2026, 2, 1),
             duration_m=6,
@@ -346,7 +346,7 @@ class TestActivationWindows:
         expense = FBrick(
             id="expense",
             name="Expense",
-            kind=K.F_EXPENSE_FIXED,
+            kind=K.F_EXPENSE_RECURRING,
             spec={"amount_monthly": 2000.0},
             start_date=date(2026, 3, 1),
             end_date=date(2026, 7, 31),

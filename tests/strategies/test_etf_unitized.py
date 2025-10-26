@@ -9,7 +9,7 @@ from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.valuation.etf_unitized import ValuationETFUnitized
+from finbricklab.strategies.valuation.security_unitized import ValuationSecurityUnitized
 
 
 class TestETFUnitizedMath:
@@ -25,7 +25,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Test ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": initial_price,
@@ -39,14 +39,14 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
         # Verify units × price = value (within rounding tolerance)
         # Note: We need to extract the internal price array from the strategy
         # For now, let's test that the value is reasonable and positive
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         assert len(asset_values) > 0, "Should have asset values"
         assert np.all(asset_values > 0), "Asset values should be positive"
@@ -69,7 +69,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="ETF with Split",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": 100.0,
@@ -83,11 +83,11 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         # Value before split (month 5)
         value_before_split = asset_values[5]
@@ -105,7 +105,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Buy and Hold ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 500.0,
                 "price0": 150.0,
@@ -118,7 +118,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -131,7 +131,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="ETF with Auto-Sell",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 200.0,
                 "price0": 75.0,
@@ -144,7 +144,7 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
@@ -156,7 +156,7 @@ class TestETFUnitizedMath:
         ), "Should have cash inflow from liquidation in final month"
 
         # Asset value should be zero after sale
-        assert result["asset_value"][-1] == 0, "Asset value should be zero after sale"
+        assert result["assets"][-1] == 0, "Asset value should be zero after sale"
 
     def test_different_initial_units_produce_proportional_values(self):
         """Test that different initial units produce proportionally different values."""
@@ -172,7 +172,7 @@ class TestETFUnitizedMath:
             etf = ABrick(
                 id=f"etf_{units}",
                 name=f"ETF {units} units",
-                kind=K.A_ETF_UNITIZED,
+                kind=K.A_SECURITY_UNITIZED,
                 spec={
                     "initial_units": units,
                     "price0": initial_price,
@@ -185,11 +185,11 @@ class TestETFUnitizedMath:
             t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
             ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-            strategy = ValuationETFUnitized()
+            strategy = ValuationSecurityUnitized()
             strategy.prepare(etf, ctx)
             result = strategy.simulate(etf, ctx)
 
-            final_values.append(result["asset_value"][-1])
+            final_values.append(result["assets"][-1])
 
         # Values should be proportional to unit amounts
         ratio_units = unit_amounts[1] / unit_amounts[0]
@@ -204,7 +204,7 @@ class TestETFUnitizedMath:
         etf = ABrick(
             id="etf",
             name="Volatile ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 1000.0,
                 "price0": 100.0,
@@ -218,11 +218,11 @@ class TestETFUnitizedMath:
         t_index = np.arange("2026-01", "2029-01", dtype="datetime64[M]")
         ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-        strategy = ValuationETFUnitized()
+        strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
         result = strategy.simulate(etf, ctx)
 
-        asset_values = result["asset_value"]
+        asset_values = result["assets"]
 
         # Calculate monthly returns
         returns = np.diff(asset_values) / asset_values[:-1]
@@ -255,7 +255,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Equity ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 50.0,
                 "price0": 200.0,
@@ -268,7 +268,7 @@ class TestETFScenarioIntegration:
         house = ABrick(
             id="house",
             name="Real Estate",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 300000.0,
                 "fees_pct": 0.03,
@@ -287,7 +287,7 @@ class TestETFScenarioIntegration:
 
         # Verify total assets include ETF value
         total_assets = results["totals"]["assets"]
-        etf_value = results["outputs"]["etf"]["asset_value"]
+        etf_value = results["outputs"]["etf"]["assets"]
 
         # Total assets should include ETF value (among other assets)
         assert np.all(
@@ -311,7 +311,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Growth ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 100.0,
                 "price0": 150.0,
@@ -334,7 +334,7 @@ class TestETFScenarioIntegration:
         assert final_month_data["cash_in"] > 0, "Should have cash inflow from ETF sale"
 
         # ETF asset value should be zero in final month
-        etf_final_value = results["outputs"]["etf"]["asset_value"][-1]
+        etf_final_value = results["outputs"]["etf"]["assets"][-1]
         assert etf_final_value == 0, "ETF value should be zero after auto-sell"
 
     def test_etf_validation_passes(self):
@@ -346,7 +346,7 @@ class TestETFScenarioIntegration:
         etf = ABrick(
             id="etf",
             name="Test ETF",
-            kind=K.A_ETF_UNITIZED,
+            kind=K.A_SECURITY_UNITIZED,
             spec={
                 "initial_units": 200.0,
                 "price0": 100.0,

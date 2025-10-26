@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from datetime import date
 
 from .context import ScenarioContext
-from .interfaces import IFlowStrategy, IScheduleStrategy, IValuationStrategy
+from .interfaces import (
+    IFlowStrategy,
+    IScheduleStrategy,
+    ITransferStrategy,
+    IValuationStrategy,
+)
 from .results import BrickOutput
 
 
@@ -25,7 +30,7 @@ class FinBrickABC:
     Attributes:
         id: Unique identifier for the brick within a scenario
         name: Human-readable name for the brick
-        kind: Dot-separated string discriminator (e.g., 'a.cash', 'l.mortgage.annuity')
+        kind: Dot-separated string discriminator (e.g., 'a.cash', 'l.loan.annuity')
         currency: Currency code for the brick (default: 'EUR')
         spec: Dictionary containing strategy-specific parameters
         links: Dictionary for referencing other bricks (e.g., {'principal': {'from_house': 'house_id'}})
@@ -100,8 +105,8 @@ class ABrick(FinBrickABC):
 
     Examples:
         Cash account: kind='a.cash'
-        Real estate: kind='a.property_discrete'
-        ETF investment: kind='a.etf_unitized'
+        Real estate: kind='a.property'
+        ETF investment: kind='a.security.unitized'
     """
 
     valuation: IValuationStrategy = None
@@ -161,7 +166,7 @@ class LBrick(FinBrickABC):
         schedule: The schedule strategy object (set automatically by registry)
 
     Examples:
-        Mortgage: kind='l.mortgage.annuity'
+        Mortgage: kind='l.loan.annuity'
         Personal loan: kind='l.loan.personal'
         Credit card: kind='l.credit.card'
     """
@@ -272,6 +277,71 @@ class FBrick(FinBrickABC):
         return self.flow.simulate(self, ctx)
 
 
+@dataclass
+class TBrick(FinBrickABC):
+    """
+    Transfer brick for moving money between accounts within the system.
+
+    This class represents internal transfers that move money between
+    internal accounts without affecting net worth. The actual behavior
+    is determined by the transfer strategy associated with the brick's
+    'kind' discriminator.
+
+    Attributes:
+        transfer: The transfer strategy object (set automatically by registry)
+        transparent: Whether this transfer should be hidden in analysis views by default
+
+    Examples:
+        Lump sum transfer: kind='t.transfer.lumpsum'
+        Recurring transfer: kind='t.transfer.recurring'
+        Scheduled transfer: kind='t.transfer.scheduled'
+    """
+
+    transfer: ITransferStrategy = None
+    transparent: bool = True  # Default to hidden in analysis views
+
+    def __post_init__(self):
+        """Set the family type to 't' for transfers."""
+        self.family = "t"
+
+    def prepare(self, ctx: ScenarioContext) -> None:
+        """
+        Prepare the transfer for simulation.
+
+        Delegates to the associated transfer strategy's prepare method.
+
+        Args:
+            ctx: The simulation context containing time index and registry
+        """
+        if self.transfer is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Transfer brick '{self.id}' ({self.kind}) has no transfer strategy configured"
+            )
+        self.transfer.prepare(self, ctx)
+
+    def simulate(self, ctx: ScenarioContext) -> BrickOutput:
+        """
+        Simulate the transfer over the time period.
+
+        Delegates to the associated transfer strategy's simulate method.
+
+        Args:
+            ctx: The simulation context containing time index and registry
+
+        Returns:
+            BrickOutput containing transfer flows and events
+        """
+        if self.transfer is None:
+            from .errors import ConfigError
+
+            raise ConfigError(
+                f"Transfer brick '{self.id}' ({self.kind}) has no transfer strategy configured"
+            )
+        return self.transfer.simulate(self, ctx)
+
+
 # Global registries mapping kind strings to strategy implementations
 ValuationRegistry: dict[str, IValuationStrategy] = {}
 ScheduleRegistry: dict[str, IScheduleStrategy] = {}
@@ -310,6 +380,11 @@ def wire_strategies(bricks: list[FinBrickABC]) -> None:
             if brick.kind not in FlowRegistry:
                 raise ConfigError(f"Unknown flow strategy: {brick.kind}")
             brick.flow = FlowRegistry[brick.kind]
+
+        elif brick.family == "t":
+            if brick.kind not in FlowRegistry:
+                raise ConfigError(f"Unknown transfer strategy: {brick.kind}")
+            brick.transfer = FlowRegistry[brick.kind]
 
         else:
             raise ConfigError(f"Unknown brick family: {brick.family}")

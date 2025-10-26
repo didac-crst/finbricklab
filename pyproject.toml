@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "finbricklab"
-version = "0.1.0"
+version = "0.1.2"
 description = "Strategy-Driven Brick Architecture for Financial Scenarios"
 authors = ["FinBrickLab Team"]
 license = "Apache-2.0"
@@ -28,6 +28,7 @@ kaleido = "^1.1.0"
 
 [tool.poetry.extras]
 viz = ["plotly", "kaleido"]
+dev = ["pytest", "ruff", "mypy", "mkdocs", "mkdocs-material", "hypothesis"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
@@ -100,6 +101,9 @@ ignore = [
     "D203",  # no-blank-line-before-class
     "D213",  # multi-line-summary-second-line
     "D401",  # first line imperative mood (relax)
+    "UP007", # Use X | Y for type annotations (prefer Union for now)
+    "UP038", # Use X | Y in isinstance calls (prefer tuple for now)
+    "C401",  # Unnecessary generator (some prefer explicit list)
 ]
 
 # [tool.ruff.lint.pydocstyle]
@@ -117,6 +121,9 @@ color = true
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
+"examples/*.py" = ["B007", "E402", "F841"]  # Examples are for demonstration, allow some linting flexibility
+"tests/**/*.py" = ["F841", "C401"]  # Allow unused variables and generator comprehensions in tests
+"src/**/*.py" = ["F841"]  # Allow unused variables in source (for debugging/comments)
 
 [tool.mypy]
 python_version = "3.11"

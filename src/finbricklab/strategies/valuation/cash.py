@@ -10,6 +10,7 @@ import numpy as np
 
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IValuationStrategy
 from finbricklab.core.results import BrickOutput
 
@@ -84,14 +85,25 @@ class ValuationCash(IValuationStrategy):
             brick.spec[key] = arr
 
         # Set liquidity policy defaults
-        brick.spec.setdefault(
-            "overdraft_limit", 0.0
-        )  # how far below 0 cash may go (EUR)
+        # overdraft_limit: None = unlimited (default for backward compatibility)
+        if "overdraft_limit" not in brick.spec:
+            brick.spec["overdraft_limit"] = None
         brick.spec.setdefault("min_buffer", 0.0)  # desired minimum cash balance (EUR)
+        brick.spec.setdefault("overdraft_policy", "ignore")  # ignore|warn|raise
 
-        # Validate non-negative constraints
-        if brick.spec["overdraft_limit"] < 0:
-            raise ValueError("overdraft_limit must be >= 0")
+        # Validate overdraft_limit if provided
+        if brick.spec["overdraft_limit"] is not None:
+            if brick.spec["overdraft_limit"] < 0:
+                raise ConfigError(
+                    f"{brick.id}: overdraft_limit must be >= 0, got {brick.spec['overdraft_limit']}"
+                )
+            # Validate overdraft_policy
+            policy = brick.spec["overdraft_policy"].lower()
+            if policy not in {"ignore", "warn", "raise"}:
+                raise ConfigError(
+                    f"{brick.id}: overdraft_policy must be 'ignore'|'warn'|'raise', got {policy!r}"
+                )
+            brick.spec["overdraft_policy"] = policy
         if brick.spec["min_buffer"] < 0:
             raise ValueError("min_buffer must be >= 0")
 
@@ -122,24 +134,111 @@ class ValuationCash(IValuationStrategy):
         T = len(ctx.t_index)
         bal = np.zeros(T)
         r_m = brick.spec["interest_pa"] / 12.0  # Monthly interest rate
-        cash_in = brick.spec["external_in"].copy()
-        cash_out = brick.spec["external_out"].copy()
+        # Don't copy the arrays - use them directly to allow runtime modifications
+        cash_in = brick.spec["external_in"]
+        cash_out = brick.spec["external_out"]
+
+        # Support for post-interest adjustments (for maturity transfers)
+        # Coerce and validate arrays
+        post_interest_in = np.asarray(
+            brick.spec.get("post_interest_in", np.zeros(T)), dtype=float
+        )
+        post_interest_out = np.asarray(
+            brick.spec.get("post_interest_out", np.zeros(T)), dtype=float
+        )
+
+        # Validate length matches timeline
+        if len(post_interest_in) != T or len(post_interest_out) != T:
+            raise ValueError(f"{brick.id}: 'post_interest_in/out' must have length {T}")
+
+        # Initialize interest tracking array
+        interest_earned = np.zeros(T)
+
+        # Apply active mask to enforce start_date and end_date
+        from finbricklab.core.utils import active_mask
+
+        mask = active_mask(
+            ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
+        )
+
+        # Get overdraft limit and policy
+        overdraft_limit = brick.spec.get("overdraft_limit")
+        overdraft_policy = brick.spec.get("overdraft_policy", "ignore")
 
         # Calculate balance for first month
-        bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
-        bal[0] += bal[0] * r_m  # Apply interest
+        if mask[0]:
+            bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
+            # Apply interest on the balance after cash flows
+            interest_earned[0] = bal[0] * r_m
+            bal[0] *= 1 + r_m
+            # Apply post-interest adjustments (no interest on these)
+            bal[0] += post_interest_in[0] - post_interest_out[0]
+
+            # Enforce overdraft limit if configured
+            if overdraft_limit is not None and bal[0] < -overdraft_limit:
+                if overdraft_policy == "raise":
+                    raise ConfigError(
+                        f"{brick.id}: overdraft_limit exceeded at month 0: balance {bal[0]:.2f} < -{overdraft_limit:.2f}"
+                    )
+                elif overdraft_policy == "warn":
+                    import logging
+
+                    log = logging.getLogger(__name__)
+                    log.warning(
+                        "%s: overdraft_limit exceeded at month 0: balance %.2f < -%.2f",
+                        brick.id,
+                        bal[0],
+                        overdraft_limit,
+                    )
+                # "ignore": do nothing; keep balance as computed
+        else:
+            bal[0] = 0.0
+            interest_earned[0] = 0.0
 
         # Calculate balance for remaining months
         for t in range(1, T):
-            bal[t] = bal[t - 1] + cash_in[t] - cash_out[t]
-            bal[t] += bal[t] * r_m  # Apply interest
+            # Apply active mask before interest calculations
+            if mask[t]:
+                # Start with previous month's balance
+                bal[t] = bal[t - 1]
+                # Add/subtract this month's cash flows
+                bal[t] += cash_in[t] - cash_out[t]
+                # Calculate interest on the full balance (including this month's flows)
+                interest_earned[t] = bal[t] * r_m
+                # Apply interest
+                bal[t] *= 1 + r_m
+                # Apply post-interest adjustments (no interest on these)
+                bal[t] += post_interest_in[t] - post_interest_out[t]
+
+                # Enforce overdraft limit if configured
+                if overdraft_limit is not None and bal[t] < -overdraft_limit:
+                    if overdraft_policy == "raise":
+                        raise ConfigError(
+                            f"{brick.id}: overdraft_limit exceeded at month {t}: balance {bal[t]:.2f} < -{overdraft_limit:.2f}"
+                        )
+                    elif overdraft_policy == "warn":
+                        import logging
+
+                        log = logging.getLogger(__name__)
+                        log.warning(
+                            "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",
+                            brick.id,
+                            t,
+                            bal[t],
+                            overdraft_limit,
+                        )
+                    # "ignore": do nothing; keep balance as computed
+            else:
+                bal[t] = 0.0
+                interest_earned[t] = 0.0
 
         return BrickOutput(
             cash_in=np.zeros(
                 T
             ),  # Cash account doesn't generate cash flows, only receives them
             cash_out=np.zeros(T),  # Cash account doesn't generate cash outflows
-            asset_value=bal,
-            debt_balance=np.zeros(T),
+            assets=bal,
+            liabilities=np.zeros(T),
+            interest=interest_earned,  # Interest earned on cash balance
             events=[],
         )

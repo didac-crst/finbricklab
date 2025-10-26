@@ -1,15 +1,14 @@
-# FinBrickLab Examples
+# FinBrickLab Examples - Updated Architecture
 
-Comprehensive examples demonstrating FinBrickLab capabilities.
+Comprehensive examples demonstrating FinBrickLab's new architecture with unified brick handling, new strategies, and improved kind taxonomy.
 
 ## Table of Contents
 
 * [Basic Scenarios](#basic-scenarios)
-* [Entity Comparisons](#entity-comparisons)
+* [New Strategy Examples](#new-strategy-examples)
+* [Entity and MacroBrick Usage](#entity-and-macrobrick-usage)
+* [Filtered Results](#filtered-results)
 * [Advanced Patterns](#advanced-patterns)
-* [Visualization Examples](#visualization-examples)
-* [Custom Strategies](#custom-strategies)
-* [Real-World Scenarios](#real-world-scenarios)
 
 ---
 
@@ -20,12 +19,13 @@ Comprehensive examples demonstrating FinBrickLab capabilities.
 ```python
 from datetime import date
 from finbricklab import Scenario, ABrick
+from finbricklab.core.kinds import K
 
 # Create a cash account with interest
 cash = ABrick(
     id="savings",
     name="High-Yield Savings",
-    kind="a.cash",
+    kind=K.A_CASH,
     spec={
         "initial_balance": 10000.0,
         "interest_pa": 0.025
@@ -36,175 +36,374 @@ cash = ABrick(
 scenario = Scenario(id="simple_savings", name="Simple Savings", bricks=[cash])
 results = scenario.run(start=date(2026, 1, 1), months=12)
 
-print(f"Final balance: ${results['totals']['cash'].iloc[-1]:,.2f}")
+print(f"Final balance: €{results['totals']['assets'].iloc[-1]:,.2f}")
 ```
 
-### Buy vs Rent Analysis
+### Investment Portfolio
 
 ```python
-from finbricklab import Scenario, ABrick, LBrick, FBrick
+from finbricklab import Scenario, ABrick, FBrick
+from finbricklab.core.kinds import K
 
-# Renting scenario
-rent_cash = ABrick(
-    id="rent_cash",
-    name="Rent Cash",
-    kind="a.cash",
-    spec={"initial_balance": 50000.0, "interest_pa": 0.03}
+# Cash account
+cash = ABrick(
+    id="checking",
+    name="Checking Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 50000.0, "interest_pa": 0.02}
 )
 
-rent_expense = FBrick(
-    id="rent",
-    name="Monthly Rent",
-    kind="f.expense.fixed",
-    links={"from": {"from_cash": "rent_cash"}},
-    spec={
-        "amount_monthly": 2500.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-    }
-)
-
-rent_scenario = Scenario(id="rent", name="Rent Forever", bricks=[rent_cash, rent_expense])
-
-# Buying scenario
-house = ABrick(
-    id="house",
-    name="Family Home",
-    kind="a.property_discrete",
-    spec={
-        "initial_value": 500000.0,
-        "appreciation_pa": 0.025,
-        "fees_pct": 0.06
-    }
-)
-
-mortgage = LBrick(
-    id="mortgage",
-    name="Home Loan",
-    kind="l.mortgage.annuity",
-    links={"principal": {"from_house": "house"}},
-    spec={"rate_pa": 0.035, "term_months": 360}
-)
-
-buy_cash = ABrick(
-    id="buy_cash",
-    name="Buy Cash",
-    kind="a.cash",
-    spec={"initial_balance": 100000.0, "interest_pa": 0.03}
-)
-
-down_payment = FBrick(
-    id="down_payment",
-    name="Down Payment",
-    kind="f.transfer.lumpsum",
-    links={
-        "to": {"to_house": "house"},
-        "from": {"from_cash": "buy_cash"}
-    },
-    spec={
-        "amount": -100000.0,
-        "activation_window": {"start_date": "2026-01-01", "duration_m": 1}
-    }
-)
-
-buy_scenario = Scenario(
-    id="buy",
-    name="Buy Home",
-    bricks=[house, mortgage, buy_cash, down_payment]
-)
-
-# Run both scenarios
-rent_results = rent_scenario.run(start=date(2026, 1, 1), months=120)
-buy_results = buy_scenario.run(start=date(2026, 1, 1), months=120)
-
-# Compare results
-rent_net_worth = rent_results['totals']['cash'].iloc[-1]
-buy_net_worth = buy_results['totals']['assets'].iloc[-1] - buy_results['totals']['liabilities'].iloc[-1]
-
-print(f"Rent net worth: ${rent_net_worth:,.2f}")
-print(f"Buy net worth: ${buy_net_worth:,.2f}")
-print(f"Buy advantage: ${buy_net_worth - rent_net_worth:,.2f}")
-```
-
----
-
-## Entity Comparisons
-
-### Multi-Strategy Investment Comparison
-
-```python
-from finbricklab import Entity, Scenario, ABrick, FBrick
-
-# Conservative strategy
-conservative_cash = ABrick(
-    id="conservative_cash",
-    name="Conservative Cash",
-    kind="a.cash",
-    spec={"initial_balance": 100000.0, "interest_pa": 0.03}
-)
-
-conservative_scenario = Scenario(
-    id="conservative",
-    name="Conservative Strategy",
-    bricks=[conservative_cash]
-)
-
-# Aggressive strategy
-aggressive_cash = ABrick(
-    id="aggressive_cash",
-    name="Aggressive Cash",
-    kind="a.cash",
-    spec={"initial_balance": 0.0, "interest_pa": 0.03}
-)
-
-aggressive_etf = ABrick(
-    id="aggressive_etf",
+# ETF investment
+etf = ABrick(
+    id="etf",
     name="Stock ETF",
-    kind="a.etf_unitized",
+    kind=K.A_SECURITY_UNITIZED,
     spec={
-        "initial_units": 1000.0,
-        "initial_price": 100.0,
-        "drift_pa": 0.10,
-        "volatility_pa": 0.25
-    }
-)
-
-aggressive_scenario = Scenario(
-    id="aggressive",
-    name="Aggressive Strategy",
-    bricks=[aggressive_cash, aggressive_etf]
-)
-
-# Balanced strategy
-balanced_cash = ABrick(
-    id="balanced_cash",
-    name="Balanced Cash",
-    kind="a.cash",
-    spec={"initial_balance": 50000.0, "interest_pa": 0.03}
-)
-
-balanced_etf = ABrick(
-    id="balanced_etf",
-    name="Balanced ETF",
-    kind="a.etf_unitized",
-    spec={
-        "initial_units": 500.0,
-        "initial_price": 100.0,
+        "initial_units": 200.0,
+        "price0": 100.0,
         "drift_pa": 0.08,
         "volatility_pa": 0.15
     }
 )
 
-balanced_scenario = Scenario(
-    id="balanced",
-    name="Balanced Strategy",
-    bricks=[balanced_cash, balanced_etf]
+# Real estate
+property = ABrick(
+    id="property",
+    name="Investment Property",
+    kind=K.A_PROPERTY,
+    spec={
+        "initial_value": 300000.0,
+        "appreciation_pa": 0.03,
+        "fees_pct": 0.06
+    }
 )
 
-# Create entity and run scenarios
+# Mortgage
+mortgage = LBrick(
+    id="mortgage",
+    name="Property Mortgage",
+    kind=K.L_LOAN_ANNUITY,
+    spec={
+        "principal": 240000.0,
+        "rate_pa": 0.04,
+        "term_months": 300
+    }
+)
+
+# Income
+salary = FBrick(
+    id="salary",
+    name="Monthly Salary",
+    kind=K.F_INCOME_RECURRING,
+    spec={"amount_monthly": 6000.0}
+)
+
+# Expenses
+expenses = FBrick(
+    id="expenses",
+    name="Monthly Expenses",
+    kind=K.F_EXPENSE_RECURRING,
+    spec={"amount_monthly": 3000.0}
+)
+
+# Create scenario
+scenario = Scenario(
+    id="investment_portfolio",
+    name="Investment Portfolio",
+    bricks=[cash, etf, property, mortgage, salary, expenses]
+)
+
+# Run scenario
+results = scenario.run(start=date(2026, 1, 1), months=60)
+
+# Analyze results
+print(f"Final net worth: €{results['totals']['equity'].iloc[-1]:,.2f}")
+print(f"Total assets: €{results['totals']['assets'].iloc[-1]:,.2f}")
+print(f"Total liabilities: €{results['totals']['liabilities'].iloc[-1]:,.2f}")
+```
+
+---
+
+## New Strategy Examples
+
+### Credit Line (Revolving Credit)
+
+```python
+from finbricklab import Scenario, ABrick, LBrick, FBrick
+from finbricklab.core.kinds import K
+
+# Cash account
+cash = ABrick(
+    id="checking",
+    name="Checking Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 5000.0, "interest_pa": 0.02}
+)
+
+# Credit line
+credit_line = LBrick(
+    id="credit_card",
+    name="Credit Card",
+    kind=K.L_CREDIT_LINE,
+    spec={
+        "credit_limit": 10000.0,  # €10,000 credit limit
+        "rate_pa": 0.18,  # 18% APR
+        "min_payment": {
+            "type": "percent",
+            "percent": 0.02,  # 2% minimum payment
+            "floor": 25.0,  # €25 minimum
+        },
+        "billing_day": 15,  # 15th of each month
+        "start_date": "2026-01-01",
+    }
+)
+
+# Income
+salary = FBrick(
+    id="salary",
+    name="Salary",
+    kind=K.F_INCOME_RECURRING,
+    spec={"amount_monthly": 3000.0}
+)
+
+# Expenses
+expenses = FBrick(
+    id="expenses",
+    name="Monthly Expenses",
+    kind=K.F_EXPENSE_RECURRING,
+    spec={"amount_monthly": 2500.0}
+)
+
+scenario = Scenario(
+    id="credit_line_demo",
+    name="Credit Line Demo",
+    bricks=[cash, credit_line, salary, expenses]
+)
+
+results = scenario.run(start=date(2026, 1, 1), months=12)
+
+# Analyze credit line usage
+credit_balance = results["outputs"]["credit_card"]["liabilities"]
+print(f"Initial credit balance: €{credit_balance[0]:,.2f}")
+print(f"Final credit balance: €{credit_balance[-1]:,.2f}")
+```
+
+### Fixed-Term Credit (Personal Loan)
+
+```python
+# Personal loan with linear amortization
+personal_loan = LBrick(
+    id="personal_loan",
+    name="Personal Loan",
+    kind=K.L_CREDIT_FIXED,
+    spec={
+        "principal": 15000.0,  # €15,000 loan
+        "rate_pa": 0.08,  # 8% interest rate
+        "term_months": 36,  # 3 years
+        "start_date": "2026-01-01",
+    }
+)
+
+# The loan will be paid off with equal principal payments plus interest
+```
+
+### Balloon Loan
+
+```python
+# Business loan with balloon payment
+balloon_loan = LBrick(
+    id="business_loan",
+    name="Business Loan",
+    kind=K.L_LOAN_BALLOON,
+    spec={
+        "principal": 500000.0,  # €500,000 loan
+        "rate_pa": 0.06,  # 6% interest rate
+        "term_months": 60,  # 5 years
+        "amortization": {
+            "type": "interest_only",  # Interest-only for first 4 years
+            "amort_months": 0,
+        },
+        "balloon_at_maturity": "full",  # Full balloon payment
+        "start_date": "2026-01-01",
+    }
+)
+```
+
+### Private Equity Investment
+
+```python
+# Private equity fund investment
+pe_investment = ABrick(
+    id="pe_fund",
+    name="Private Equity Fund",
+    kind=K.A_PRIVATE_EQUITY,
+    spec={
+        "initial_value": 50000.0,  # €50,000 initial investment
+        "drift_pa": 0.12,  # 12% annual growth
+        "valuation_frequency": "annual",  # Annual valuations
+    }
+)
+```
+
+---
+
+## Entity and MacroBrick Usage
+
+### Unified Brick Selection
+
+```python
+from finbricklab import Entity
+from finbricklab.core.kinds import K
+
+# Create entity
+entity = Entity(id="demo", name="Demo Entity")
+
+# Create individual bricks
+entity.new_ABrick("cash", "Cash", K.A_CASH, {"initial_balance": 10000.0})
+entity.new_ABrick("etf", "ETF", K.A_SECURITY_UNITIZED, {"initial_units": 100.0, "price0": 100.0})
+entity.new_LBrick("mortgage", "Mortgage", K.L_LOAN_ANNUITY, {"principal": 200000.0, "rate_pa": 0.04})
+
+# Create MacroBricks
+entity.new_MacroBrick("investments", "Investment Portfolio", ["etf"])
+entity.new_MacroBrick("housing", "Housing", ["mortgage"])
+
+# Create scenario with unified brick selection
+# MacroBricks are automatically expanded to their constituent bricks
+scenario = entity.create_scenario(
+    id="demo_scenario",
+    name="Demo Scenario",
+    brick_ids=["cash", "investments", "housing"]  # Mix of bricks and MacroBricks
+)
+
+# Run scenario
+results = entity.run_scenario("demo_scenario", start=date(2026, 1, 1), months=12)
+```
+
+### MacroBrick Aggregation
+
+```python
+# Access MacroBrick aggregates
+housing_totals = results["by_struct"]["housing"]
+investment_totals = results["by_struct"]["investments"]
+
+# MacroBrick totals are automatically calculated
+print(f"Housing assets: €{housing_totals['asset_value'][-1]:,.2f}")
+print(f"Investment assets: €{investment_totals['asset_value'][-1]:,.2f}")
+```
+
+---
+
+## Filtered Results
+
+### Filter by Specific Bricks
+
+```python
+# Filter to show only cash and salary
+cash_salary_view = results["views"].filter(brick_ids=["cash", "salary"])
+cash_salary_monthly = cash_salary_view.monthly()
+
+print("Cash + Salary monthly totals:")
+print(cash_salary_monthly.head())
+```
+
+### Filter by MacroBricks
+
+```python
+# Filter to show only investment portfolio
+investments_view = results["views"].filter(brick_ids=["investments"])
+investments_monthly = investments_view.monthly()
+
+print("Investment portfolio monthly totals:")
+print(investments_monthly.head())
+```
+
+### Mixed Filtering
+
+```python
+# Filter to show cash + real estate MacroBrick
+mixed_view = results["views"].filter(brick_ids=["cash", "housing"])
+mixed_monthly = mixed_view.monthly()
+
+print("Cash + Real Estate monthly totals:")
+print(mixed_monthly.head())
+```
+
+### Time Aggregation on Filtered Data
+
+```python
+# Quarterly aggregation on filtered data
+investments_quarterly = investments_view.quarterly()
+print("Investment portfolio quarterly totals:")
+print(investments_quarterly)
+
+# Yearly aggregation on filtered data
+housing_yearly = housing_view.yearly()
+print("Housing yearly totals:")
+print(housing_yearly)
+```
+
+---
+
+## Advanced Patterns
+
+### Multi-Strategy Investment Comparison
+
+```python
+from finbricklab import Entity
+
+def create_investment_scenario(name: str, stock_allocation: float, bond_allocation: float):
+    """Create an investment scenario with given allocation."""
+
+    # Cash
+    cash = ABrick(
+        id=f"{name}_cash",
+        name="Cash",
+        kind=K.A_CASH,
+        spec={"initial_balance": 100000.0 * (1 - stock_allocation - bond_allocation), "interest_pa": 0.02}
+    )
+
+    # Stocks
+    stocks = ABrick(
+        id=f"{name}_stocks",
+        name="Stock ETF",
+        kind=K.A_SECURITY_UNITIZED,
+        spec={
+            "initial_units": (100000.0 * stock_allocation) / 100.0,
+            "price0": 100.0,
+            "drift_pa": 0.08,
+            "volatility_pa": 0.20
+        }
+    )
+
+    # Bonds
+    bonds = ABrick(
+        id=f"{name}_bonds",
+        name="Bond ETF",
+        kind=K.A_SECURITY_UNITIZED,
+        spec={
+            "initial_units": (100000.0 * bond_allocation) / 50.0,
+            "price0": 50.0,
+            "drift_pa": 0.04,
+            "volatility_pa": 0.05
+        }
+    )
+
+    return Scenario(
+        id=name,
+        name=name,
+        bricks=[cash, stocks, bonds]
+    )
+
+# Create different strategies
+aggressive = create_investment_scenario("aggressive", 0.8, 0.2)
+balanced = create_investment_scenario("balanced", 0.6, 0.3)
+conservative = create_investment_scenario("conservative", 0.4, 0.4)
+
+# Create entity
 entity = Entity(
     id="investment_comparison",
     name="Investment Strategy Comparison",
-    scenarios=[conservative_scenario, aggressive_scenario, balanced_scenario]
+    scenarios=[aggressive, balanced, conservative]
 )
 
 # Run all scenarios
@@ -213,752 +412,233 @@ for scenario in entity.scenarios:
 
 # Compare results
 comparison_df = entity.compare()
-print(comparison_df.tail())
-
-# Calculate breakeven
-breakeven_df = entity.breakeven_table("conservative")
-print(f"Breakeven analysis:\n{breakeven_df}")
-
-# Liquidity analysis
-liquidity_df = entity.liquidity_runway(lookback_months=12, essential_share=0.6)
-print(f"Liquidity runway:\n{liquidity_df.tail()}")
-```
-
-### Scenario with Income and Expenses
-
-```python
-from finbricklab import Entity, Scenario, ABrick, FBrick
-
-# Create comprehensive scenario with income and expenses
-checking = ABrick(
-    id="checking",
-    name="Checking Account",
-    kind="a.cash",
-    spec={"initial_balance": 25000.0, "interest_pa": 0.01}
-)
-
-# Income
-salary = FBrick(
-    id="salary",
-    name="Monthly Salary",
-    kind="f.income.fixed",
-    links={"to": {"to_checking": "checking"}},
-    spec={
-        "amount_monthly": 6000.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-    }
-)
-
-# Expenses
-rent = FBrick(
-    id="rent",
-    name="Monthly Rent",
-    kind="f.expense.fixed",
-    links={"from": {"from_checking": "checking"}},
-    spec={
-        "amount_monthly": 2500.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-    }
-)
-
-groceries = FBrick(
-    id="groceries",
-    name="Groceries",
-    kind="f.expense.fixed",
-    links={"from": {"from_checking": "checking"}},
-    spec={
-        "amount_monthly": 800.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-    }
-)
-
-# Create scenario
-budget_scenario = Scenario(
-    id="budget",
-    name="Monthly Budget",
-    bricks=[checking, salary, rent, groceries]
-)
-
-# Run scenario
-results = budget_scenario.run(start=date(2026, 1, 1), months=60)
-
-# Analyze results
-print(f"Final checking balance: ${results['totals']['cash'].iloc[-1]:,.2f}")
-print(f"Total net worth: ${results['totals']['equity'].iloc[-1]:,.2f}")
-```
-
----
-
-## MacroBrick Usage
-
-### Organizing Bricks with MacroBricks
-
-MacroBricks allow you to group related bricks within a scenario for better organization and analysis:
-
-```python
-from finbricklab import Scenario, ABrick, LBrick, MacroBrick
-
-# Individual bricks
-house = ABrick(
-    id="house",
-    name="Family Home",
-    kind="a.property_discrete",
-    spec={"initial_value": 500000.0, "appreciation_pa": 0.025, "fees_pct": 0.06}
-)
-
-mortgage = LBrick(
-    id="mortgage",
-    name="Home Loan",
-    kind="l.mortgage.annuity",
-    links={"principal": {"from_house": "house"}},
-    spec={"rate_pa": 0.035, "term_months": 360}
-)
-
-cash = ABrick(
-    id="cash",
-    name="Savings",
-    kind="a.cash",
-    spec={"initial_balance": 50000.0, "interest_pa": 0.03}
-)
-
-# Group related bricks into MacroBricks
-housing_macrobrick = MacroBrick(
-    id="housing",
-    name="Housing Portfolio",
-    members=["house", "mortgage"],
-    tags=["real_estate"]
-)
-
-cash_macrobrick = MacroBrick(
-    id="cash_reserves",
-    name="Cash Reserves",
-    members=["cash"],
-    tags=["liquid"]
-)
-
-# Create scenario with MacroBricks
-scenario = Scenario(
-    id="organized_scenario",
-    name="Organized Scenario",
-    bricks=[house, mortgage, cash],
-    macrobricks=[housing_macrobrick, cash_macrobrick]
-)
-
-# Run scenario
-results = scenario.run(start=date(2026, 1, 1), months=60)
-
-# Access MacroBrick aggregates
-housing_totals = results["by_struct"]["housing"]
-cash_totals = results["by_struct"]["cash_reserves"]
-
-# Calculate housing net worth from asset value and debt balance
-housing_net_worth = housing_totals['asset_value'][-1] - housing_totals['debt_balance'][-1]
-print(f"Housing net worth: ${housing_net_worth:,.2f}")
-
-# Cash balance is the asset value for cash
-cash_balance = cash_totals['asset_value'][-1]
-print(f"Cash balance: ${cash_balance:,.2f}")
-```
-
-### MacroBrick Selection and Overlaps
-
-```python
-# Run scenario with specific MacroBrick selection
-results = scenario.run(
-    start=date(2026, 1, 1),
-    months=60,
-    selection=["housing", "cash_reserves"]  # Select specific MacroBricks
-)
-
-# Check for overlaps
-overlaps = results.meta["overlaps"]
-if overlaps:
-    print(f"Shared bricks: {list(overlaps.keys())}")
-
-# Portfolio totals (union of all executed bricks)
-portfolio_total = results.totals['total_assets']
-print(f"Portfolio total: ${portfolio_total:,.2f}")
-
-# MacroBrick aggregates (may overlap)
-housing_total = results.by_struct["housing"]['total_assets']
-cash_total = results.by_struct["cash_reserves"]['total_assets']
-print(f"Housing total: ${housing_total:,.2f}")
-print(f"Cash total: ${cash_total:,.2f}")
-print(f"Sum of MacroBricks: ${housing_total + cash_total:,.2f}")
-```
-
-### Nested MacroBricks
-
-```python
-# Create nested MacroBrick structure
-investment_portfolio = MacroBrick(
-    id="investments",
-    name="Investment Portfolio",
-    members=["stocks", "bonds"]
-)
-
-total_portfolio = MacroBrick(
-    id="total_portfolio",
-    name="Total Portfolio",
-    members=["investments", "cash_reserves"]  # Contains other MacroBrick
-)
-
-scenario = Scenario(
-    id="nested_scenario",
-    name="Nested Portfolio",
-    bricks=[stocks, bonds, cash],
-    macrobricks=[investment_portfolio, total_portfolio]
-)
-
-# The system automatically resolves nesting
-results = scenario.run(start=date(2026, 1, 1), months=12, selection=["total_portfolio"])
-```
-
----
-
-## Advanced Patterns
-
-### Property Investment with Refinancing
-
-```python
-from finbricklab import Scenario, ABrick, LBrick, FBrick
-
-# Property
-rental_property = ABrick(
-    id="rental",
-    name="Rental Property",
-    kind="a.property_discrete",
-    spec={
-        "initial_value": 300000.0,
-        "appreciation_pa": 0.03,
-        "fees_pct": 0.06
-    }
-)
-
-# Initial mortgage
-initial_mortgage = LBrick(
-    id="initial_mortgage",
-    name="Initial Mortgage",
-    kind="l.mortgage.annuity",
-    links={"principal": {"from_property": "rental"}},
-    spec={"rate_pa": 0.045, "term_months": 360}
-)
-
-# Refinanced mortgage (starts after 5 years)
-refi_mortgage = LBrick(
-    id="refi_mortgage",
-    name="Refinanced Mortgage",
-    kind="l.mortgage.annuity",
-    links={"principal": {"from_property": "rental"}},
-    spec={"rate_pa": 0.035, "term_months": 300}
-)
-
-# Cash for down payment and refinancing costs
-cash = ABrick(
-    id="cash",
-    name="Investment Cash",
-    kind="a.cash",
-    spec={"initial_balance": 60000.0, "interest_pa": 0.02}
-)
-
-# Down payment
-down_payment = FBrick(
-    id="down_payment",
-    name="Down Payment",
-    kind="f.transfer.lumpsum",
-    links={
-        "to": {"to_property": "rental"},
-        "from": {"from_cash": "cash"}
-    },
-    spec={
-        "amount": -60000.0,
-        "activation_window": {"start_date": "2026-01-01", "duration_m": 1}
-    }
-)
-
-# Rental income
-rental_income = FBrick(
-    id="rental_income",
-    name="Rental Income",
-    kind="f.income.fixed",
-    links={"to": {"to_cash": "cash"}},
-    spec={
-        "amount_monthly": 2000.0,
-        "activation_window": {"start_date": "2026-02-01", "end_date": "2036-01-01"}
-    }
-)
-
-# Refinancing costs
-refi_costs = FBrick(
-    id="refi_costs",
-    name="Refinancing Costs",
-    kind="f.expense.fixed",
-    links={"from": {"from_cash": "cash"}},
-    spec={
-        "amount_monthly": 5000.0,  # One-time cost
-        "activation_window": {"start_date": "2031-01-01", "duration_m": 1}
-    }
-)
-
-# Create scenario
-property_scenario = Scenario(
-    id="rental_investment",
-    name="Rental Property Investment",
-    bricks=[rental_property, initial_mortgage, refi_mortgage, cash, down_payment, rental_income, refi_costs]
-)
-
-# Run scenario
-property_scenario.run(start=date(2026, 1, 1), months=120)
-
-# Analyze results
-results = property_scenario.to_canonical_frame()
-print(f"Property value: ${results['illiquid_assets'].iloc[-1]:,.2f}")
-print(f"Cash balance: ${results['cash'].iloc[-1]:,.2f}")
-print(f"Total liabilities: ${results['liabilities'].iloc[-1]:,.2f}")
-print(f"Net worth: ${results['net_worth'].iloc[-1]:,.2f}")
-```
-
-### Multi-Asset Portfolio
-
-```python
-from finbricklab import Entity, Scenario, ABrick, FBrick
-
-def create_portfolio_scenario(scenario_id: str, name: str, stock_allocation: float, bond_allocation: float, cash_allocation: float):
-    """Create a portfolio scenario with given asset allocation."""
-
-    # Assets
-    cash = ABrick(
-        id=f"{scenario_id}_cash",
-        name="Cash",
-        kind="a.cash",
-        spec={"initial_balance": 100000.0 * cash_allocation, "interest_pa": 0.02}
-    )
-
-    stocks = ABrick(
-        id=f"{scenario_id}_stocks",
-        name="Stock ETF",
-        kind="a.etf_unitized",
-        spec={
-            "initial_units": (100000.0 * stock_allocation) / 100.0,
-            "initial_price": 100.0,
-            "drift_pa": 0.08,
-            "volatility_pa": 0.20
-        }
-    )
-
-    bonds = ABrick(
-        id=f"{scenario_id}_bonds",
-        name="Bond ETF",
-        kind="a.etf_unitized",
-        spec={
-            "initial_units": (100000.0 * bond_allocation) / 50.0,
-            "initial_price": 50.0,
-            "drift_pa": 0.04,
-            "volatility_pa": 0.05
-        }
-    )
-
-    return Scenario(
-        id=scenario_id,
-        name=name,
-        bricks=[cash, stocks, bonds]
-    )
-
-# Create different portfolio strategies
-aggressive = create_portfolio_scenario("aggressive", "Aggressive (80/20/0)", 0.8, 0.2, 0.0)
-balanced = create_portfolio_scenario("balanced", "Balanced (60/30/10)", 0.6, 0.3, 0.1)
-conservative = create_portfolio_scenario("conservative", "Conservative (40/40/20)", 0.4, 0.4, 0.2)
-
-# Create entity
-portfolio_entity = Entity(
-    id="portfolio_comparison",
-    name="Portfolio Strategy Comparison",
-    scenarios=[aggressive, balanced, conservative]
-)
-
-# Run all scenarios
-for scenario in portfolio_entity.scenarios:
-    scenario.run(start=date(2026, 1, 1), months=120)
-
-# Compare results
-comparison_df = portfolio_entity.compare()
 print("Final net worth by strategy:")
 final_net_worth = comparison_df.groupby("scenario_name")["net_worth"].last()
 print(final_net_worth)
-
-# Calculate risk metrics
-from finbricklab import max_drawdown
-risk_analysis = comparison_df.groupby("scenario_name")["net_worth"].apply(max_drawdown)
-print("\nMaximum drawdown by strategy:")
-print(risk_analysis)
 ```
 
----
-
-## Visualization Examples
-
-### Entity Comparison Charts
+### Real Estate Investment with Multiple Properties
 
 ```python
-from finbricklab import Entity, net_worth_vs_time, asset_composition_small_multiples
-from finbricklab.charts import save_chart
-
-# Assuming we have an entity with multiple scenarios
-comparison_df = entity.compare()
-
-# Create net worth comparison chart
-fig1, data1 = net_worth_vs_time(comparison_df)
-fig1.show()
-
-# Create asset composition chart
-fig2, data2 = asset_composition_small_multiples(comparison_df)
-fig2.show()
-
-# Save charts
-save_chart(fig1, "net_worth_comparison.html")
-save_chart(fig2, "asset_composition.html", format="png")
-```
-
-### Scenario Deep Dive
-
-```python
-from finbricklab.charts import cashflow_waterfall, ltv_dsti_over_time, contribution_vs_market_growth
-
-# Get single scenario data
-scenario_data = comparison_df[comparison_df["scenario_name"] == "Buy Home"]
-
-# Create detailed scenario charts
-fig1, data1 = cashflow_waterfall(scenario_data, "Buy Home")
-fig1.show()
-
-fig2, data2 = ltv_dsti_over_time(scenario_data, "Buy Home")
-fig2.show()
-
-fig3, data3 = contribution_vs_market_growth(scenario_data, "Buy Home")
-fig3.show()
-```
-
-### KPI Analysis
-
-```python
-from finbricklab import liquidity_runway, fee_drag_cum, tax_burden_cum
-
-# Calculate KPIs for each scenario
-scenarios = comparison_df["scenario_name"].unique()
-kpi_results = []
-
-for scenario_name in scenarios:
-    scenario_data = comparison_df[comparison_df["scenario_name"] == scenario_name]
-
-    # Calculate various KPIs
-    runway = liquidity_runway(scenario_data).iloc[-1]
-    fee_drag = fee_drag_cum(scenario_data).iloc[-1]
-    tax_burden = tax_burden_cum(scenario_data).iloc[-1]
-
-    kpi_results.append({
-        "scenario": scenario_name,
-        "liquidity_runway_months": runway,
-        "fee_drag_pct": fee_drag * 100,
-        "tax_burden_pct": tax_burden * 100
-    })
-
-kpi_df = pd.DataFrame(kpi_results)
-print("KPI Summary:")
-print(kpi_df)
-```
-
----
-
-## Custom Strategies
-
-### Inflation-Adjusted Income
-
-```python
-from finbricklab.core.interfaces import IFlowStrategy
-from finbricklab.core.registry import FlowRegistry
-
-class InflationAdjustedIncome(IFlowStrategy):
-    """Income that adjusts with inflation."""
-
-    def route(self, context, spec, links):
-        base_amount = spec["base_amount"]
-        inflation_pa = spec.get("inflation_pa", 0.02)
-
-        # Calculate inflation adjustment
-        years_elapsed = context.current_month / 12
-        inflation_factor = (1 + inflation_pa) ** years_elapsed
-        adjusted_amount = base_amount * inflation_factor
-
-        return {links["to"]: adjusted_amount}
-
-# Register the strategy
-FlowRegistry.register("f.income.inflation_adjusted", InflationAdjustedIncome())
-
-# Use in scenario
-salary = FBrick(
-    id="salary",
-    name="Inflation-Adjusted Salary",
-    kind="f.income.inflation_adjusted",
-    links={"to": {"to_cash": "checking"}},
-    spec={
-        "base_amount": 5000.0,
-        "inflation_pa": 0.025
-    }
-)
-```
-
-### Variable Rate Mortgage
-
-```python
-from finbricklab.core.interfaces import IScheduleStrategy
-from finbricklab.core.registry import ScheduleRegistry
-
-class VariableRateMortgage(IScheduleStrategy):
-    """Mortgage with variable interest rate."""
-
-    def schedule(self, context, spec):
-        principal = spec["principal"]
-        initial_rate = spec["initial_rate_pa"]
-        rate_adjustments = spec.get("rate_adjustments", {})
-
-        # Get current rate (with adjustments)
-        current_rate = initial_rate
-        for month, adjustment in rate_adjustments.items():
-            if context.current_month >= month:
-                current_rate += adjustment
-
-        # Calculate payment (simplified)
-        monthly_rate = current_rate / 12
-        payment = principal * monthly_rate * (1 + monthly_rate) ** spec["term_months"] / ((1 + monthly_rate) ** spec["term_months"] - 1)
-
-        return [Event(
-            time=context.current_date,
-            kind="payment",
-            data={"amount": -payment, "principal": -payment * 0.7, "interest": -payment * 0.3}
-        )]
-
-# Register the strategy
-ScheduleRegistry.register("l.mortgage.variable", VariableRateMortgage())
-
-# Use in scenario
-variable_mortgage = LBrick(
-    id="variable_mortgage",
-    name="Variable Rate Mortgage",
-    kind="l.mortgage.variable",
-    spec={
-        "principal": 400000,
-        "initial_rate_pa": 0.035,
-        "term_months": 360,
-        "rate_adjustments": {
-            24: 0.01,  # 1% increase after 2 years
-            60: 0.005  # 0.5% increase after 5 years
-        }
-    }
-)
-```
-
----
-
-## Real-World Scenarios
-
-### Young Professional's Financial Plan
-
-```python
-from finbricklab import Entity, Scenario, ABrick, FBrick
-
-# Assets
-emergency_fund = ABrick(
-    id="emergency_fund",
-    name="Emergency Fund",
-    kind="a.cash",
-    spec={"initial_balance": 10000.0, "interest_pa": 0.025}
-)
-
-retirement_401k = ABrick(
-    id="retirement_401k",
-    name="401(k) Retirement",
-    kind="a.etf_unitized",
-    spec={
-        "initial_units": 100.0,
-        "initial_price": 100.0,
-        "drift_pa": 0.07,
-        "volatility_pa": 0.15
-    }
-)
-
-# Income
-salary = FBrick(
-    id="salary",
-    name="Monthly Salary",
-    kind="f.income.fixed",
-    links={"to": {"to_emergency": "emergency_fund"}},
-    spec={
-        "amount_monthly": 6000.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2046-01-01"}
-    }
-)
-
-# Expenses
-rent = FBrick(
-    id="rent",
-    name="Rent",
-    kind="f.expense.fixed",
-    links={"from": {"from_emergency": "emergency_fund"}},
-    spec={
-        "amount_monthly": 2000.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2046-01-01"}
-    }
-)
-
-living_expenses = FBrick(
-    id="living_expenses",
-    name="Living Expenses",
-    kind="f.expense.fixed",
-    links={"from": {"from_emergency": "emergency_fund"}},
-    spec={
-        "amount_monthly": 1500.0,
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2046-01-01"}
-    }
-)
-
-# 401(k) contributions
-retirement_contribution = FBrick(
-    id="retirement_contribution",
-    name="401(k) Contribution",
-    kind="f.transfer.lumpsum",
-    links={
-        "from": {"from_emergency": "emergency_fund"},
-        "to": {"to_retirement": "retirement_401k"}
-    },
-    spec={
-        "amount": -600.0,  # $600/month
-        "activation_window": {"start_date": "2026-01-01", "end_date": "2046-01-01"}
-    }
-)
-
-# Create scenario
-young_professional = Scenario(
-    id="young_professional",
-    name="Young Professional Plan",
-    bricks=[emergency_fund, retirement_401k, salary, rent, living_expenses, retirement_contribution]
-)
-
-# Run scenario
-young_professional.run(start=date(2026, 1, 1), months=240)
-
-# Analyze results
-results = young_professional.to_canonical_frame()
-print(f"Emergency fund: ${results['cash'].iloc[-1]:,.2f}")
-print(f"Retirement savings: ${results['liquid_assets'].iloc[-1]:,.2f}")
-print(f"Total net worth: ${results['net_worth'].iloc[-1]:,.2f}")
-```
-
-### Family Home Purchase
-
-```python
-from finbricklab import Entity, Scenario, ABrick, LBrick, FBrick
-
-# Create multiple home purchase scenarios
-def create_home_scenario(scenario_id: str, name: str, down_payment_pct: float, rate_pa: float):
-    """Create a home purchase scenario."""
+def create_property_scenario(property_id: str, property_value: float, mortgage_rate: float):
+    """Create a property investment scenario."""
 
     # Property
-    house = ABrick(
-        id=f"{scenario_id}_house",
-        name="Family Home",
-        kind="a.property_discrete",
+    property = ABrick(
+        id=f"{property_id}_property",
+        name=f"Property {property_id}",
+        kind=K.A_PROPERTY,
         spec={
-            "initial_value": 500000.0,
-            "appreciation_pa": 0.025,
+            "initial_value": property_value,
+            "appreciation_pa": 0.03,
             "fees_pct": 0.06
         }
     )
 
     # Mortgage
     mortgage = LBrick(
-        id=f"{scenario_id}_mortgage",
-        name="Home Loan",
-        kind="l.mortgage.annuity",
-        links={"principal": {"from_house": f"{scenario_id}_house"}},
-        spec={"rate_pa": rate_pa, "term_months": 360}
+        id=f"{property_id}_mortgage",
+        name=f"Mortgage {property_id}",
+        kind=K.L_LOAN_ANNUITY,
+        spec={
+            "principal": property_value * 0.8,  # 80% LTV
+            "rate_pa": mortgage_rate,
+            "term_months": 300
+        }
     )
 
     # Cash for down payment
     cash = ABrick(
-        id=f"{scenario_id}_cash",
-        name="Purchase Cash",
-        kind="a.cash",
-        spec={"initial_balance": 500000.0 * down_payment_pct, "interest_pa": 0.03}
-    )
-
-    # Down payment
-    down_payment = FBrick(
-        id=f"{scenario_id}_down_payment",
-        name="Down Payment",
-        kind="f.transfer.lumpsum",
-        links={
-            "to": {"to_house": f"{scenario_id}_house"},
-            "from": {"from_cash": f"{scenario_id}_cash"}
-        },
-        spec={
-            "amount": -500000.0 * down_payment_pct,
-            "activation_window": {"start_date": "2026-01-01", "duration_m": 1}
-        }
-    )
-
-    # Monthly income
-    income = FBrick(
-        id=f"{scenario_id}_income",
-        name="Monthly Income",
-        kind="f.income.fixed",
-        links={"to": {"to_cash": f"{scenario_id}_cash"}},
-        spec={
-            "amount_monthly": 8000.0,
-            "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-        }
-    )
-
-    # Living expenses
-    expenses = FBrick(
-        id=f"{scenario_id}_expenses",
-        name="Living Expenses",
-        kind="f.expense.fixed",
-        links={"from": {"from_cash": f"{scenario_id}_cash"}},
-        spec={
-            "amount_monthly": 3000.0,
-            "activation_window": {"start_date": "2026-01-01", "end_date": "2036-01-01"}
-        }
+        id=f"{property_id}_cash",
+        name=f"Cash {property_id}",
+        kind=K.A_CASH,
+        spec={"initial_balance": property_value * 0.2, "interest_pa": 0.02}
     )
 
     return Scenario(
-        id=scenario_id,
-        name=name,
-        bricks=[house, mortgage, cash, down_payment, income, expenses]
+        id=property_id,
+        name=f"Property {property_id}",
+        bricks=[property, mortgage, cash]
     )
 
-# Create different scenarios
-low_down_high_rate = create_home_scenario("low_down", "Low Down Payment (5%, 4.5%)", 0.05, 0.045)
-high_down_low_rate = create_home_scenario("high_down", "High Down Payment (20%, 3.5%)", 0.20, 0.035)
-balanced = create_home_scenario("balanced", "Balanced (10%, 4.0%)", 0.10, 0.040)
+# Create multiple property scenarios
+property1 = create_property_scenario("property1", 300000.0, 0.04)
+property2 = create_property_scenario("property2", 400000.0, 0.035)
+property3 = create_property_scenario("property3", 250000.0, 0.045)
 
 # Create entity
-home_entity = Entity(
-    id="home_purchase",
-    name="Home Purchase Strategies",
-    scenarios=[low_down_high_rate, high_down_low_rate, balanced]
+property_entity = Entity(
+    id="property_portfolio",
+    name="Property Portfolio",
+    scenarios=[property1, property2, property3]
 )
 
 # Run all scenarios
-for scenario in home_entity.scenarios:
-    scenario.run(start=date(2026, 1, 1), months=120)
+for scenario in property_entity.scenarios:
+    scenario.run(start=date(2026, 1, 1), months=60)
 
 # Compare results
-comparison_df = home_entity.compare()
-print("Home purchase comparison:")
+comparison_df = property_entity.compare()
+print("Property investment comparison:")
 final_results = comparison_df.groupby("scenario_name")["net_worth"].last()
 print(final_results)
-
-# Calculate breakeven
-breakeven_df = home_entity.breakeven_table("low_down")
-print(f"\nBreakeven analysis:\n{breakeven_df}")
 ```
+
+---
+
+## Key Features Demonstrated
+
+### 1. **Unified Brick Selection**
+- Single `brick_ids` parameter accepts both brick IDs and MacroBrick IDs
+- MacroBricks are automatically expanded to their constituent bricks
+- No need for separate `macrobrick_ids` parameter
+
+### 2. **New Financial Strategies**
+- **CreditLine**: Revolving credit with interest accrual and minimum payments
+- **CreditFixed**: Linear amortization with equal principal payments
+- **LoanBalloon**: Balloon loans with interest-only and linear amortization options
+- **PrivateEquity**: Deterministic marking with drift-based calculation
+
+### 3. **Improved Kind Taxonomy**
+- Behavior-centric naming (e.g., `K.A_SECURITY_UNITIZED` for unitized securities)
+- Clear separation between assets, liabilities, flows, and transfers
+- Extensible design for future financial instruments
+
+### 4. **Enhanced Column Names**
+- `assets` instead of `asset_value`
+- `liabilities` instead of `debt_balance`
+- Consistent naming across all output formats
+
+### 5. **Filtered Results**
+- Filter by specific bricks or MacroBricks
+- Support for all time aggregation methods (monthly, quarterly, yearly)
+- Maintains same structure as full results
+
+### 6. **MacroBrick Aggregation**
+- Automatic calculation of MacroBrick totals
+- Access via `results["by_struct"][macrobrick_id]`
+- Proper handling of overlapping bricks
+
+### 7. **Enhanced Journal System** 🆕
+- **Complete transaction-level detail** for all financial activities
+- **Double-entry bookkeeping** with proper account tracking
+- **Time-series analysis** of financial flows throughout simulation
+- **Account-level reconciliation** and debugging capabilities
+- **Filtered journal analysis** for specific components
+- **Transaction type classification** and comprehensive audit trail
+
+## Journal Analysis Examples
+
+### Basic Journal Access
+
+```python
+# Get complete journal of all transactions
+journal_df = results["views"].journal()
+print(f"Total transactions: {len(journal_df)}")
+print(f"Date range: {journal_df['timestamp'].min()} to {journal_df['timestamp'].max()}")
+
+# Show sample transactions
+print(journal_df.head())
+```
+
+### Account-Specific Transactions
+
+```python
+# Get all transactions for a specific account
+checking_txns = results["views"].transactions("checking")
+savings_txns = results["views"].transactions("savings")
+
+print("Checking account transactions:")
+print(checking_txns[['timestamp', 'amount', 'metadata']].head())
+```
+
+### Filtered Journal Analysis
+
+```python
+# Get journal for specific components
+income_journal = results["views"].filter(brick_ids=["income_sources"]).journal()
+investment_journal = results["views"].filter(brick_ids=["investment_strategy"]).journal()
+
+print(f"Income transactions: {len(income_journal)}")
+print(f"Investment transactions: {len(investment_journal)}")
+```
+
+### Advanced Journal Analysis
+
+```python
+# Monthly transaction analysis
+monthly_stats = journal_df.groupby('timestamp').agg({
+    'record_id': 'count',
+    'amount': 'sum'
+}).rename(columns={'record_id': 'transactions', 'amount': 'net_amount'})
+
+# Account balance analysis
+account_stats = journal_df.groupby('account_id').agg({
+    'amount': ['count', 'sum']
+}).round(2)
+
+# Transaction type analysis
+transaction_types = journal_df['metadata'].apply(lambda x: x.get('type', 'unknown')).value_counts()
+
+# Double-entry validation
+entry_balances = journal_df.groupby('record_id')['amount'].sum()
+unbalanced_entries = entry_balances[entry_balances.abs() > 1e-6]
+print(f"Unbalanced entries: {len(unbalanced_entries)}")
+```
+
+### Canonical Journal Structure
+
+The enhanced journal system now provides a canonical structure for better analysis:
+
+```python
+# Get journal with canonical structure
+journal_df = results["views"].journal()
+
+# New canonical columns:
+print("Canonical columns:", list(journal_df.columns))
+# ['record_id', 'brick_id', 'brick_type', 'account_id', 'timestamp', 'amount', 'currency', 'metadata', 'entry_metadata']
+
+# Example canonical record:
+print("Sample record:")
+print(journal_df.iloc[0])
+```
+
+**Canonical Structure Benefits:**
+- **record_id**: `"flow:income:salary:checking:0"` - Clean, self-documenting unique ID
+- **brick_id**: `"salary"` - Primary column for filtering
+- **brick_type**: `"flow"` - Type of financial instrument
+- **account_id**: `"Asset:checking"` - Where money flows (standardized format)
+- **posting_side**: `"credit"` or `"debit"` - Double-entry bookkeeping side
+- **metadata**: Rich transaction information
+
+**Example Queries:**
+```python
+# Filter by brick
+salary_transactions = journal_df[journal_df['brick_id'] == 'salary']
+
+# Filter by brick type
+flow_transactions = journal_df[journal_df['brick_type'] == 'flow']
+
+# Filter by account type (standardized format)
+asset_transactions = journal_df[journal_df['account_id'].str.startswith('Asset:')]
+income_transactions = journal_df[journal_df['account_id'].str.startswith('Income:')]
+liability_transactions = journal_df[journal_df['account_id'].str.startswith('Liability:')]
+
+# Filter by posting side (double-entry bookkeeping)
+debit_transactions = journal_df[journal_df['posting_side'] == 'debit']
+credit_transactions = journal_df[journal_df['posting_side'] == 'credit']
+
+# Parse record_id for complex analysis
+journal_df['parsed_record'] = journal_df['record_id'].str.split(':')
+```
+
+### Journal Benefits
+
+- **🔍 Complete Audit Trail**: Every financial transaction is recorded
+- **📊 Account Reconciliation**: Track all account balance changes
+- **⏰ Time-Series Analysis**: Analyze financial flows over time
+- **🔧 Debugging Support**: Identify issues in financial logic
+- **📋 Compliance**: Meet accounting and regulatory requirements
+- **🎯 Filtered Analysis**: Focus on specific components or time periods
+
+This new architecture provides a more intuitive and powerful way to model complex financial scenarios while maintaining backward compatibility where possible.

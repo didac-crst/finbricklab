@@ -20,22 +20,115 @@ Complete reference for all classes, functions, and modules in FinBrickLab.
 
 ```python
 class Scenario:
-    """Financial scenario orchestrator."""
+    """Financial scenario orchestrator with Journal-based bookkeeping."""
 
     def __init__(self, id: str, name: str, bricks: List[FinBrickABC]):
         """Initialize scenario with bricks."""
 
     def run(self, start: date, months: int) -> ScenarioResults:
-        """Run scenario simulation."""
+        """Run scenario simulation with Journal compilation."""
 
     def to_canonical_frame(self) -> pd.DataFrame:
         """Convert to canonical schema for Entity comparison."""
 ```
 
 **Key Methods:**
-- `run(start, months)` - Execute simulation
+- `run(start, months)` - Execute simulation with Journal compilation
 - `to_canonical_frame()` - Export to Entity-compatible format
 - `validate()` - Check configuration validity
+
+### Journal System
+
+```python
+class Journal:
+    """Double-entry bookkeeping system for financial transactions."""
+
+    def __init__(self, account_registry: AccountRegistry):
+        """Initialize journal with account registry."""
+
+    def post(self, entry: JournalEntry) -> None:
+        """Post a journal entry to the ledger."""
+
+    def balance(self, account_id: str, currency: str) -> Decimal:
+        """Get account balance for specific currency."""
+
+    def trial_balance(self) -> Dict[str, Dict[str, Decimal]]:
+        """Get trial balance for all accounts."""
+
+    def validate_invariants(self, registry: AccountRegistry) -> List[str]:
+        """Validate journal invariants and return any errors."""
+```
+
+### ScenarioResults
+
+```python
+class ScenarioResults:
+    """Results container with time aggregation and journal analysis capabilities."""
+
+    def __init__(self, totals: pd.DataFrame, registry: Registry = None, outputs: Dict = None, journal: Journal = None):
+        """Initialize with monthly totals and optional journal."""
+
+    def monthly(self) -> pd.DataFrame:
+        """Get monthly aggregated results."""
+
+    def quarterly(self) -> pd.DataFrame:
+        """Get quarterly aggregated results."""
+
+    def yearly(self) -> pd.DataFrame:
+        """Get yearly aggregated results."""
+
+def journal(self) -> pd.DataFrame:
+    """Get complete journal of all transactions."""
+    # Returns DataFrame with canonical columns: record_id (clean format), brick_id, brick_type, account_id, posting_side, timestamp, amount, currency, metadata, entry_metadata
+
+    def transactions(self, account_id: str) -> pd.DataFrame:
+        """Get all transactions for a specific account."""
+
+    def filter(self, brick_ids: List[str]) -> ScenarioResults:
+        """Filter results to specific bricks or MacroBricks."""
+```
+
+**Key Features:**
+- **Time Aggregation**: Monthly, quarterly, yearly views
+- **Journal Analysis**: Complete transaction-level detail with canonical structure
+- **Account Filtering**: Get transactions for specific accounts
+- **Component Filtering**: Focus on specific bricks or MacroBricks
+- **Double-Entry Validation**: Ensure proper accounting
+- **Canonical Structure**: Self-documenting record IDs and primary columns for easy analysis
+
+### Account System
+
+```python
+class Account:
+    """Financial account with scope and type classification."""
+
+    def __init__(self, id: str, name: str, scope: AccountScope, account_type: AccountType):
+        """Initialize account with scope and type."""
+
+class AccountRegistry:
+    """Registry for managing account definitions and validation."""
+
+    def register_account(self, account: Account) -> None:
+        """Register an account in the registry."""
+
+    def validate_transfer_accounts(self, from_id: str, to_id: str) -> None:
+        """Validate that transfer accounts are internal."""
+```
+
+### Transfer Bricks
+
+```python
+class TBrick(FinBrickABC):
+    """Transfer brick for internal account transfers."""
+
+    def __init__(self, id: str, name: str, kind: str, spec: Dict, links: Dict):
+        """Initialize transfer brick with from/to account links."""
+```
+
+**Transfer Kinds:**
+- `K.T_TRANSFER_LUMP_SUM` - One-time transfer
+- `K.T_TRANSFER_RECURRING` - Recurring transfer
+- `K.T_TRANSFER_SCHEDULED` - Scheduled transfers
 
 ### FinBrickABC
 
@@ -330,19 +423,30 @@ def month_range(start: date, months: int) -> pd.DatetimeIndex:
 
 ### Available Asset Strategies
 
-- `a.cash` - Cash account with interest
-- `a.property_discrete` - Real estate with appreciation
-- `a.etf_unitized` - ETF investment with unitized pricing
+- `K.A_CASH` - Cash account with interest
+- `K.A_PROPERTY` - Real estate with appreciation
+- `K.A_SECURITY_UNITIZED` - ETF investment with unitized pricing
+- `K.A_PRIVATE_EQUITY` - Private equity investment
 
 ### Available Liability Strategies
 
-- `l.mortgage.annuity` - Fixed-rate mortgage with annuity payments
+- `K.L_LOAN_ANNUITY` - Fixed-rate mortgage with annuity payments
+- `K.L_LOAN_BALLOON` - Balloon payment loan
+- `K.L_CREDIT_LINE` - Revolving credit line
+- `K.L_CREDIT_FIXED` - Fixed-term credit
 
 ### Available Flow Strategies
 
-- `f.transfer.lumpsum` - One-time lump sum transfer
-- `f.income.fixed` - Fixed recurring income
-- `f.expense.fixed` - Fixed recurring expense
+- `K.F_INCOME_RECURRING` - Fixed recurring income
+- `K.F_INCOME_ONE_TIME` - One-time income
+- `K.F_EXPENSE_RECURRING` - Fixed recurring expense
+- `K.F_EXPENSE_ONE_TIME` - One-time expense
+
+### Available Transfer Strategies
+
+- `K.T_TRANSFER_LUMP_SUM` - One-time lump sum transfer
+- `K.T_TRANSFER_RECURRING` - Recurring transfer
+- `K.T_TRANSFER_SCHEDULED` - Scheduled transfers
 
 ---
 

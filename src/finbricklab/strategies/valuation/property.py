@@ -14,9 +14,9 @@ from finbricklab.core.results import BrickOutput
 from finbricklab.core.utils import active_mask
 
 
-class ValuationPropertyDiscrete(IValuationStrategy):
+class ValuationProperty(IValuationStrategy):
     """
-    Real estate property valuation strategy (kind: 'a.property_discrete').
+    Real estate property valuation strategy (kind: 'a.property').
 
     This strategy models a discrete property purchase with upfront costs and
     simple appreciation over time. The property is purchased at t=0 with
@@ -130,7 +130,7 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
-        dispose = bool(brick.spec.get("sell_on_window_end", True))  # DEFAULT: True
+        dispose = bool(brick.spec.get("sell_on_window_end", False))  # DEFAULT: False
         fees_pct = float(brick.spec.get("sell_fees_pct", 0.0))
 
         if dispose and mask.any():
@@ -155,7 +155,8 @@ class ValuationPropertyDiscrete(IValuationStrategy):
         return BrickOutput(
             cash_in=cash_in,
             cash_out=cash_out,
-            asset_value=value,
-            debt_balance=np.zeros(T),
+            assets=value,
+            liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Property doesn't generate interest/dividends
             events=events,
         )

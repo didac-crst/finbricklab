@@ -55,8 +55,10 @@ If you're an engineer/analyst who hates arbitrary rules of thumb, this is for yo
   * Asset → `IValuationStrategy`
   * Liability → `IScheduleStrategy`
   * Flow → `IFlowStrategy`
-* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `a.cash`, `l.mortgage.annuity`).
-* **Scenario**: orchestrates bricks, routes cash, aggregates totals, exports results.
+  * Transfer → `ITransferStrategy` (new)
+* **Kind**: stable string key that binds a brick to a strategy implementation (e.g., `K.A_CASH`, `K.L_LOAN_ANNUITY`, `K.T_TRANSFER_LUMP_SUM`).
+* **Journal**: double-entry bookkeeping system that records all financial transactions with proper accounting invariants.
+* **Scenario**: orchestrates bricks, compiles to Journal entries, aggregates totals, exports results.
 * **Entity**: groups multiple scenarios for comparison, benchmarking, and visualization.
 * **Context**: timeline + shared configuration available in `prepare()` and `simulate()`.
 * **MacroBrick**: composite structure grouping heterogeneous bricks into named views for analysis and presentation.
@@ -92,10 +94,10 @@ flowchart TD
 
   subgraph "Strategy Level"
     B1 --> ST1[a.cash]
-    B2 --> ST2[a.property_discrete]
-    B3 --> ST3[l.mortgage.annuity]
-    B4 --> ST4[a.etf_unitized]
-    B5 --> ST5[f.income.fixed]
+    B2 --> ST2[a.property]
+    B3 --> ST3[l.loan.annuity]
+    B4 --> ST4[a.security.unitized]
+    B5 --> ST5[f.income.recurring]
   end
 
   subgraph "Data Flow"
@@ -150,6 +152,63 @@ graph TB
   classDef macrobrick fill:#f5a623,stroke:#d68910,stroke-width:2px,color:#fff;
   classDef finbrick fill:#bd10e0,stroke:#9013fe,stroke-width:2px,color:#fff;
 ```
+
+---
+
+## Journal System
+
+FinBrickLab now uses a **double-entry bookkeeping system** to ensure financial accuracy and consistency:
+
+### Key Features
+
+- **Double-Entry**: Every transaction has balanced debits and credits
+- **Account Scopes**: Internal accounts (cash, assets) vs Boundary accounts (income, expenses)
+- **Currency Precision**: Decimal arithmetic with currency-specific quantization
+- **Invariant Validation**: Automatic checking of accounting rules
+- **Deterministic**: Repeatable runs with stable transaction IDs
+
+### Account Types
+
+| Scope     | Type      | Examples                    | Purpose                    |
+|-----------|-----------|-----------------------------|----------------------------|
+| Internal  | Asset     | Cash accounts, investments  | Money within the system   |
+| Internal  | Liability | Mortgages, loans            | Debts within the system   |
+| Boundary  | Income    | Salary, dividends           | Money entering system     |
+| Boundary  | Expense   | Rent, groceries             | Money leaving system      |
+| Boundary  | P&L       | Unrealized gains, FX        | Profit/loss tracking      |
+| Boundary  | Equity    | Opening balance             | Net worth reconciliation  |
+
+### Transfer Bricks
+
+New **TBrick** family for internal transfers between accounts:
+
+```python
+# One-time transfer
+transfer = TBrick(
+    id="emergency_transfer",
+    name="Emergency Transfer",
+    kind="t.transfer.lumpsum",
+    spec={"amount": 5000.0, "currency": "EUR"},
+    links={"from": "checking", "to": "savings"}
+)
+
+# Recurring transfer
+monthly_save = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind="t.transfer.recurring",
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+### Journal Validation
+
+The system automatically validates:
+- **Zero-sum entries**: All transactions balance to zero
+- **Account scopes**: Transfers only between internal accounts
+- **Net worth consistency**: Total assets = liabilities + equity
+- **Currency precision**: Proper decimal handling per currency
 
 ---
 
@@ -263,17 +322,19 @@ from datetime import date
 from finbricklab import Scenario, ABrick, LBrick
 
 # 1) Bricks
+from finbricklab.core.kinds import K
+
 cash = ABrick(
     id="cash",
     name="Main Cash",
-    kind="a.cash",
+    kind=K.A_CASH,
     spec={"initial_balance": 50_000.0, "interest_pa": 0.02},
 )
 
 house = ABrick(
     id="house",
     name="Primary Residence",
-    kind="a.property_discrete",
+    kind=K.A_PROPERTY,
     spec={
         "initial_value": 400_000.0,
         "appreciation_pa": 0.03,
@@ -285,7 +346,7 @@ house = ABrick(
 mortgage = LBrick(
     id="mortgage",
     name="Fixed Mortgage",
-    kind="l.mortgage.annuity",
+    kind=K.L_LOAN_ANNUITY,
     spec={
         "principal": 320_000.0,
         "rate_pa": 0.035,
@@ -310,8 +371,7 @@ print("Final liabilities:", totals.iloc[-1]["liabilities"])
 
 ### Multi-cash routing
 
-You can hold multiple `a.cash` accounts in one Scenario and route flows to
-specific accounts using `links.route`:
+The Journal system automatically routes flows to all cash accounts by default, ensuring proper double-entry bookkeeping:
 
 ```python
 from finbricklab.core.kinds import K
@@ -322,31 +382,136 @@ savings  = ABrick(id="savings",  name="Savings",  kind=K.A_CASH, spec={"initial_
 salary = FBrick(
     id="salary",
     name="Salary",
-    kind=K.F_INCOME_FIXED,
-    spec={"amount_monthly": 3000.0},
-    links={"route": {"to": {"checking": 0.7, "savings": 0.3}}},   # split cash_in
+    kind=K.F_INCOME_RECURRING,
+    spec={"amount_monthly": 3000.0}
+    # No routing needed - Journal system handles automatically
 )
 
 rent = FBrick(
     id="rent",
     name="Rent",
-    kind=K.F_EXPENSE_FIXED,
-    spec={"amount_monthly": 1200.0},
-    links={"route": {"from": "checking"}},                        # pay cash_out
+    kind=K.F_EXPENSE_RECURRING,
+    spec={"amount_monthly": 1200.0}
+    # No routing needed - Journal system handles automatically
 )
 
 scenario = Scenario(
     id="multi-cash",
     name="Multi-cash routing",
-    bricks=[checking, savings, salary, rent],
-    settlement_default_cash_id="checking"
+    bricks=[checking, savings, salary, rent]
 )
 
 results = scenario.run(start=date(2026, 1, 1), months=12)
 ```
 
-If `links.route` is omitted, flows default to `scenario.settlement_default_cash_id`
-(or the first cash account in the selection).
+### Internal Transfers
+
+Use **TBrick** for explicit transfers between accounts:
+
+```python
+# Transfer money between accounts
+transfer = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind="t.transfer.recurring",
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+The Journal system ensures all transfers are properly balanced and validated.
+
+---
+
+## Entity-Centric Builder
+
+The Entity class now serves as both a catalog and builder, making it the central orchestrator for creating financial scenarios:
+
+```python
+from datetime import date
+import finbricklab.strategies  # Ensure strategies are registered
+
+from finbricklab import Entity
+from finbricklab.core.kinds import K
+
+# Create entity as the central builder
+entity = Entity(id="person", name="John Doe")
+
+# Build bricks through entity methods
+entity.new_ABrick(
+    id="checking",
+    name="Checking Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 5000.0, "interest_pa": 0.02}
+)
+
+entity.new_ABrick(
+    id="savings",
+    name="Savings Account",
+    kind=K.A_CASH,
+    spec={"initial_balance": 10000.0, "interest_pa": 0.03}
+)
+
+entity.new_FBrick(
+    id="salary",
+    name="Monthly Salary",
+    kind=K.F_INCOME_RECURRING,
+    spec={"amount_monthly": 6000.0},
+    links={"route": {"to": "checking"}}
+)
+
+# Create MacroBrick for portfolio organization
+entity.new_MacroBrick(
+    id="liquid_assets",
+    name="Liquid Assets",
+    member_ids=["checking", "savings"]
+)
+
+# Create scenarios by referencing brick IDs
+scenario = entity.create_scenario(
+    id="base_case",
+    name="Base Case Scenario",
+    brick_ids=["salary"],            # Direct brick references
+    macrobrick_ids=["liquid_assets"], # MacroBrick expansion
+    settlement_default_cash_id="checking"
+)
+
+# Run scenario
+results = scenario.run(start=date(2026, 1, 1), months=12)
+
+# Or run directly through entity
+results = entity.run_scenario(
+    "base_case",
+    start=date(2026, 1, 1),
+    months=12,
+)
+```
+
+### Key Benefits
+
+- **Single Entry Point**: Entity becomes the central builder and catalog
+- **ID-Based References**: Clean separation between structure and implementation
+- **Automatic Validation**: Built-in validation with detailed error messages
+- **Deep Copy Isolation**: Scenarios are independent, preventing state bleed
+- **MacroBrick Support**: Organize bricks hierarchically and reuse across scenarios
+
+### Error Handling
+
+The builder provides detailed error information through `ScenarioValidationError`:
+
+```python
+from finbricklab import ScenarioValidationError
+
+try:
+    entity.create_scenario(
+        id="invalid",
+        name="Invalid Scenario",
+        brick_ids=["nonexistent_brick"]
+    )
+except ScenarioValidationError as e:
+    print(f"Scenario {e.scenario_id} failed: {e}")
+    print(f"Problem IDs: {e.problem_ids}")
+```
 
 ---
 
@@ -364,16 +529,16 @@ from finbricklab.charts import net_worth_vs_time, asset_composition_small_multip
 def create_conservative_scenario():
     cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
                   spec={"initial_balance": 50000.0})
-    etf = ABrick(id="etf", name="ETF", kind=K.A_ETF_UNITIZED,
+    etf = ABrick(id="etf", name="ETF", kind=K.A_SECURITY_UNITIZED,
                  spec={"price0": 100.0, "drift_pa": 0.05, "initial_value": 30000.0})
     return Scenario(id="conservative", name="Conservative", bricks=[cash, etf])
 
 def create_aggressive_scenario():
     cash = ABrick(id="cash", name="Cash", kind=K.A_CASH,
                   spec={"initial_balance": 20000.0})
-    house = ABrick(id="house", name="House", kind=K.A_PROPERTY_DISCRETE,
+    house = ABrick(id="house", name="House", kind=K.A_PROPERTY,
                    spec={"initial_value": 400000.0, "appreciation_pa": 0.03, "fees_pct": 0.05})
-    mortgage = LBrick(id="mortgage", name="Mortgage", kind=K.L_MORT_ANN,
+    mortgage = LBrick(id="mortgage", name="Mortgage", kind=K.L_LOAN_ANNUITY,
                       spec={"principal": 320000.0, "rate_pa": 0.035, "term_months": 360})
     return Scenario(id="aggressive", name="Aggressive", bricks=[cash, house, mortgage])
 
@@ -448,13 +613,13 @@ finbrick validate -i demo.json
     {
       "id": "house",
       "name": "Primary Residence",
-      "kind": "a.property_discrete",
+      "kind": "a.property",
       "spec": { "initial_value": 400000.0, "appreciation_pa": 0.03, "fees_pct": 0.10 }
     },
     {
       "id": "mortgage",
       "name": "Fixed Mortgage",
-      "kind": "l.mortgage.annuity",
+      "kind": "l.loan.annuity",
       "spec": { "principal": 320000.0, "rate_pa": 0.035, "term_months": 360, "start_date": "2026-01-01" }
     }
   ]
@@ -471,12 +636,21 @@ finbrick validate -i demo.json
 
 | Family    | Kind                  | What it models                   | Key `spec` fields (examples)                                                      |
 | --------- | --------------------- | -------------------------------- | --------------------------------------------------------------------------------- |
-| Asset     | `a.cash`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`                                                  |
-| Asset     | `a.property_discrete` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
-| Asset     | `a.etf_unitized`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price_0`, `price_series?`, `contrib_schedule?` |
-| Liability | `l.mortgage.annuity`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
-| Flow      | `f.income.fixed`      | Fixed recurring income           | `amount_m`, `start_date?`, `end_date?`                                            |
-| Flow      | `f.expense.fixed`     | Fixed recurring expense          | `amount_m`, `start_date?`, `end_date?`                                            |
+| Asset     | `K.A_CASH`              | Interest‑bearing cash account    | `initial_balance`, `interest_pa`; `overdraft_limit=None` (unlimited), `overdraft_policy='ignore'` (ignore\|warn\|raise) |
+| Asset     | `K.A_PROPERTY` | Property with discrete valuation | `initial_value`, `appreciation_pa`, `fees_pct`                |
+| Asset     | `K.A_SECURITY_UNITIZED`      | Unitized ETF position            | `initial_units` \| `initial_value`+`price0`, `price_series?`, `contrib_schedule?` |
+| Asset     | `K.A_PRIVATE_EQUITY`      | Private equity investment        | `initial_value`, `drift_pa`, `valuation_frequency` |
+| Liability | `K.L_LOAN_ANNUITY`  | Fixed‑rate annuity mortgage      | `principal`, `rate_pa`, `term_months`, `start_date?` (normalized to window)       |
+| Liability | `K.L_LOAN_BALLOON`  | Balloon payment loan             | `principal`, `rate_pa`, `term_months`, `amortization`, `balloon_at_maturity` |
+| Liability | `K.L_CREDIT_LINE`  | Revolving credit line            | `credit_limit`, `rate_pa`, `min_payment`; `billing_day` (reserved); `initial_draw` (default: 0) |
+| Liability | `K.L_CREDIT_FIXED`  | Fixed-term credit                | `principal`, `rate_pa`, `term_months`, `start_date` |
+| Flow      | `K.F_INCOME_RECURRING`      | Fixed recurring income           | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_INCOME_ONE_TIME`      | One-time income                  | `amount`, `date`, `tax_rate?` |
+| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed recurring expense          | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_EXPENSE_ONE_TIME`     | One-time expense                 | `amount`, `date`, `tax_deductible?`, `tax_rate?` |
+| Transfer  | `K.T_TRANSFER_LUMP_SUM`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
+| Transfer  | `K.T_TRANSFER_RECURRING`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
+| Transfer  | `K.T_TRANSFER_SCHEDULED`| Scheduled internal transfers     | `schedule` (list of transfer events)                                              |
 
 > For full specs, see `src/finbricklab/strategies/` and the tests under `tests/`.
 
@@ -487,7 +661,7 @@ finbrick validate -i demo.json
 Each strategy returns a conceptual **`BrickOutput`**:
 
 * `cash_in[T]`, `cash_out[T]` — arrays aligned to the scenario timeline
-* `asset_value[T]`, `debt_balance[T]` — arrays aligned to the timeline
+* `assets[T]`, `liabilities[T]` — arrays aligned to the timeline
 * `events[]` — optional discrete events (fees, prepayments, etc.)
 
 A **Scenario run** returns a structure that includes:

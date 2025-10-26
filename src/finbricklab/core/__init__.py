@@ -11,6 +11,7 @@ from .bricks import (
     FlowRegistry,
     LBrick,
     ScheduleRegistry,
+    TBrick,
     ValuationRegistry,
     wire_strategies,
 )
@@ -30,6 +31,7 @@ from .results import (
 )
 from .scenario import Scenario, export_ledger_csv, export_run_json, validate_run
 from .specs import LMortgageSpec, term_from_amort
+from .transfer_visibility import TransferVisibility
 from .utils import (
     _apply_window_equity_neutral,
     active_mask,
@@ -65,6 +67,7 @@ __all__ = [
     "ABrick",
     "LBrick",
     "FBrick",
+    "TBrick",
     # Registries
     "ValuationRegistry",
     "ScheduleRegistry",
@@ -86,4 +89,6 @@ __all__ = [
     "active_mask",
     "_apply_window_equity_neutral",
     "resolve_prepayments_to_month_idx",
+    # Transfer Visibility
+    "TransferVisibility",
 ]

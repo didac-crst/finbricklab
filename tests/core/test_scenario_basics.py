@@ -45,7 +45,7 @@ class TestScenarioBasics:
         assert "cash" in results["outputs"]
 
         # Check that cash balance grows with interest
-        cash_balance = results["outputs"]["cash"]["asset_value"]
+        cash_balance = results["outputs"]["cash"]["assets"]
         assert cash_balance[0] > 1000.0  # Initial balance plus interest
         assert cash_balance[-1] > cash_balance[0]  # Balance grows over time
 
@@ -61,7 +61,7 @@ class TestScenarioBasics:
         house = ABrick(
             id="house",
             name="Property",
-            kind="a.property_discrete",
+            kind="a.property",
             spec={
                 "initial_value": 400000.0,
                 "fees_pct": 0.095,
@@ -72,7 +72,7 @@ class TestScenarioBasics:
         mortgage = LBrick(
             id="mortgage",
             name="Home Loan",
-            kind="l.mortgage.annuity",
+            kind="l.loan.annuity",
             links={"principal": {"from_house": "house"}},
             spec={"rate_pa": 0.034, "term_months": 300},
         )
@@ -95,7 +95,7 @@ class TestScenarioBasics:
         assert "mortgage" in results["outputs"]
 
         # Check that property value appreciates (before auto-dispose)
-        house_value = results["outputs"]["house"]["asset_value"]
+        house_value = results["outputs"]["house"]["assets"]
         assert house_value[0] > 0  # Property has value
         # Find the last non-zero value (before auto-dispose)
         non_zero_values = house_value[house_value > 0]
@@ -103,7 +103,7 @@ class TestScenarioBasics:
             assert non_zero_values[-1] > non_zero_values[0]  # Value appreciates
 
         # Check that mortgage balance decreases
-        mortgage_balance = results["outputs"]["mortgage"]["debt_balance"]
+        mortgage_balance = results["outputs"]["mortgage"]["liabilities"]
         assert mortgage_balance[0] > 0  # Initial mortgage balance
         assert mortgage_balance[-1] < mortgage_balance[0]  # Balance decreases
 

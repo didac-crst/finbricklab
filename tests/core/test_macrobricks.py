@@ -224,13 +224,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -270,13 +270,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -327,13 +327,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -372,12 +372,12 @@ class TestScenarioIntegration:
             house_output["cash_out"] + mortgage_output["cash_out"],
         )
         assert np.array_equal(
-            struct_output["asset_value"],
-            house_output["asset_value"] + mortgage_output["asset_value"],
+            struct_output["assets"],
+            house_output["assets"] + mortgage_output["assets"],
         )
         assert np.array_equal(
-            struct_output["debt_balance"],
-            house_output["debt_balance"] + mortgage_output["debt_balance"],
+            struct_output["liabilities"],
+            house_output["liabilities"] + mortgage_output["liabilities"],
         )
 
     def test_scenario_from_dict_with_structs(self):
@@ -395,7 +395,7 @@ class TestScenarioIntegration:
                 {
                     "id": "house",
                     "name": "House",
-                    "kind": "a.property_discrete",
+                    "kind": "a.property",
                     "spec": {
                         "initial_value": 400000.0,
                         "fees_pct": 0.05,
@@ -427,13 +427,13 @@ class TestScenarioIntegration:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -465,13 +465,13 @@ class TestAggregationCorrectness:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -499,18 +499,16 @@ class TestAggregationCorrectness:
         # Manual aggregation
         manual_cash_in = house_output["cash_in"] + mortgage_output["cash_in"]
         manual_cash_out = house_output["cash_out"] + mortgage_output["cash_out"]
-        manual_asset_value = (
-            house_output["asset_value"] + mortgage_output["asset_value"]
-        )
-        manual_debt_balance = (
-            house_output["debt_balance"] + mortgage_output["debt_balance"]
+        manual_assets = house_output["assets"] + mortgage_output["assets"]
+        manual_liabilities = (
+            house_output["liabilities"] + mortgage_output["liabilities"]
         )
 
         # Compare with automatic aggregation
         assert np.allclose(struct_output["cash_in"], manual_cash_in)
         assert np.allclose(struct_output["cash_out"], manual_cash_out)
-        assert np.allclose(struct_output["asset_value"], manual_asset_value)
-        assert np.allclose(struct_output["debt_balance"], manual_debt_balance)
+        assert np.allclose(struct_output["assets"], manual_assets)
+        assert np.allclose(struct_output["liabilities"], manual_liabilities)
 
     def test_portfolio_totals_deduplication(self):
         """Test that portfolio totals properly deduplicate shared bricks."""
@@ -521,13 +519,13 @@ class TestAggregationCorrectness:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         mortgage = LBrick(
             id="mortgage",
             name="Mortgage",
-            kind=K.L_MORT_ANN,
+            kind=K.L_LOAN_ANNUITY,
             spec={"rate_pa": 0.034, "term_months": 300, "principal": 320000.0},
         )
 
@@ -574,7 +572,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 
@@ -609,8 +607,8 @@ class TestAggregationInvariants:
             if hasattr(portfolio_totals.assets, "iloc")
             else portfolio_totals.assets[-1]
         )
-        primary_assets = primary_totals["asset_value"][-1]
-        property_assets = property_totals["asset_value"][-1]
+        primary_assets = primary_totals["assets"][-1]
+        property_assets = property_totals["assets"][-1]
         sum_assets = primary_assets + property_assets
 
         assert (
@@ -626,13 +624,13 @@ class TestAggregationInvariants:
         house1 = ABrick(
             id="house1",
             name="House 1",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
         house2 = ABrick(
             id="house2",
             name="House 2",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={
                 "initial_value": 300000.0,
                 "fees_pct": 0.05,
@@ -672,12 +670,12 @@ class TestAggregationInvariants:
             if hasattr(portfolio_totals.assets, "iloc")
             else portfolio_totals.assets[-1]
         )
-        primary_assets = primary_totals["asset_value"][-1]
-        secondary_assets = secondary_totals["asset_value"][-1]
+        primary_assets = primary_totals["assets"][-1]
+        secondary_assets = secondary_totals["assets"][-1]
 
         # Get cash output separately since it's not in any MacroBrick
         cash_output = results["outputs"]["cash"]
-        cash_assets = cash_output["asset_value"][-1]
+        cash_assets = cash_output["assets"][-1]
 
         sum_assets = primary_assets + secondary_assets + cash_assets
 
@@ -694,7 +692,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 
@@ -725,7 +723,7 @@ class TestAggregationInvariants:
         house = ABrick(
             id="house",
             name="House",
-            kind=K.A_PROPERTY_DISCRETE,
+            kind=K.A_PROPERTY,
             spec={"initial_value": 400000.0, "fees_pct": 0.05, "appreciation_pa": 0.03},
         )
 

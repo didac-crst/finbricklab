@@ -7,14 +7,13 @@ Complete reference for all available strategies in FinBrickLab.
 * [Asset Strategies](#asset-strategies)
 * [Liability Strategies](#liability-strategies)
 * [Flow Strategies](#flow-strategies)
-* [Strategy Registration](#strategy-registration)
-* [Custom Strategies](#custom-strategies)
+* [Transfer Strategies](#transfer-strategies)
 
 ---
 
 ## Asset Strategies
 
-### a.cash
+### K.A_CASH
 
 **Purpose**: Cash account with interest accrual.
 
@@ -32,10 +31,12 @@ Complete reference for all available strategies in FinBrickLab.
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 cash = ABrick(
     id="emergency_fund",
     name="Emergency Fund",
-    kind="a.cash",
+    kind=K.A_CASH,
     spec={
         "initial_balance": 10000.0,
         "interest_pa": 0.025
@@ -48,7 +49,7 @@ cash = ABrick(
 - No fees or restrictions
 - Immediate liquidity
 
-### a.property_discrete
+### K.A_PROPERTY
 
 **Purpose**: Real estate investment with appreciation and transaction costs.
 
@@ -70,10 +71,12 @@ cash = ABrick(
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 house = ABrick(
     id="family_home",
     name="Family Home",
-    kind="a.property_discrete",
+    kind=K.A_PROPERTY,
     spec={
         "initial_value": 500000.0,
         "appreciation_pa": 0.025,
@@ -88,7 +91,7 @@ house = ABrick(
 - Transaction fees applied on sale
 - Illiquid asset (cannot be partially sold)
 
-### a.etf_unitized
+### K.A_SECURITY_UNITIZED
 
 **Purpose**: ETF investment with unitized pricing, drift, and volatility.
 
@@ -114,10 +117,12 @@ house = ABrick(
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 etf = ABrick(
     id="stock_portfolio",
     name="Stock Portfolio",
-    kind="a.etf_unitized",
+    kind=K.A_SECURITY_UNITIZED,
     spec={
         "initial_units": 1000.0,
         "initial_price": 100.0,
@@ -134,102 +139,245 @@ etf = ABrick(
 - Can be partially liquidated
 - Liquidation threshold triggers automatic sale
 
+### K.A_PRIVATE_EQUITY
+
+**Purpose**: Private equity investment with deterministic marking.
+
+**Specification**:
+```json
+{
+  "initial_value": 100000.0,
+  "drift_pa": 0.12,
+  "valuation_frequency": "annual"
+}
+```
+
+**Parameters**:
+- `initial_value` (float): Initial investment value
+- `drift_pa` (float): Expected annual return
+- `valuation_frequency` (str): How often to mark to market ("annual", "quarterly", "monthly")
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+pe_fund = ABrick(
+    id="pe_investment",
+    name="Private Equity Fund",
+    kind=K.A_PRIVATE_EQUITY,
+    spec={
+        "initial_value": 100000.0,
+        "drift_pa": 0.12,
+        "valuation_frequency": "annual"
+    }
+)
+```
+
+**Behavior**:
+- Deterministic value growth based on drift
+- Valuation updates at specified frequency
+- Illiquid asset (no partial liquidation)
+
 ---
 
 ## Liability Strategies
 
-### l.mortgage.annuity
+### K.L_LOAN_ANNUITY
 
 **Purpose**: Fixed-rate mortgage with annuity payments.
 
 **Specification**:
 ```json
 {
+  "principal": 320000.0,
   "rate_pa": 0.034,
   "term_months": 300,
-  "fees_financed_pct": 0.0
+  "start_date": "2026-01-01"
 }
 ```
 
 **Parameters**:
+- `principal` (float): Loan principal amount
 - `rate_pa` (float): Annual interest rate
 - `term_months` (int): Loan term in months
-- `fees_financed_pct` (float): Percentage of fees financed (default 0.0)
+- `start_date` (str): Loan start date (YYYY-MM-DD)
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 mortgage = LBrick(
     id="home_loan",
     name="Home Loan",
-    kind="l.mortgage.annuity",
-    links={"principal": {"from_house": "family_home"}},
+    kind=K.L_LOAN_ANNUITY,
     spec={
+        "principal": 320000.0,
         "rate_pa": 0.035,
         "term_months": 360,
-        "fees_financed_pct": 0.0
+        "start_date": "2026-01-01"
     }
 )
 ```
 
 **Behavior**:
 - Fixed monthly payment (principal + interest)
-- Principal amount determined by linked property
 - Interest calculated on remaining balance
+- Amortization schedule follows standard annuity formula
 
-**Links**:
-- `principal`: Links to property asset to determine loan amount
+### K.L_LOAN_BALLOON
+
+**Purpose**: Balloon payment loan with interest-only or partial amortization periods.
+
+**Specification**:
+```json
+{
+  "principal": 500000.0,
+  "rate_pa": 0.06,
+  "term_months": 60,
+  "amortization": {
+    "type": "interest_only",
+    "amort_months": 0
+  },
+  "balloon_at_maturity": "full",
+  "start_date": "2026-01-01"
+}
+```
+
+**Parameters**:
+- `principal` (float): Loan principal amount
+- `rate_pa` (float): Annual interest rate
+- `term_months` (int): Loan term in months
+- `amortization` (dict): Amortization configuration
+  - `type` (str): "interest_only" or "linear"
+  - `amort_months` (int): Months of amortization (0 for interest-only)
+- `balloon_at_maturity` (str): "full" or "residual"
+- `start_date` (str): Loan start date (YYYY-MM-DD)
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+balloon_loan = LBrick(
+    id="business_loan",
+    name="Business Loan",
+    kind=K.L_LOAN_BALLOON,
+    spec={
+        "principal": 500000.0,
+        "rate_pa": 0.06,
+        "term_months": 60,
+        "amortization": {"type": "interest_only", "amort_months": 0},
+        "balloon_at_maturity": "full",
+        "start_date": "2026-01-01"
+    }
+)
+```
+
+**Behavior**:
+- Interest-only payments during specified period
+- Balloon payment of remaining balance at maturity
+- Optional partial amortization before balloon
+
+### K.L_CREDIT_LINE
+
+**Purpose**: Revolving credit line with interest accrual and minimum payments.
+
+**Specification**:
+```json
+{
+  "credit_limit": 10000.0,
+  "rate_pa": 0.18,
+  "min_payment": {
+    "type": "percent",
+    "percent": 0.02,
+    "floor": 25.0
+  },
+  "billing_day": 15,
+  "start_date": "2026-01-01"
+}
+```
+
+**Parameters**:
+- `credit_limit` (float): Maximum credit limit
+- `rate_pa` (float): Annual percentage rate (APR)
+- `min_payment` (dict): Minimum payment configuration
+  - `type` (str): "percent", "interest_only", or "fixed_or_percent"
+  - `percent` (float): Percentage of balance (for percent types)
+  - `floor` (float): Minimum payment floor
+- `billing_day` (int): Day of month for billing cycle
+- `start_date` (str): Credit line start date (YYYY-MM-DD)
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+credit_card = LBrick(
+    id="credit_card",
+    name="Credit Card",
+    kind=K.L_CREDIT_LINE,
+    spec={
+        "credit_limit": 10000.0,
+        "rate_pa": 0.18,
+        "min_payment": {"type": "percent", "percent": 0.02, "floor": 25.0},
+        "billing_day": 15,
+        "start_date": "2026-01-01"
+    }
+)
+```
+
+**Behavior**:
+- Interest accrues on outstanding balance
+- Minimum payments calculated based on policy
+- Credit limit enforcement
+- Revolving credit (can pay down and borrow again)
+
+### K.L_CREDIT_FIXED
+
+**Purpose**: Fixed-term credit with linear amortization.
+
+**Specification**:
+```json
+{
+  "principal": 15000.0,
+  "rate_pa": 0.08,
+  "term_months": 36,
+  "start_date": "2026-01-01"
+}
+```
+
+**Parameters**:
+- `principal` (float): Loan principal amount
+- `rate_pa` (float): Annual interest rate
+- `term_months` (int): Loan term in months
+- `start_date` (str): Loan start date (YYYY-MM-DD)
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+personal_loan = LBrick(
+    id="personal_loan",
+    name="Personal Loan",
+    kind=K.L_CREDIT_FIXED,
+    spec={
+        "principal": 15000.0,
+        "rate_pa": 0.08,
+        "term_months": 36,
+        "start_date": "2026-01-01"
+    }
+)
+```
+
+**Behavior**:
+- Equal principal payments each month
+- Interest calculated on outstanding balance
+- Linear amortization schedule
+- Fixed term (no revolving)
 
 ---
 
 ## Flow Strategies
 
-### f.transfer.lumpsum
-
-**Purpose**: One-time lump sum transfer between accounts.
-
-**Specification**:
-```json
-{
-  "amount": 50000.0,
-  "activation_window": {
-    "start_date": "2026-06-01",
-    "duration_m": 1
-  }
-}
-```
-
-**Parameters**:
-- `amount` (float): Transfer amount (negative for outflows)
-- `activation_window`: When the transfer occurs
-  - `start_date` (date): Start of activation window
-  - `duration_m` (int): Duration in months
-  - `end_date` (date, optional): Alternative to duration_m
-
-**Example**:
-```python
-down_payment = FBrick(
-    id="down_payment",
-    name="Down Payment",
-    kind="f.transfer.lumpsum",
-    links={
-        "to": {"to_house": "family_home"},
-        "from": {"from_cash": "savings_account"}
-    },
-    spec={
-        "amount": -50000.0,
-        "activation_window": {
-            "start_date": "2026-06-01",
-            "duration_m": 1
-        }
-    }
-)
-```
-
-**Links**:
-- `to`: Destination brick (positive amount flows here)
-- `from`: Source brick (negative amount flows from here)
-
-### f.income.fixed
+### K.F_INCOME_RECURRING
 
 **Purpose**: Fixed recurring income.
 
@@ -253,11 +401,12 @@ down_payment = FBrick(
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 salary = FBrick(
     id="salary",
     name="Monthly Salary",
-    kind="f.income.fixed",
-    links={"to": {"to_cash": "checking_account"}},
+    kind=K.F_INCOME_RECURRING,
     spec={
         "amount_monthly": 6000.0,
         "activation_window": {
@@ -268,10 +417,51 @@ salary = FBrick(
 )
 ```
 
-**Links**:
-- `to`: Destination brick (typically cash account)
+**Behavior**:
+- Fixed monthly income payments
+- No routing needed - Journal system handles automatically
+- Respects activation windows
 
-### f.expense.fixed
+### K.F_INCOME_ONE_TIME
+
+**Purpose**: One-time income event.
+
+**Specification**:
+```json
+{
+  "amount": 10000.0,
+  "date": "2026-06-01",
+  "tax_rate": 0.25
+}
+```
+
+**Parameters**:
+- `amount` (float): Income amount
+- `date` (str): Income date (YYYY-MM-DD)
+- `tax_rate` (float, optional): Tax rate on this income (default 0.0)
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+bonus = FBrick(
+    id="bonus",
+    name="Annual Bonus",
+    kind=K.F_INCOME_ONE_TIME,
+    spec={
+        "amount": 10000.0,
+        "date": "2026-06-01",
+        "tax_rate": 0.25
+    }
+)
+```
+
+**Behavior**:
+- Single income event on specified date
+- Tax calculation included
+- No routing needed - Journal system handles automatically
+
+### K.F_EXPENSE_RECURRING
 
 **Purpose**: Fixed recurring expense.
 
@@ -295,11 +485,12 @@ salary = FBrick(
 
 **Example**:
 ```python
+from finbricklab.core.kinds import K
+
 rent = FBrick(
     id="rent",
     name="Monthly Rent",
-    kind="f.expense.fixed",
-    links={"from": {"from_cash": "checking_account"}},
+    kind=K.F_EXPENSE_RECURRING,
     spec={
         "amount_monthly": 2500.0,
         "activation_window": {
@@ -310,175 +501,188 @@ rent = FBrick(
 )
 ```
 
-**Links**:
-- `from`: Source brick (typically cash account)
+**Behavior**:
+- Fixed monthly expense payments
+- No routing needed - Journal system handles automatically
+- Respects activation windows
 
----
+### K.F_EXPENSE_ONE_TIME
 
-## Strategy Registration
+**Purpose**: One-time expense event.
 
-### Automatic Registration
-
-Most strategies are registered automatically when you import the strategies module:
-
-```python
-import finbricklab.strategies  # Registers all default strategies
+**Specification**:
+```json
+{
+  "amount": 5000.0,
+  "date": "2026-03-15",
+  "tax_deductible": true,
+  "tax_rate": 0.25
+}
 ```
 
-### Manual Registration
+**Parameters**:
+- `amount` (float): Expense amount
+- `date` (str): Expense date (YYYY-MM-DD)
+- `tax_deductible` (bool, optional): Whether expense is tax deductible (default false)
+- `tax_rate` (float, optional): Tax rate for deduction (default 0.0)
 
-For custom strategies, register them explicitly:
-
+**Example**:
 ```python
-from finbricklab.core.registry import ValuationRegistry
+from finbricklab.core.kinds import K
 
-class MyCustomStrategy:
-    def value(self, context, spec):
-        return spec["custom_value"]
-
-# Register the strategy
-ValuationRegistry.register("a.custom", MyCustomStrategy())
-```
-
----
-
-## Custom Strategies
-
-### Creating a Custom Asset Strategy
-
-```python
-from finbricklab.core.interfaces import IValuationStrategy
-from finbricklab.core.context import ScenarioContext
-
-class BondStrategy(IValuationStrategy):
-    """Custom bond strategy with coupon payments."""
-
-    def value(self, context: ScenarioContext, spec: dict) -> float:
-        """Calculate bond value including accrued interest."""
-        face_value = spec["face_value"]
-        coupon_rate = spec["coupon_rate"]
-        current_price = spec.get("current_price", face_value)
-
-        # Calculate accrued interest
-        months_held = context.current_month - spec["purchase_month"]
-        accrued_interest = face_value * coupon_rate * (months_held / 12)
-
-        return current_price + accrued_interest
-
-# Register the strategy
-from finbricklab.core.registry import ValuationRegistry
-ValuationRegistry.register("a.bond", BondStrategy())
-```
-
-### Creating a Custom Flow Strategy
-
-```python
-from finbricklab.core.interfaces import IFlowStrategy
-
-class VariableIncomeStrategy(IFlowStrategy):
-    """Income that varies with inflation."""
-
-    def route(self, context: ScenarioContext, spec: dict, links: dict) -> dict:
-        """Calculate inflation-adjusted income."""
-        base_amount = spec["base_amount"]
-        inflation_rate = spec.get("inflation_pa", 0.02)
-
-        # Adjust for inflation
-        months_elapsed = context.current_month
-        inflation_factor = (1 + inflation_rate) ** (months_elapsed / 12)
-        adjusted_amount = base_amount * inflation_factor
-
-        return {links["to"]: adjusted_amount}
-
-# Register the strategy
-from finbricklab.core.registry import FlowRegistry
-FlowRegistry.register("f.income.variable", VariableIncomeStrategy())
-```
-
----
-
-## Strategy Best Practices
-
-### Naming Conventions
-
-- **Assets**: `a.{category}` (e.g., `a.cash`, `a.property`, `a.bond`)
-- **Liabilities**: `l.{type}.{subtype}` (e.g., `l.mortgage.annuity`, `l.loan.fixed`)
-- **Flows**: `f.{type}.{subtype}` (e.g., `f.income.fixed`, `f.expense.variable`)
-
-### Parameter Design
-
-1. **Use Descriptive Names**: `initial_balance` not `init_bal`
-2. **Include Units**: `rate_pa` for per-annum rates
-3. **Provide Defaults**: Use sensible defaults where possible
-4. **Validate Inputs**: Check parameter ranges and types
-
-### Performance Considerations
-
-1. **Efficient Calculations**: Avoid expensive operations in tight loops
-2. **Cache Results**: Store computed values when appropriate
-3. **Minimize Dependencies**: Reduce coupling between strategies
-4. **Test Thoroughly**: Include edge cases and boundary conditions
-
-### Testing Strategies
-
-```python
-def test_bond_strategy():
-    """Test custom bond strategy."""
-    strategy = BondStrategy()
-    context = ScenarioContext(current_month=6, ...)
-    spec = {
-        "face_value": 10000,
-        "coupon_rate": 0.05,
-        "purchase_month": 0
+major_purchase = FBrick(
+    id="car_purchase",
+    name="Car Purchase",
+    kind=K.F_EXPENSE_ONE_TIME,
+    spec={
+        "amount": 25000.0,
+        "date": "2026-03-15",
+        "tax_deductible": false,
+        "tax_rate": 0.0
     }
-
-    value = strategy.value(context, spec)
-    expected = 10000 + (10000 * 0.05 * 0.5)  # 6 months of interest
-
-    assert abs(value - expected) < 0.01
+)
 ```
+
+**Behavior**:
+- Single expense event on specified date
+- Optional tax deduction calculation
+- No routing needed - Journal system handles automatically
+
+## Transfer Strategies
+
+### K.T_TRANSFER_LUMP_SUM
+
+**Purpose**: One-time internal transfer between accounts.
+
+**Specification**:
+```json
+{
+  "amount": 5000.0,
+  "currency": "EUR"
+}
+```
+
+**Parameters**:
+- `amount` (float): Transfer amount (must be positive)
+- `currency` (str): Currency code (e.g., "EUR", "USD")
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+transfer = TBrick(
+    id="emergency_transfer",
+    name="Emergency Transfer",
+    kind=K.T_TRANSFER_LUMP_SUM,
+    spec={"amount": 5000.0, "currency": "EUR"},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates balanced journal entries (debit from source, credit to destination)
+- Validates that both accounts are internal
+- Ensures zero-sum transaction
+
+### K.T_TRANSFER_RECURRING
+
+**Purpose**: Recurring internal transfer between accounts.
+
+**Specification**:
+```json
+{
+  "amount": 1000.0,
+  "currency": "EUR",
+  "freq": "MONTHLY",
+  "day": 1
+}
+```
+
+**Parameters**:
+- `amount` (float): Transfer amount per period
+- `currency` (str): Currency code
+- `freq` (str): Frequency ("MONTHLY", "QUARTERLY", "YEARLY")
+- `day` (int): Day of month for monthly transfers (1-28)
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+monthly_save = TBrick(
+    id="monthly_save",
+    name="Monthly Savings",
+    kind=K.T_TRANSFER_RECURRING,
+    spec={"amount": 1000.0, "currency": "EUR", "freq": "MONTHLY", "day": 1},
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates recurring transfer events
+- Respects activation windows
+- Generates journal entries for each occurrence
+
+### K.T_TRANSFER_SCHEDULED
+
+**Purpose**: Scheduled internal transfers on specific dates.
+
+**Specification**:
+```json
+{
+  "schedule": [
+    {
+      "date": "2026-06-01",
+      "amount": 2000.0,
+      "currency": "EUR"
+    },
+    {
+      "date": "2026-12-01",
+      "amount": 5000.0,
+      "currency": "EUR"
+    }
+  ]
+}
+```
+
+**Parameters**:
+- `schedule` (list): List of transfer events
+  - `date` (str): Transfer date (YYYY-MM-DD)
+  - `amount` (float): Transfer amount
+  - `currency` (str): Currency code
+
+**Links**:
+- `from` (str): Source account ID
+- `to` (str): Destination account ID
+
+**Example**:
+```python
+from finbricklab.core.kinds import K
+
+bonus_transfer = TBrick(
+    id="bonus_transfer",
+    name="Bonus Transfer",
+    kind=K.T_TRANSFER_SCHEDULED,
+    spec={
+        "schedule": [
+            {"date": "2026-06-01", "amount": 2000.0, "currency": "EUR"},
+            {"date": "2026-12-01", "amount": 5000.0, "currency": "EUR"}
+        ]
+    },
+    links={"from": "checking", "to": "savings"}
+)
+```
+
+**Behavior**:
+- Creates transfers on specified dates
+- Handles multiple currencies
+- Validates date format and amounts
 
 ---
-
-## Common Patterns
-
-### Activation Windows
-
-All strategies support activation windows to control when they're active:
-
-```python
-activation_window = {
-    "start_date": "2026-01-01",    # Start date
-    "end_date": "2030-01-01",      # End date (inclusive)
-    # OR
-    "duration_m": 48               # Duration in months
-}
-```
-
-### Linking Bricks
-
-Use links to create dependencies between bricks:
-
-```python
-links = {
-    "principal": {"from_property": "house"},     # Link to property value
-    "to": {"to_account": "savings"},            # Link to destination
-    "from": {"from_account": "checking"}        # Link to source
-}
-```
-
-### Error Handling
-
-Strategies should handle edge cases gracefully:
-
-```python
-def value(self, context: ScenarioContext, spec: dict) -> float:
-    """Calculate value with error handling."""
-    try:
-        # Main calculation
-        return self._calculate_value(context, spec)
-    except KeyError as e:
-        raise ConfigError(f"Missing required parameter: {e}")
-    except ValueError as e:
-        raise ConfigError(f"Invalid parameter value: {e}")
-```

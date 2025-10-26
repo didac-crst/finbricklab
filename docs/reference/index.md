@@ -29,8 +29,8 @@ Browse the API by module. Use the search for quick jumps.
     - [transfer](finbricklab/strategies/flow/transfer.md)
   - [registry](finbricklab/strategies/registry.md)
   - **schedule**
-    - [mortgage_annuity](finbricklab/strategies/schedule/mortgage_annuity.md)
+    - [loan_annuity](finbricklab/strategies/schedule/loan_annuity.md)
   - **valuation**
     - [cash](finbricklab/strategies/valuation/cash.md)
-    - [etf_unitized](finbricklab/strategies/valuation/etf_unitized.md)
-    - [property_discrete](finbricklab/strategies/valuation/property_discrete.md)
+    - [security_unitized](finbricklab/strategies/valuation/security_unitized.md)
+    - [property](finbricklab/strategies/valuation/property.md)

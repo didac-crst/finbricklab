@@ -12,9 +12,9 @@ from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.results import BrickOutput
 
 
-class FlowExpenseFixed(IFlowStrategy):
+class FlowExpenseRecurring(IFlowStrategy):
     """
-    Fixed monthly expense flow strategy (kind: 'f.expense.fixed').
+    Fixed monthly expense flow strategy (kind: 'f.expense.recurring').
 
     This strategy models a regular monthly expense with a constant amount.
     Commonly used for living expenses, insurance, subscriptions, or other
@@ -64,7 +64,8 @@ class FlowExpenseFixed(IFlowStrategy):
         return BrickOutput(
             cash_in=np.zeros(T),
             cash_out=cash_out,
-            asset_value=np.zeros(T),
-            debt_balance=np.zeros(T),
+            assets=np.zeros(T),
+            liabilities=np.zeros(T),
+            interest=np.zeros(T),  # Flow bricks don't generate interest
             events=[],  # No events for regular expense flows
         )
