@@ -8,8 +8,6 @@ Complete reference for all available strategies in FinBrickLab.
 * [Liability Strategies](#liability-strategies)
 * [Flow Strategies](#flow-strategies)
 * [Transfer Strategies](#transfer-strategies)
-* [Strategy Registration](#strategy-registration)
-* [Custom Strategies](#custom-strategies)
 
 ---
 
