@@ -149,34 +149,48 @@ class ValuationCash(IValuationStrategy):
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
 
-        # Calculate balance for first month
-        bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
-        # Apply interest on the balance after cash flows
-        interest_earned[0] = bal[0] * r_m
-        bal[0] *= 1 + r_m
-        # Apply post-interest adjustments (no interest on these)
-        bal[0] += post_interest_in[0] - post_interest_out[0]
+        # Get overdraft limit
+        overdraft_limit = brick.spec.get("overdraft_limit", 0.0)
 
-        # Apply active mask to first month
-        if not mask[0]:
+        # Calculate balance for first month
+        if mask[0]:
+            bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
+            # Apply interest on the balance after cash flows
+            interest_earned[0] = bal[0] * r_m
+            bal[0] *= 1 + r_m
+            # Apply post-interest adjustments (no interest on these)
+            bal[0] += post_interest_in[0] - post_interest_out[0]
+
+            # Enforce overdraft limit (strict policy: raise on breach)
+            if bal[0] < -overdraft_limit:
+                raise ValueError(
+                    f"{brick.id}: balance {bal[0]:.2f} at month 0 exceeds overdraft_limit {-overdraft_limit:.2f}"
+                )
+        else:
             bal[0] = 0.0
             interest_earned[0] = 0.0
 
         # Calculate balance for remaining months
         for t in range(1, T):
-            # Start with previous month's balance
-            bal[t] = bal[t - 1]
-            # Add/subtract this month's cash flows
-            bal[t] += cash_in[t] - cash_out[t]
-            # Calculate interest on the full balance (including this month's flows)
-            interest_earned[t] = bal[t] * r_m
-            # Apply interest
-            bal[t] *= 1 + r_m
-            # Apply post-interest adjustments (no interest on these)
-            bal[t] += post_interest_in[t] - post_interest_out[t]
+            # Apply active mask before interest calculations
+            if mask[t]:
+                # Start with previous month's balance
+                bal[t] = bal[t - 1]
+                # Add/subtract this month's cash flows
+                bal[t] += cash_in[t] - cash_out[t]
+                # Calculate interest on the full balance (including this month's flows)
+                interest_earned[t] = bal[t] * r_m
+                # Apply interest
+                bal[t] *= 1 + r_m
+                # Apply post-interest adjustments (no interest on these)
+                bal[t] += post_interest_in[t] - post_interest_out[t]
 
-            # Apply active mask - zero out inactive periods
-            if not mask[t]:
+                # Enforce overdraft limit (strict policy: raise on breach)
+                if bal[t] < -overdraft_limit:
+                    raise ValueError(
+                        f"{brick.id}: balance {bal[t]:.2f} at month {t} exceeds overdraft_limit {-overdraft_limit:.2f}"
+                    )
+            else:
                 bal[t] = 0.0
                 interest_earned[t] = 0.0
 
