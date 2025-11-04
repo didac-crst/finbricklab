@@ -577,8 +577,8 @@ class Scenario:
             if isinstance(b, ABrick) and b.kind == K.A_CASH and b.id in execution_order
         ]
 
-        # Counter for unique opening balance origin_ids
-        opening_balance_counter = 0
+        # Track processed cash IDs to prevent duplicate opening entries
+        processed_openings: set[str] = set()
 
         for cash_id in cash_ids:
             account_registry.register_account(
@@ -591,9 +591,15 @@ class Scenario:
             )
 
             # Initialize cash account with opening balance
+            # Guard: skip if already processed
+            if cash_id in processed_openings:
+                continue
+
             cash_brick = next(b for b in self.bricks if b.id == cash_id)
             initial_balance = cash_brick.spec.get("initial_balance", 0.0)
             if initial_balance != 0:
+                import hashlib
+
                 from .accounts import BOUNDARY_NODE_ID, get_node_id
                 from .currency import create_amount
 
@@ -606,35 +612,45 @@ class Scenario:
                     stamp_posting_metadata,
                 )
 
+                # Get currency from postings (will be set below)
+                currency = self.currency  # Default to scenario currency
+
                 opening_entry = JournalEntry(
                     id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
                     postings=[
                         Posting(
                             "equity:opening",
-                            create_amount(-initial_balance, "EUR"),
+                            create_amount(-initial_balance, currency),
                             {},
                         ),
                         Posting(
                             f"asset:{cash_id}",
-                            create_amount(initial_balance, "EUR"),
+                            create_amount(initial_balance, currency),
                             {},
                         ),
                     ],
                     metadata={},
                 )
 
+                # Generate stable origin_id from entry.id + currency
+                # This ensures uniqueness per entry while staying deterministic
+                origin_id = hashlib.sha256(
+                    f"{opening_entry.id}:{currency}".encode()
+                ).hexdigest()[:16]
+
                 # Stamp entry metadata
-                # Generate unique origin_id: use counter to ensure uniqueness
-                opening_balance_counter += 1
                 stamp_entry_metadata(
                     entry=opening_entry,
                     parent_id=f"a:{cash_id}",  # Asset brick parent
                     timestamp=ctx.t_index[0],
                     tags={"type": "opening_balance"},
                     sequence=1,
-                    origin_id=f"opening:{cash_id}:{opening_balance_counter}",
+                    origin_id=origin_id,
                 )
+
+                # Set transaction_type for opening entries
+                opening_entry.metadata["transaction_type"] = "opening"
 
                 # Stamp posting metadata
                 stamp_posting_metadata(
@@ -650,6 +666,7 @@ class Scenario:
                 )
 
                 journal.post(opening_entry)
+                processed_openings.add(cash_id)
 
         if len(cash_ids) == 0:
             raise AssertionError(

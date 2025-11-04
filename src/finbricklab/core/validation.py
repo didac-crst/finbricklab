@@ -297,9 +297,14 @@ def validate_origin_id_uniqueness(journal) -> None:
         if origin_id is None:
             continue  # Skip entries without origin_id (legacy)
 
-        # Check each currency in the entry
+        # Collect unique currencies in this entry
+        currencies = set()
         for posting in entry.postings:
             currency = posting.amount.currency.code
+            currencies.add(currency)
+
+        # Check each unique currency in the entry
+        for currency in currencies:
             key = (origin_id, currency)
             if key in seen:
                 raise ValueError(

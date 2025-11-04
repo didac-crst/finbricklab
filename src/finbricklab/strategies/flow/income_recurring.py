@@ -110,8 +110,6 @@ class FlowIncomeRecurring(IFlowStrategy):
             )
         journal = ctx.journal
 
-        # Get node IDs
-        flow_node_id = get_node_id(brick.id, "f")
         # Find cash account node ID (use routing or settlement_default_cash_id)
         cash_node_id = None
         # Check for explicit routing in brick links
@@ -225,6 +223,9 @@ class FlowIncomeRecurring(IFlowStrategy):
                     sequence=1,
                     origin_id=origin_id,
                 )
+
+                # Set transaction_type for income flows
+                income_entry.metadata["transaction_type"] = "income"
 
                 stamp_posting_metadata(
                     income_entry.postings[0],

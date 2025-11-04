@@ -8,10 +8,21 @@ import warnings
 
 import numpy as np
 
+from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IValuationStrategy
+from finbricklab.core.journal import (
+    JournalEntry,
+    Posting,
+    create_entry_id,
+    create_operation_id,
+    generate_transaction_id,
+    stamp_entry_metadata,
+    stamp_posting_metadata,
+)
 from finbricklab.core.results import BrickOutput
 
 
@@ -118,25 +129,40 @@ class ValuationCash(IValuationStrategy):
 
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:
         """
-        Simulate the cash account over the time period.
+        Simulate the cash account over the time period (V2: journal-first pattern).
 
         Calculates the monthly balance by accumulating cash flows and applying
-        monthly interest. The balance serves as both the asset value and the
-        cash flow source/sink.
+        monthly interest. Emits journal entries for interest earned.
 
         Args:
             brick: The cash account brick
             ctx: The simulation context
 
         Returns:
-            BrickOutput with cash flows, balance as asset value, and no events
+            BrickOutput with balance as asset value, interest array for KPIs,
+            and zero cash flows (V2: cash_in/cash_out are zero; journal entries created instead)
         """
         T = len(ctx.t_index)
+
+        # V2: Don't emit cash arrays - use journal entries instead
+        cash_in = np.zeros(T)
+        cash_out = np.zeros(T)
+
+        # Get journal from context (V2)
+        if ctx.journal is None:
+            raise ValueError(
+                "Journal must be provided in ScenarioContext for V2 postings model"
+            )
+        journal = ctx.journal
+
+        # Get node ID for cash account
+        cash_node_id = get_node_id(brick.id, "a")
+
         bal = np.zeros(T)
         r_m = brick.spec["interest_pa"] / 12.0  # Monthly interest rate
         # Don't copy the arrays - use them directly to allow runtime modifications
-        cash_in = brick.spec["external_in"]
-        cash_out = brick.spec["external_out"]
+        external_in = brick.spec["external_in"]
+        external_out = brick.spec["external_out"]
 
         # Support for post-interest adjustments (for maturity transfers)
         # Coerce and validate arrays
@@ -151,7 +177,7 @@ class ValuationCash(IValuationStrategy):
         if len(post_interest_in) != T or len(post_interest_out) != T:
             raise ValueError(f"{brick.id}: 'post_interest_in/out' must have length {T}")
 
-        # Initialize interest tracking array
+        # Initialize interest tracking array (kept for KPIs)
         interest_earned = np.zeros(T)
 
         # Apply active mask to enforce start_date and end_date
@@ -167,9 +193,85 @@ class ValuationCash(IValuationStrategy):
 
         # Calculate balance for first month
         if mask[0]:
-            bal[0] = brick.spec["initial_balance"] + cash_in[0] - cash_out[0]
-            # Apply interest on the balance after cash flows
+            bal[0] = brick.spec["initial_balance"] + external_in[0] - external_out[0]
+            # Calculate interest on the balance after cash flows
             interest_earned[0] = bal[0] * r_m
+            # V2: Create journal entry for interest (DR cash, CR income.interest)
+            if interest_earned[0] > 0:
+                interest_timestamp = ctx.t_index[0]
+                # Convert numpy datetime64 to Python datetime
+                from datetime import datetime
+
+                import pandas as pd
+
+                if isinstance(interest_timestamp, np.datetime64):
+                    interest_timestamp = pd.Timestamp(
+                        interest_timestamp
+                    ).to_pydatetime()
+                elif hasattr(interest_timestamp, "astype"):
+                    interest_timestamp = pd.Timestamp(
+                        interest_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    interest_timestamp = datetime.fromisoformat(str(interest_timestamp))
+
+                operation_id = create_operation_id(
+                    f"a:{brick.id}:interest", interest_timestamp
+                )
+                entry_id = create_entry_id(operation_id, 1)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    interest_timestamp,
+                    {"interest": interest_earned[0]},
+                    brick.links or {},
+                    sequence=0,
+                )
+
+                interest_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=interest_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=cash_node_id,
+                            amount=create_amount(interest_earned[0], ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=BOUNDARY_NODE_ID,
+                            amount=create_amount(-interest_earned[0], ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    interest_entry,
+                    parent_id=f"a:{brick.id}",
+                    timestamp=interest_timestamp,
+                    tags={"type": "interest"},
+                    sequence=1,
+                    origin_id=origin_id,
+                )
+
+                # Set transaction_type for interest earned
+                interest_entry.metadata["transaction_type"] = "income"
+
+                stamp_posting_metadata(
+                    interest_entry.postings[0],
+                    node_id=cash_node_id,
+                    type_tag="interest",
+                )
+                stamp_posting_metadata(
+                    interest_entry.postings[1],
+                    node_id=BOUNDARY_NODE_ID,
+                    category="income.interest",
+                    type_tag="interest",
+                )
+
+                journal.post(interest_entry)
+
+            # Apply interest to balance
             bal[0] *= 1 + r_m
             # Apply post-interest adjustments (no interest on these)
             bal[0] += post_interest_in[0] - post_interest_out[0]
@@ -202,10 +304,87 @@ class ValuationCash(IValuationStrategy):
                 # Start with previous month's balance
                 bal[t] = bal[t - 1]
                 # Add/subtract this month's cash flows
-                bal[t] += cash_in[t] - cash_out[t]
+                bal[t] += external_in[t] - external_out[t]
                 # Calculate interest on the full balance (including this month's flows)
                 interest_earned[t] = bal[t] * r_m
-                # Apply interest
+                # V2: Create journal entry for interest (DR cash, CR income.interest)
+                if interest_earned[t] > 0:
+                    interest_timestamp = ctx.t_index[t]
+                    # Convert numpy datetime64 to Python datetime
+                    from datetime import datetime
+
+                    import pandas as pd
+
+                    if isinstance(interest_timestamp, np.datetime64):
+                        interest_timestamp = pd.Timestamp(
+                            interest_timestamp
+                        ).to_pydatetime()
+                    elif hasattr(interest_timestamp, "astype"):
+                        interest_timestamp = pd.Timestamp(
+                            interest_timestamp.astype("datetime64[D]")
+                        ).to_pydatetime()
+                    else:
+                        interest_timestamp = datetime.fromisoformat(
+                            str(interest_timestamp)
+                        )
+
+                    operation_id = create_operation_id(
+                        f"a:{brick.id}:interest", interest_timestamp
+                    )
+                    entry_id = create_entry_id(operation_id, 1)
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        interest_timestamp,
+                        {"interest": interest_earned[t]},
+                        brick.links or {},
+                        sequence=t,
+                    )
+
+                    interest_entry = JournalEntry(
+                        id=entry_id,
+                        timestamp=interest_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(interest_earned[t], ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(-interest_earned[t], ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        interest_entry,
+                        parent_id=f"a:{brick.id}",
+                        timestamp=interest_timestamp,
+                        tags={"type": "interest"},
+                        sequence=1,
+                        origin_id=origin_id,
+                    )
+
+                    # Set transaction_type for interest earned
+                    interest_entry.metadata["transaction_type"] = "income"
+
+                    stamp_posting_metadata(
+                        interest_entry.postings[0],
+                        node_id=cash_node_id,
+                        type_tag="interest",
+                    )
+                    stamp_posting_metadata(
+                        interest_entry.postings[1],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="income.interest",
+                        type_tag="interest",
+                    )
+
+                    journal.post(interest_entry)
+
+                # Apply interest to balance
                 bal[t] *= 1 + r_m
                 # Apply post-interest adjustments (no interest on these)
                 bal[t] += post_interest_in[t] - post_interest_out[t]
@@ -233,12 +412,10 @@ class ValuationCash(IValuationStrategy):
                 interest_earned[t] = 0.0
 
         return BrickOutput(
-            cash_in=np.zeros(
-                T
-            ),  # Cash account doesn't generate cash flows, only receives them
-            cash_out=np.zeros(T),  # Cash account doesn't generate cash outflows
+            cash_in=cash_in,  # V2: Zero arrays (shell behavior)
+            cash_out=cash_out,  # V2: Zero arrays (shell behavior)
             assets=bal,
             liabilities=np.zeros(T),
-            interest=interest_earned,  # Interest earned on cash balance
+            interest=interest_earned,  # Interest earned on cash balance (kept for KPIs)
             events=[],
         )

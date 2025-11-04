@@ -427,6 +427,9 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 origin_id=origin_id,
             )
 
+            # Set transaction_type for disbursements
+            drawdown_entry.metadata["transaction_type"] = "disbursement"
+
             # Stamp posting metadata
             stamp_posting_metadata(
                 drawdown_entry.postings[0],
@@ -543,6 +546,10 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         sequence=sequence,
                         origin_id=origin_id,
                     )
+
+                    # Set transaction_type for payments
+                    principal_entry.metadata["transaction_type"] = "payment"
+
                     stamp_posting_metadata(
                         principal_entry.postings[0],
                         node_id=liability_node_id,
@@ -597,6 +604,10 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         sequence=sequence,
                         origin_id=origin_id,
                     )
+
+                    # Set transaction_type for payments
+                    interest_entry.metadata["transaction_type"] = "payment"
+
                     stamp_posting_metadata(
                         interest_entry.postings[0],
                         node_id=BOUNDARY_NODE_ID,
@@ -651,6 +662,10 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         sequence=sequence + 1,
                         origin_id=origin_id,
                     )
+
+                    # Set transaction_type for payments
+                    fee_entry.metadata["transaction_type"] = "payment"
+
                     stamp_posting_metadata(
                         fee_entry.postings[0],
                         node_id=BOUNDARY_NODE_ID,
@@ -736,6 +751,10 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     sequence=1,
                     origin_id=origin_id,
                 )
+
+                # Set transaction_type for payments
+                balloon_entry.metadata["transaction_type"] = "payment"
+
                 stamp_posting_metadata(
                     balloon_entry.postings[0],
                     node_id=liability_node_id,
