@@ -712,6 +712,23 @@ class Scenario:
                 )
             )
 
+        # Register liability accounts with node IDs (for loan bricks)
+        liability_ids = [
+            b.id
+            for b in self.bricks
+            if isinstance(b, LBrick) and b.id in execution_order
+        ]
+        for liability_id in liability_ids:
+            liability_node_id = get_node_id(liability_id, "l")
+            account_registry.register_account(
+                Account(
+                    liability_node_id,  # Use node ID format
+                    f"Liability {liability_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.LIABILITY,
+                )
+            )
+
         # Simulate all bricks and compile to journal entries
 
         # First pass: process all non-cash bricks and compile to journal

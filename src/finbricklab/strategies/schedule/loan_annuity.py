@@ -379,10 +379,17 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         # Create drawdown entry (if principal > 0)
         if principal > 0:
             drawdown_timestamp = ctx.t_index[0]
-            if hasattr(drawdown_timestamp, "astype"):
-                drawdown_timestamp = drawdown_timestamp.astype("datetime64[D]").astype(
-                    "datetime"
-                )
+            # Convert timestamp to datetime
+            if isinstance(drawdown_timestamp, np.datetime64):
+                import pandas as pd
+
+                drawdown_timestamp = pd.Timestamp(drawdown_timestamp).to_pydatetime()
+            elif hasattr(drawdown_timestamp, "astype"):
+                import pandas as pd
+
+                drawdown_timestamp = pd.Timestamp(
+                    drawdown_timestamp.astype("datetime64[D]")
+                ).to_pydatetime()
             else:
                 from datetime import datetime
 
@@ -494,10 +501,17 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
 
                 # V2: Create journal entries for payment
                 payment_timestamp = ctx.t_index[t]
-                if hasattr(payment_timestamp, "astype"):
-                    payment_timestamp = payment_timestamp.astype(
-                        "datetime64[D]"
-                    ).astype("datetime")
+                # Convert timestamp to datetime
+                if isinstance(payment_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    payment_timestamp = pd.Timestamp(payment_timestamp).to_pydatetime()
+                elif hasattr(payment_timestamp, "astype"):
+                    import pandas as pd
+
+                    payment_timestamp = pd.Timestamp(
+                        payment_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
                 else:
                     from datetime import datetime
 
@@ -706,10 +720,17 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             if policy == "payoff":
                 # V2: Create journal entry for balloon payment (INTERNAL↔INTERNAL: DR liability, CR cash)
                 balloon_timestamp = ctx.t_index[t_stop]
-                if hasattr(balloon_timestamp, "astype"):
-                    balloon_timestamp = balloon_timestamp.astype(
-                        "datetime64[D]"
-                    ).astype("datetime")
+                # Convert timestamp to datetime
+                if isinstance(balloon_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    balloon_timestamp = pd.Timestamp(balloon_timestamp).to_pydatetime()
+                elif hasattr(balloon_timestamp, "astype"):
+                    import pandas as pd
+
+                    balloon_timestamp = pd.Timestamp(
+                        balloon_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
                 else:
                     from datetime import datetime
 

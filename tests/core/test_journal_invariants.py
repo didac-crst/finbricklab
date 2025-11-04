@@ -238,9 +238,23 @@ class TestJournalInvariants:
         assert len(cash_balance) == 3
         assert cash_balance[0] > 0  # Should have positive balance
 
-        # Check that income and expense are generating flows
-        income_flows = results["outputs"]["income"]["cash_in"]
-        expense_flows = results["outputs"]["expense"]["cash_out"]
+        # V2: Check that income and expense are generating journal entries
+        journal = results["journal"]
+        income_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "income"
+        ]
+        expense_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "expense"
+        ]
 
-        assert np.sum(income_flows) > 0
-        assert np.sum(expense_flows) > 0
+        assert len(income_entries) > 0, "Journal should have income entries"
+        assert len(expense_entries) > 0, "Journal should have expense entries"
+
+        # V2: Check cash flows from journal-first aggregation
+        monthly = results["views"].monthly()
+        assert monthly["cash_in"].sum() > 0, "Cash inflows should be positive"
+        assert monthly["cash_out"].sum() > 0, "Cash outflows should be positive"

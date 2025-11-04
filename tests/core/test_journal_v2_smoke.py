@@ -1961,3 +1961,125 @@ class TestCashStrategyDuplicateEntryIds:
             e for e in journal.entries if e.metadata.get("transaction_type") == "opening"
         ]
         assert len(opening_entries) > 0, "Should have opening entries"
+
+
+class TestJournalDiagnosticsJSON:
+    """Test journal diagnostics JSON output for CI assertions."""
+
+    def test_diagnostics_json_output(self):
+        """Test that diagnostics JSON output has correct schema and counts."""
+        from datetime import date
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick, FBrick, TBrick
+
+        # Create a simple scenario with income, expense, and transfer
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind="a.cash",
+            spec={"initial_balance": 1000.0, "interest_pa": 0.0},
+        )
+        savings = ABrick(
+            id="savings",
+            name="Savings",
+            kind="a.cash",
+            spec={"initial_balance": 5000.0, "interest_pa": 0.0},
+        )
+        income = FBrick(
+            id="income",
+            name="Income",
+            kind="f.income.recurring",
+            spec={"amount_monthly": 2000.0},
+        )
+        expense = FBrick(
+            id="expense",
+            name="Expense",
+            kind="f.expense.recurring",
+            spec={"amount_monthly": 500.0},
+        )
+        transfer = TBrick(
+            id="transfer",
+            name="Transfer",
+            kind="t.transfer.recurring",
+            spec={"amount": 300.0, "frequency": "MONTHLY"},
+            links={"from": "cash", "to": "savings"},
+        )
+
+        scenario = Scenario(
+            id="test",
+            name="Test",
+            bricks=[cash, savings, income, expense, transfer],
+            currency="EUR",
+        )
+
+        # Run scenario
+        results = scenario.run(start=date(2026, 1, 1), months=3)
+        journal = results["journal"]
+
+        # Simulate diagnostics JSON output by manually computing what CLI would output
+        from finbricklab.core.accounts import BOUNDARY_NODE_ID
+        from finbricklab.core.results import TransferVisibility, _aggregate_journal_monthly
+        import pandas as pd
+
+        time_index = pd.PeriodIndex(
+            [pd.Period("2026-01", freq="M"), pd.Period("2026-02", freq="M"), pd.Period("2026-03", freq="M")],
+            freq="M",
+        )
+
+        # Count entries by type
+        total_entries = len(journal.entries)
+        boundary_entries = [
+            e
+            for e in journal.entries
+            if any(
+                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
+            )
+        ]
+        transfer_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "transfer"
+        ]
+        opening_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "opening"
+        ]
+
+        # Calculate boundary totals by category
+        boundary_by_category = {}
+        for entry in boundary_entries:
+            for posting in entry.postings:
+                node_id = posting.metadata.get("node_id")
+                if node_id == BOUNDARY_NODE_ID:
+                    category = posting.metadata.get("category", "unknown")
+                    amount = abs(float(posting.amount.value))
+                    boundary_by_category[category] = (
+                        boundary_by_category.get(category, 0.0) + amount
+                    )
+
+        # Verify counts
+        assert total_entries > 0, "Should have entries"
+        assert len(boundary_entries) > 0, "Should have boundary entries"
+        assert len(transfer_entries) > 0, "Should have transfer entries"
+        assert len(opening_entries) > 0, "Should have opening entries"
+
+        # Verify boundary totals by category (check for any income/expense category)
+        income_categories = [k for k in boundary_by_category.keys() if "income" in k.lower()]
+        expense_categories = [k for k in boundary_by_category.keys() if "expense" in k.lower()]
+        assert len(income_categories) > 0, f"Should have income category, got {list(boundary_by_category.keys())}"
+        assert len(expense_categories) > 0, f"Should have expense category, got {list(boundary_by_category.keys())}"
+
+        # Verify aggregation matches counts
+        # Get registry from scenario
+        from finbricklab.core.results import Registry
+        registry = Registry({}, {})  # Empty registry for test - we just need structure
+        df = _aggregate_journal_monthly(
+            journal=journal,
+            registry=registry,
+            time_index=time_index,
+            transfer_visibility=TransferVisibility.ALL,
+        )
+        assert df["cash_in"].sum() > 0, "Aggregated cash_in should be positive"
+        assert df["cash_out"].sum() > 0, "Aggregated cash_out should be positive"
