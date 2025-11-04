@@ -1824,6 +1824,12 @@ class TestParallelScenarios:
         # Scenario 2: expense should show as cash_out
         assert monthly2.loc["2026-01", "cash_out"] == 500.0, "Scenario 2 expense"
 
-        # Journals should be independent (different currencies, different entries)
+        # Journals should be independent (different account registries, different entry IDs)
         assert journal1.account_registry is not journal2.account_registry
-        assert len(journal1.entries) != len(journal2.entries)
+        # Entry IDs should be different (different brick IDs in scenarios)
+        entry_ids_1 = {e.id for e in journal1.entries}
+        entry_ids_2 = {e.id for e in journal2.entries}
+        assert entry_ids_1 != entry_ids_2, "Entry IDs should be different between scenarios"
+        # Both should have entries (12 months each)
+        assert len(journal1.entries) == 12, "Scenario 1 should have 12 entries"
+        assert len(journal2.entries) == 12, "Scenario 2 should have 12 entries"
