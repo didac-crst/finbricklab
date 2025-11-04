@@ -556,7 +556,7 @@ class Scenario:
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ):
         """Simulate all bricks using Journal-based system."""
-        from .accounts import Account, AccountScope, AccountType
+        from .accounts import Account, AccountScope, AccountType, BOUNDARY_NODE_ID, get_node_id
 
         outputs: dict[str, BrickOutput] = {}
 
@@ -600,7 +600,6 @@ class Scenario:
             if initial_balance != 0:
                 import hashlib
 
-                from .accounts import BOUNDARY_NODE_ID, get_node_id
                 from .currency import create_amount
 
                 # Create opening balance entry with canonical format
@@ -615,17 +614,19 @@ class Scenario:
                 # Get currency from postings (will be set below)
                 currency = self.currency  # Default to scenario currency
 
+                # Use node IDs for account_id (consistent with V2 model)
+                cash_node_id = get_node_id(cash_id, "a")
                 opening_entry = JournalEntry(
                     id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
                     postings=[
                         Posting(
-                            "equity:opening",
+                            BOUNDARY_NODE_ID,  # Use node ID for boundary side
                             create_amount(-initial_balance, currency),
                             {},
                         ),
                         Posting(
-                            f"asset:{cash_id}",
+                            cash_node_id,  # Use node ID for asset side
                             create_amount(initial_balance, currency),
                             {},
                         ),
@@ -699,26 +700,17 @@ class Scenario:
                 Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
             )
 
-        # Register asset: prefixed accounts for all cash accounts
+        # Register cash accounts with node IDs (consistent with V2 model)
         for cash_id in cash_ids:
+            cash_node_id = get_node_id(cash_id, "a")
             account_registry.register_account(
                 Account(
-                    f"asset:{cash_id}",
-                    f"asset:{cash_id}",
+                    cash_node_id,  # Use node ID format
+                    f"Cash Account {cash_id}",
                     AccountScope.INTERNAL,
                     AccountType.ASSET,
                 )
             )
-
-        # Register canonical equity:opening account (used by opening balances)
-        account_registry.register_account(
-            Account(
-                "equity:opening",
-                "equity:opening",
-                AccountScope.BOUNDARY,
-                AccountType.EQUITY,
-            )
-        )
 
         # Simulate all bricks and compile to journal entries
 

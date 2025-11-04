@@ -1113,16 +1113,27 @@ def _aggregate_journal_monthly(
                 # Skip this entry for cashflow (internal transfer cancels)
                 continue
 
-            # Find ASSET posting
+            # Find ASSET posting (selection-aware)
             asset_posting = None
-            for posting in entry.postings:
-                node_id = posting.metadata.get("node_id")
-                node_type = get_node_type(node_id, account_registry)
-                if node_type == AccountType.ASSET:
-                    asset_posting = posting
-                    break
+            if selection_set:
+                # If selection_set is present, prefer the ASSET posting whose node_id is in selection
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    node_type = get_node_type(node_id, account_registry)
+                    if node_type == AccountType.ASSET and node_id in selection_set:
+                        asset_posting = posting
+                        break
+                # If none matched, skip this entry's cashflow
+            else:
+                # No selection_set: pick the first ASSET posting (status quo)
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    node_type = get_node_type(node_id, account_registry)
+                    if node_type == AccountType.ASSET:
+                        asset_posting = posting
+                        break
 
-            # Include ASSET posting if in selection
+            # Include ASSET posting (already selection-aware if selection_set was provided)
             if asset_posting:
                 node_id = asset_posting.metadata.get("node_id")
                 if not selection_set or node_id in selection_set:

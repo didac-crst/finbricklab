@@ -1616,7 +1616,7 @@ class TestTransferVisibilitySingleNode:
             transfer_visibility=TransferVisibility.ALL,
         )
 
-        # Should show as outflow (CR source)
+        # Should show as outflow (CR source - credit posting means outflow)
         assert df.loc["2026-01", "cash_in"] == 0.0, "No inflow for source"
         assert (
             df.loc["2026-01", "cash_out"] == 1000.0
@@ -1783,6 +1783,9 @@ class TestParallelScenarios:
         results2 = scenario2.run(start=date(2026, 1, 1), months=12)
 
         # Both should have journals
+        from finbricklab.core.results import ScenarioResults
+        assert isinstance(results1, ScenarioResults), "Scenario 1 should return ScenarioResults"
+        assert isinstance(results2, ScenarioResults), "Scenario 2 should return ScenarioResults"
         assert results1.journal is not None, "Scenario 1 should have journal"
         assert results2.journal is not None, "Scenario 2 should have journal"
 

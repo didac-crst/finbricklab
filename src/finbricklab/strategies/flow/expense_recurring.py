@@ -116,10 +116,16 @@ class FlowExpenseRecurring(IFlowStrategy):
             # V2: Create journal entry for expense (BOUNDARY↔INTERNAL: DR expense, CR cash)
             if amount > 0:
                 expense_timestamp = ctx.t_index[t]
-                if hasattr(expense_timestamp, "astype"):
-                    expense_timestamp = expense_timestamp.astype(
-                        "datetime64[D]"
-                    ).astype("datetime")
+                if isinstance(expense_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    expense_timestamp = pd.Timestamp(expense_timestamp).to_pydatetime()
+                elif hasattr(expense_timestamp, "astype"):
+                    import pandas as pd
+
+                    expense_timestamp = pd.Timestamp(
+                        expense_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
                 else:
                     from datetime import datetime
 
