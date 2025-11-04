@@ -177,10 +177,16 @@ class FlowIncomeRecurring(IFlowStrategy):
             # V2: Create journal entry for income (BOUNDARY↔INTERNAL: CR income, DR cash)
             if amount > 0:
                 income_timestamp = ctx.t_index[t]
-                if hasattr(income_timestamp, "astype"):
-                    income_timestamp = income_timestamp.astype("datetime64[D]").astype(
-                        "datetime"
-                    )
+                if isinstance(income_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    income_timestamp = pd.Timestamp(income_timestamp).to_pydatetime()
+                elif hasattr(income_timestamp, "astype"):
+                    import pandas as pd
+
+                    income_timestamp = pd.Timestamp(
+                        income_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
                 else:
                     from datetime import datetime
 

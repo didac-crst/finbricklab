@@ -22,32 +22,6 @@ from .registry import Registry
 from .transfer_visibility import TransferVisibility
 
 
-def _entry_touches_boundary(entry: JournalEntry, registry: Registry | None) -> bool:
-    """
-    Check if a journal entry touches a boundary account.
-
-    Args:
-        entry: The journal entry to check
-        registry: The account registry (currently Registry type, will be AccountRegistry)
-
-    Returns:
-        True if the entry has any posting to a boundary account
-    """
-    if not registry:
-        return False
-    for posting in entry.postings:
-        try:
-            # TODO: Replace with proper account registry when available
-            # Currently Registry doesn't have get_account; this is a placeholder
-            account = registry.get_account(posting.account_id)  # type: ignore
-            if account and getattr(account, "scope", None) == AccountScope.BOUNDARY:
-                return True
-        except Exception:
-            # If account not found in registry, treat as INTERNAL
-            continue
-    return False
-
-
 class BrickOutput(TypedDict):
     """
     Standard output structure for all financial brick simulations.

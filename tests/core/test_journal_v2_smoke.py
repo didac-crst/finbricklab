@@ -1534,3 +1534,292 @@ class TestTransferVisibility:
         # Both should show, but internal transfer cancels
         assert df.loc["2026-01", "cash_in"] == 1000.0, "Income should show"
         assert df.loc["2026-01", "cash_out"] == 0.0, "Internal transfer cancels"
+
+
+class TestTransferVisibilitySingleNode:
+    """Test TransferVisibility with single-node selection (shows transfers)."""
+
+    def test_single_node_selection_with_all(self, journal, account_registry, registry):
+        """Single-node selection with ALL visibility shows transfers."""
+        from_node_id = "a:savings"
+        to_node_id = "a:checking"
+
+        account_registry.register_account(
+            Account(
+                id=from_node_id,
+                name="Savings",
+                scope=AccountScope.INTERNAL,
+                account_type=AccountType.ASSET,
+            )
+        )
+        account_registry.register_account(
+            Account(
+                id=to_node_id,
+                name="Checking",
+                scope=AccountScope.INTERNAL,
+                account_type=AccountType.ASSET,
+            )
+        )
+
+        # Create internal transfer entry
+        transfer_entry = JournalEntry(
+            id="cp:transfer:1",
+            timestamp=datetime(2026, 1, 1),
+            postings=[
+                Posting(
+                    account_id=to_node_id,
+                    amount=create_amount(1000, "EUR"),
+                    metadata={"node_id": to_node_id, "type": "transfer"},
+                ),
+                Posting(
+                    account_id=from_node_id,
+                    amount=create_amount(-1000, "EUR"),
+                    metadata={"node_id": from_node_id, "type": "transfer"},
+                ),
+            ],
+            metadata={
+                "operation_id": "op:transfer:2026-01",
+                "parent_id": "ts:transfer",
+                "sequence": 1,
+                "origin_id": "transfer1",
+                "tags": {"type": "transfer"},
+                "transaction_type": "transfer",
+            },
+        )
+        journal.post(transfer_entry)
+
+        import pandas as pd
+
+        time_index = pd.PeriodIndex([pd.Period("2026-01", freq="M")], freq="M")
+
+        # Aggregate with only destination node in selection + ALL visibility
+        selection = {to_node_id}
+        df = _aggregate_journal_monthly(
+            journal=journal,
+            registry=registry,
+            time_index=time_index,
+            selection=selection,
+            transfer_visibility=TransferVisibility.ALL,
+        )
+
+        # Should show as inflow (DR destination)
+        assert df.loc["2026-01", "cash_in"] == 1000.0, "Transfer should show as inflow"
+        assert df.loc["2026-01", "cash_out"] == 0.0, "No outflow for destination"
+
+        # Aggregate with only source node in selection + ALL visibility
+        selection = {from_node_id}
+        df = _aggregate_journal_monthly(
+            journal=journal,
+            registry=registry,
+            time_index=time_index,
+            selection=selection,
+            transfer_visibility=TransferVisibility.ALL,
+        )
+
+        # Should show as outflow (CR source)
+        assert df.loc["2026-01", "cash_in"] == 0.0, "No inflow for source"
+        assert (
+            df.loc["2026-01", "cash_out"] == 1000.0
+        ), "Transfer should show as outflow"
+
+    def test_single_node_selection_with_only(self, journal, account_registry, registry):
+        """Single-node selection with ONLY visibility shows transfers."""
+        from_node_id = "a:savings"
+        to_node_id = "a:checking"
+        cash_node_id = "a:cash"
+
+        account_registry.register_account(
+            Account(
+                id=from_node_id,
+                name="Savings",
+                scope=AccountScope.INTERNAL,
+                account_type=AccountType.ASSET,
+            )
+        )
+        account_registry.register_account(
+            Account(
+                id=to_node_id,
+                name="Checking",
+                scope=AccountScope.INTERNAL,
+                account_type=AccountType.ASSET,
+            )
+        )
+        account_registry.register_account(
+            Account(
+                id=cash_node_id,
+                name="Cash",
+                scope=AccountScope.INTERNAL,
+                account_type=AccountType.ASSET,
+            )
+        )
+
+        # Create internal transfer entry
+        transfer_entry = JournalEntry(
+            id="cp:transfer:1",
+            timestamp=datetime(2026, 1, 1),
+            postings=[
+                Posting(
+                    account_id=to_node_id,
+                    amount=create_amount(1000, "EUR"),
+                    metadata={"node_id": to_node_id, "type": "transfer"},
+                ),
+                Posting(
+                    account_id=from_node_id,
+                    amount=create_amount(-1000, "EUR"),
+                    metadata={"node_id": from_node_id, "type": "transfer"},
+                ),
+            ],
+            metadata={
+                "operation_id": "op:transfer:2026-01",
+                "parent_id": "ts:transfer",
+                "sequence": 1,
+                "origin_id": "transfer1",
+                "tags": {"type": "transfer"},
+                "transaction_type": "transfer",
+            },
+        )
+        journal.post(transfer_entry)
+
+        # Create income entry (not a transfer)
+        income_entry = JournalEntry(
+            id="cp:income:1",
+            timestamp=datetime(2026, 1, 1),
+            postings=[
+                Posting(
+                    account_id=cash_node_id,
+                    amount=create_amount(5000, "EUR"),
+                    metadata={"node_id": cash_node_id},
+                ),
+                Posting(
+                    account_id=BOUNDARY_NODE_ID,
+                    amount=create_amount(-5000, "EUR"),
+                    metadata={"node_id": BOUNDARY_NODE_ID, "category": "income.salary"},
+                ),
+            ],
+            metadata={
+                "operation_id": "op:income:2026-01",
+                "parent_id": "fs:income",
+                "sequence": 1,
+                "origin_id": "income1",
+                "tags": {"type": "income"},
+                "transaction_type": "income",
+            },
+        )
+        journal.post(income_entry)
+
+        import pandas as pd
+
+        time_index = pd.PeriodIndex([pd.Period("2026-01", freq="M")], freq="M")
+
+        # Aggregate with only destination node + ONLY visibility
+        selection = {to_node_id}
+        df = _aggregate_journal_monthly(
+            journal=journal,
+            registry=registry,
+            time_index=time_index,
+            selection=selection,
+            transfer_visibility=TransferVisibility.ONLY,
+        )
+
+        # Should show transfer (income hidden)
+        assert df.loc["2026-01", "cash_in"] == 1000.0, "Transfer should show"
+        assert df.loc["2026-01", "cash_out"] == 0.0, "No outflow"
+
+
+class TestParallelScenarios:
+    """Test that scenarios with boundary entries don't interfere with each other."""
+
+    def test_parallel_scenarios_independent(self):
+        """Two scenarios with boundary entries validate independently."""
+        from datetime import date
+
+        import pandas as pd
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick, FBrick
+
+        # Scenario 1: income flow
+        cash1 = ABrick(
+            id="cash1",
+            name="Cash 1",
+            kind="a.cash",
+            spec={"initial_balance": 0.0, "interest_pa": 0.0},
+        )
+        income1 = FBrick(
+            id="income1",
+            name="Income 1",
+            kind="f.income.recurring",
+            spec={"amount_monthly": 1000.0},
+        )
+        scenario1 = Scenario(
+            id="scenario1",
+            name="Scenario 1",
+            bricks=[cash1, income1],
+            currency="EUR",
+        )
+
+        # Scenario 2: expense flow
+        cash2 = ABrick(
+            id="cash2",
+            name="Cash 2",
+            kind="a.cash",
+            spec={"initial_balance": 0.0, "interest_pa": 0.0},
+        )
+        expense2 = FBrick(
+            id="expense2",
+            name="Expense 2",
+            kind="f.expense.recurring",
+            spec={"amount_monthly": 500.0},
+        )
+        scenario2 = Scenario(
+            id="scenario2",
+            name="Scenario 2",
+            bricks=[cash2, expense2],
+            currency="USD",
+        )
+
+        # Run both scenarios
+        results1 = scenario1.run(start=date(2026, 1, 1), months=12)
+        results2 = scenario2.run(start=date(2026, 1, 1), months=12)
+
+        # Both should have journals
+        assert results1.journal is not None, "Scenario 1 should have journal"
+        assert results2.journal is not None, "Scenario 2 should have journal"
+
+        # Both journals should have boundary entries
+        boundary_entries_1 = [
+            e
+            for e in results1.journal.entries
+            if any(
+                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
+            )
+        ]
+        boundary_entries_2 = [
+            e
+            for e in results2.journal.entries
+            if any(
+                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
+            )
+        ]
+
+        assert len(boundary_entries_1) > 0, "Scenario 1 should have boundary entries"
+        assert len(boundary_entries_2) > 0, "Scenario 2 should have boundary entries"
+
+        # Both should validate independently
+        from finbricklab.core.validation import validate_origin_id_uniqueness
+
+        validate_origin_id_uniqueness(results1.journal)
+        validate_origin_id_uniqueness(results2.journal)
+
+        # Both should aggregate correctly
+        monthly1 = results1.monthly()
+        monthly2 = results2.monthly()
+
+        # Scenario 1: income should show as cash_in
+        assert monthly1.loc["2026-01", "cash_in"] == 1000.0, "Scenario 1 income"
+        # Scenario 2: expense should show as cash_out
+        assert monthly2.loc["2026-01", "cash_out"] == 500.0, "Scenario 2 expense"
+
+        # Journals should be independent (different currencies, different entries)
+        assert results1.journal.account_registry is not results2.journal.account_registry
+        assert len(results1.journal.entries) != len(results2.journal.entries)
