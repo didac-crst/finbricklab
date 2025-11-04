@@ -240,13 +240,22 @@ def test_filtered_totals_match_manual_calculation():
     cash_output = results["outputs"]["cash"]
     salary_output = results["outputs"]["salary"]
 
-    # Filter to cash and salary
-    filtered_view = results["views"].filter(brick_ids=["cash", "salary"])
-    filtered_monthly = filtered_view.monthly()
+    # V2: Use journal-first aggregation with selection parameter instead of filter()
+    # Convert brick IDs to node IDs for selection
+    from finbricklab.core.accounts import get_node_id
 
-    # V2: For cash_in/cash_out, use journal-first aggregation (per-brick arrays are zero)
-    # For assets/liabilities, still use per-brick arrays (KPI tests)
-    expected_assets = cash_output["assets"] + salary_output["assets"]
+    selection = {get_node_id("cash", "a"), get_node_id("salary", "f")}  # salary is FBrick, no node_id
+    # Actually, salary is an FBrick (flow brick) - it doesn't have a node_id for assets
+    # Only A/L bricks have node_ids, so selection should only include cash
+    selection = {get_node_id("cash", "a")}
+
+    # Use monthly() with selection for journal-first aggregation
+    filtered_monthly = results["views"].monthly(selection=selection)
+
+    # V2: For assets/liabilities, use per-brick arrays (KPI tests)
+    # Cash is an ABrick, so it has assets
+    # Salary is an FBrick, so it doesn't have assets (only generates journal entries)
+    expected_assets = cash_output["assets"]  # Only cash has assets
     expected_liabilities = cash_output["liabilities"] + salary_output["liabilities"]
 
     # Check that filtered results match manual calculation for balances
@@ -264,8 +273,9 @@ def test_filtered_totals_match_manual_calculation():
         if e.metadata.get("transaction_type") == "income"
     ]
     assert len(income_entries) > 0, "Journal should have income entries"
-    
-    # Cash flows should be positive (income from salary)
+
+    # Cash flows should be positive (income from salary routes to cash)
+    # Note: With selection={cash}, we see cash inflows from income entries
     assert filtered_monthly["cash_in"].sum() > 0, "Filtered cash_in should be positive"
 
 
