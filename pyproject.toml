@@ -193,6 +193,8 @@ python_functions = ["test_*"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "v2: marks tests for V2 postings model (deselect with '-m \"not v2\"')",
+    "legacy: marks legacy tests that need migration to journal-first (deselect with '-m \"not legacy\"')",
 ]
 
 [tool.coverage.run]

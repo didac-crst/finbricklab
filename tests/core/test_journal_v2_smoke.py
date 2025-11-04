@@ -10,6 +10,8 @@ These tests verify core invariants:
 from datetime import datetime
 
 import pytest
+
+pytestmark = pytest.mark.v2
 from finbricklab.core.accounts import (
     BOUNDARY_NODE_ID,
     Account,
