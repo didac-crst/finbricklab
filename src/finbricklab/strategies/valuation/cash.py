@@ -215,16 +215,17 @@ class ValuationCash(IValuationStrategy):
                 else:
                     interest_timestamp = datetime.fromisoformat(str(interest_timestamp))
 
-                operation_id = create_operation_id(
-                    f"a:{brick.id}:interest", interest_timestamp
-                )
+                # Use unique parent_id that includes ":interest" to avoid conflict with opening entries
+                parent_id = f"a:{brick.id}:interest"
+                operation_id = create_operation_id(parent_id, interest_timestamp)
+                # Use sequence=1 for first month's interest entry (only one entry per month)
                 entry_id = create_entry_id(operation_id, 1)
                 origin_id = generate_transaction_id(
                     brick.id,
                     interest_timestamp,
                     {"interest": interest_earned[0]},
                     brick.links or {},
-                    sequence=0,
+                    sequence=0,  # Month index for origin_id uniqueness
                 )
 
                 interest_entry = JournalEntry(
@@ -247,10 +248,10 @@ class ValuationCash(IValuationStrategy):
 
                 stamp_entry_metadata(
                     interest_entry,
-                    parent_id=f"a:{brick.id}",
+                    parent_id=parent_id,  # Use same parent_id as operation_id
                     timestamp=interest_timestamp,
                     tags={"type": "interest"},
-                    sequence=1,
+                    sequence=1,  # Sequence within operation (1 for single interest entry)
                     origin_id=origin_id,
                 )
 
@@ -328,16 +329,17 @@ class ValuationCash(IValuationStrategy):
                             str(interest_timestamp)
                         )
 
-                    operation_id = create_operation_id(
-                        f"a:{brick.id}:interest", interest_timestamp
-                    )
+                    # Use unique parent_id that includes ":interest" to avoid conflict with opening entries
+                    parent_id = f"a:{brick.id}:interest"
+                    operation_id = create_operation_id(parent_id, interest_timestamp)
+                    # Use sequence=1 for interest entry (only one entry per month)
                     entry_id = create_entry_id(operation_id, 1)
                     origin_id = generate_transaction_id(
                         brick.id,
                         interest_timestamp,
                         {"interest": interest_earned[t]},
                         brick.links or {},
-                        sequence=t,
+                        sequence=t,  # Month index for origin_id uniqueness
                     )
 
                     interest_entry = JournalEntry(
@@ -360,10 +362,10 @@ class ValuationCash(IValuationStrategy):
 
                     stamp_entry_metadata(
                         interest_entry,
-                        parent_id=f"a:{brick.id}",
+                        parent_id=parent_id,  # Use same parent_id as operation_id
                         timestamp=interest_timestamp,
                         tags={"type": "interest"},
-                        sequence=1,
+                        sequence=1,  # Sequence within operation (1 for single interest entry)
                         origin_id=origin_id,
                     )
 

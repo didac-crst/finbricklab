@@ -1912,3 +1912,52 @@ class TestJournalDiagnostics:
 
         # Verify diagnostics can be computed (would be called via CLI)
         # This is a smoke test - actual CLI invocation would be tested separately
+
+
+class TestCashStrategyDuplicateEntryIds:
+    """Test that cash strategy doesn't create duplicate entry IDs."""
+
+    def test_cash_strategy_no_duplicate_entry_ids(self):
+        """Test that cash strategy creates unique entry IDs for interest entries."""
+        from datetime import date
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick
+
+        # Create a cash account with interest
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind="a.cash",
+            spec={"initial_balance": 1000.0, "interest_pa": 0.02},
+        )
+
+        scenario = Scenario(
+            id="test",
+            name="Test",
+            bricks=[cash],
+            currency="EUR",
+        )
+
+        # Run scenario - should not raise duplicate entry ID error
+        results = scenario.run(start=date(2026, 1, 1), months=3)
+        journal = results["journal"]
+
+        # Verify all entry IDs are unique
+        entry_ids = [e.id for e in journal.entries]
+        assert len(entry_ids) == len(set(entry_ids)), "All entry IDs should be unique"
+
+        # Verify we have interest entries
+        interest_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "income"
+            and "interest" in e.metadata.get("tags", {}).get("type", "")
+        ]
+        assert len(interest_entries) > 0, "Should have interest entries"
+
+        # Verify opening entry exists
+        opening_entries = [
+            e for e in journal.entries if e.metadata.get("transaction_type") == "opening"
+        ]
+        assert len(opening_entries) > 0, "Should have opening entries"
