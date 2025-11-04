@@ -650,7 +650,8 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         payment_timestamp,
                         brick.spec or {},
                         brick.links or {},
-                        sequence=t * 100 + (sequence + 1),  # Unique per entry in same month
+                        sequence=t * 100
+                        + (sequence + 1),  # Unique per entry in same month
                     )
 
                     fee_entry = JournalEntry(
@@ -790,7 +791,9 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     type_tag="balloon",
                 )
 
-                journal.post(balloon_entry)
+                # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                if not any(e.id == balloon_entry.id for e in journal.entries):
+                    journal.post(balloon_entry)
 
                 debt[t_stop] = 0.0
                 # Set all future debt to 0 (mortgage is paid off)
