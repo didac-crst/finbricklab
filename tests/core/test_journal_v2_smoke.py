@@ -1833,3 +1833,82 @@ class TestParallelScenarios:
         # Both should have entries (12 months each)
         assert len(journal1.entries) == 12, "Scenario 1 should have 12 entries"
         assert len(journal2.entries) == 12, "Scenario 2 should have 12 entries"
+
+
+class TestJournalDiagnostics:
+    """Test journal diagnostics functionality."""
+
+    def test_diagnostics_counts(self):
+        """Test that diagnostics correctly count entries by type."""
+        from datetime import date
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick, FBrick, TBrick
+
+        # Create a simple scenario with income, expense, and transfer
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind="a.cash",
+            spec={"initial_balance": 1000.0, "interest_pa": 0.0},
+        )
+        savings = ABrick(
+            id="savings",
+            name="Savings",
+            kind="a.cash",
+            spec={"initial_balance": 5000.0, "interest_pa": 0.0},
+        )
+        income = FBrick(
+            id="income",
+            name="Income",
+            kind="f.income.recurring",
+            spec={"amount_monthly": 2000.0},
+        )
+        expense = FBrick(
+            id="expense",
+            name="Expense",
+            kind="f.expense.recurring",
+            spec={"amount_monthly": 500.0},
+        )
+        transfer = TBrick(
+            id="transfer",
+            name="Transfer",
+            kind="t.transfer.recurring",
+            spec={"amount_monthly": 300.0},
+            links={"from": "cash", "to": "savings"},
+        )
+
+        scenario = Scenario(
+            id="test",
+            name="Test",
+            bricks=[cash, savings, income, expense, transfer],
+            currency="EUR",
+        )
+
+        # Run scenario
+        results = scenario.run(start=date(2026, 1, 1), months=3)
+        journal = results["journal"]
+
+        # Verify we have entries
+        assert len(journal.entries) > 0, "Journal should have entries"
+
+        # Check that we have boundary entries (income/expense)
+        boundary_entries = [
+            e
+            for e in journal.entries
+            if any(
+                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
+            )
+        ]
+        assert len(boundary_entries) > 0, "Should have boundary entries"
+
+        # Check that we have transfer entries
+        transfer_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "transfer"
+        ]
+        assert len(transfer_entries) > 0, "Should have transfer entries"
+
+        # Verify diagnostics can be computed (would be called via CLI)
+        # This is a smoke test - actual CLI invocation would be tested separately

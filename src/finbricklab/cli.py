@@ -271,81 +271,249 @@ def cmd_journal_diagnostics(args) -> int:
             print("Error: ScenarioResults not available", file=sys.stderr)
             return 1
 
-        # Calculate diagnostics
-        total_entries = len(journal.entries)
-        boundary_entries = 0
-        internal_entries = 0
-        transfer_entries = 0
-        boundary_total = 0.0
+        # Get registry and account registry
+        registry = scn._registry
+        account_registry = journal.account_registry
+        if account_registry is None:
+            print("Error: AccountRegistry not available in journal", file=sys.stderr)
+            return 1
+
+        # Parse transfer visibility
+        from finbricklab.core.transfer_visibility import TransferVisibility
+
+        transfer_visibility = TransferVisibility[args.transfer_visibility.upper()]
+
+        # Expand selection if needed (for MacroGroups) - same logic as aggregation
+        selection_set: set[str] = set()
+        if selection:
+            for node_id in selection:
+                # Check if it's a MacroGroup
+                if registry and registry.is_macrobrick(node_id):
+                    # Expand MacroGroup to A/L nodes
+                    macrobrick = registry.get_macrobrick(node_id)
+                    members = macrobrick.expand_member_bricks(registry)
+                    # Convert brick IDs to node IDs
+                    for brick_id in members:
+                        brick = registry.get_brick(brick_id)
+                        if hasattr(brick, "family"):
+                            if brick.family == "a":
+                                selection_set.add(f"a:{brick_id}")
+                            elif brick.family == "l":
+                                selection_set.add(f"l:{brick_id}")
+                else:
+                    # Direct node ID or brick ID
+                    # Try to convert brick ID to node ID
+                    brick = registry.get_brick(node_id) if registry else None
+                    if brick and hasattr(brick, "family"):
+                        selection_set.add(f"{brick.family}:{brick_id}")
+                    else:
+                        # Assume it's already a node ID
+                        selection_set.add(node_id)
+
+        # Filter entries by month if specified
+        from datetime import datetime
+
+        entries_to_analyze = journal.entries
+        if args.month:
+            month_str = args.month  # Expected format: YYYY-MM
+            entries_to_analyze = []
+            for entry in journal.entries:
+                # Normalize timestamp to month
+                if isinstance(entry.timestamp, datetime):
+                    entry_month = entry.timestamp.strftime("%Y-%m")
+                else:
+                    # Handle numpy datetime64
+                    entry_month = str(entry.timestamp)[:7]  # YYYY-MM
+                if entry_month == month_str:
+                    entries_to_analyze.append(entry)
+
+        # Calculate diagnostics using same logic as aggregation
+        from finbricklab.core.accounts import (
+            BOUNDARY_NODE_ID,
+            AccountScope,
+            AccountType,
+            get_node_scope,
+            get_node_type,
+        )
+        from finbricklab.core.transfer_visibility import touches_boundary
+
+        total_entries = len(entries_to_analyze)
+        boundary_entries = []
+        internal_transfer_entries = []
+        transfer_entries = []
+        cancelled_entries = []
+        boundary_by_category: dict[str, float] = {}
         transfer_total = 0.0
 
-        for entry in journal.entries:
+        for entry in entries_to_analyze:
             # Check if entry touches boundary
-            touches_boundary = False
-            for posting in entry.postings:
-                node_id = posting.metadata.get("node_id")
-                if node_id == "b:boundary":
-                    touches_boundary = True
-                    boundary_total += abs(float(posting.amount.value))
-                    break
+            touches_bound = touches_boundary(entry, account_registry)
 
-            if touches_boundary:
-                boundary_entries += 1
-            else:
-                internal_entries += 1
-                transfer_entries += 1
+            # Check if this is a transfer entry
+            is_transfer_entry = entry.metadata.get("transaction_type") in {
+                "transfer",
+                "tbrick",
+                "maturity_transfer",
+            }
+
+            # Check if both postings are INTERNAL and in selection (cancellation logic)
+            both_internal_in_selection = False
+            if not touches_bound and selection_set:
+                both_internal = True
+                both_in_selection = True
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    scope = get_node_scope(node_id, account_registry)
+                    if scope != AccountScope.INTERNAL:
+                        both_internal = False
+                        break
+                    if node_id not in selection_set:
+                        both_in_selection = False
+                if both_internal and both_in_selection:
+                    both_internal_in_selection = True
+                    cancelled_entries.append(entry)
+
+            # Apply TransferVisibility filtering (same logic as aggregation)
+            should_include = True
+            if transfer_visibility != TransferVisibility.ALL:
+                if transfer_visibility == TransferVisibility.OFF:
+                    # Hide internal transfers only
+                    if is_transfer_entry and both_internal_in_selection:
+                        should_include = False
+                elif transfer_visibility == TransferVisibility.ONLY:
+                    # Show only transfer entries
+                    if not is_transfer_entry:
+                        should_include = False
+                elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
+                    # Show only boundary-crossing transfers (not internal transfers)
+                    if is_transfer_entry and not touches_bound:
+                        should_include = False
+                    if not is_transfer_entry and not touches_bound:
+                        should_include = False
+
+            if not should_include:
+                continue
+
+            # Categorize entry
+            if touches_bound:
+                boundary_entries.append(entry)
+                # Sum boundary amounts by category
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    if node_id == BOUNDARY_NODE_ID:
+                        category = posting.metadata.get("category", "unknown")
+                        amount = abs(float(posting.amount.value))
+                        boundary_by_category[category] = (
+                            boundary_by_category.get(category, 0.0) + amount
+                        )
+            elif is_transfer_entry:
+                transfer_entries.append(entry)
                 # Sum transfer amounts
                 for posting in entry.postings:
                     transfer_total += abs(float(posting.amount.value))
+                if not touches_bound and selection_set:
+                    # Check if it's an internal transfer
+                    all_internal = True
+                    for posting in entry.postings:
+                        node_id = posting.metadata.get("node_id")
+                        scope = get_node_scope(node_id, account_registry)
+                        if scope != AccountScope.INTERNAL:
+                            all_internal = False
+                            break
+                    if all_internal:
+                        internal_transfer_entries.append(entry)
 
-        # Get cancellation stats if selection is provided
-        cancelled_count = 0
-        if selection and views:
-            # This would require running aggregation with selection
-            # For now, just show basic stats
-            pass
+        # Calculate totals
+        boundary_total = sum(boundary_by_category.values())
+        cancelled_count = len(cancelled_entries)
+
+        # Get sample entries (top N by timestamp)
+        sample_entries = []
+        if args.sample > 0:
+            # Sort entries by timestamp and take top N
+            sorted_entries = sorted(
+                entries_to_analyze, key=lambda e: e.timestamp, reverse=True
+            )[: args.sample]
+            sample_entries = [
+                {
+                    "id": e.id,
+                    "timestamp": str(e.timestamp),
+                    "transaction_type": e.metadata.get("transaction_type", "unknown"),
+                    "postings": [
+                        {
+                            "account_id": p.account_id,
+                            "node_id": p.metadata.get("node_id", ""),
+                            "category": p.metadata.get("category", ""),
+                            "amount": float(p.amount.value),
+                            "currency": p.amount.currency.code,
+                        }
+                        for p in e.postings
+                    ],
+                }
+                for e in sorted_entries
+            ]
 
         if args.json:
             # JSON output
             output = {
                 "total_entries": total_entries,
-                "boundary_entries": boundary_entries,
-                "internal_entries": internal_entries,
-                "transfer_entries": transfer_entries,
+                "boundary_entries": len(boundary_entries),
+                "internal_transfer_entries": len(internal_transfer_entries),
+                "transfer_entries": len(transfer_entries),
                 "boundary_total": boundary_total,
                 "transfer_total": transfer_total,
                 "cancelled_entries": cancelled_count,
+                "boundary_by_category": boundary_by_category,
+                "sample_entries": sample_entries,
             }
+            if args.month:
+                output["month"] = args.month
+            if selection:
+                output["selection"] = list(selection_set) if selection_set else selection
+            output["transfer_visibility"] = transfer_visibility.value
             json.dump(output, sys.stdout, indent=2)
             sys.stdout.write("\n")
         else:
             # Human-readable output
             print("Journal Diagnostics")
             print("=" * 50)
+            if args.month:
+                print(f"Month filter: {args.month}")
+            if selection:
+                print(f"Selection: {', '.join(selection)}")
+                if selection_set:
+                    print(f"  Expanded to: {', '.join(sorted(selection_set))}")
+            print(f"Transfer visibility: {transfer_visibility.value}")
+            print()
             print(f"Total entries: {total_entries}")
-            print(f"  Boundary entries: {boundary_entries} (Σ={boundary_total:,.2f})")
-            print(f"  Internal entries: {internal_entries} (Σ={transfer_total:,.2f})")
-            print(f"  Transfer entries: {transfer_entries}")
+            print(f"  Boundary entries: {len(boundary_entries)} (Σ={boundary_total:,.2f})")
+            print(f"  Transfer entries: {len(transfer_entries)} (Σ={transfer_total:,.2f})")
+            print(f"    Internal transfers: {len(internal_transfer_entries)}")
             if cancelled_count > 0:
-                print(f"  Cancelled entries: {cancelled_count}")
+                print(f"  Cancelled entries: {cancelled_count} (internal transfers in selection)")
             print()
 
             # Show boundary totals by category
-            boundary_by_category = {}
-            for entry in journal.entries:
-                for posting in entry.postings:
-                    node_id = posting.metadata.get("node_id")
-                    if node_id == "b:boundary":
-                        category = posting.metadata.get("category", "unknown")
-                        amount = abs(float(posting.amount.value))
-                        boundary_by_category[category] = (
-                            boundary_by_category.get(category, 0.0) + amount
-                        )
-
             if boundary_by_category:
                 print("Boundary totals by category:")
                 for category, total in sorted(boundary_by_category.items()):
                     print(f"  {category}: {total:,.2f}")
+                print()
+
+            # Show sample entries
+            if sample_entries:
+                print(f"Sample entries (top {args.sample}):")
+                for entry in sample_entries:
+                    print(f"  {entry['id']} @ {entry['timestamp']}")
+                    print(f"    Type: {entry['transaction_type']}")
+                    for posting in entry["postings"]:
+                        node_id = posting["node_id"] or posting["account_id"]
+                        category_str = f" [{posting['category']}]" if posting["category"] else ""
+                        print(
+                            f"    {posting['account_id']} ({node_id}){category_str}: "
+                            f"{posting['amount']:,.2f} {posting['currency']}"
+                        )
+                    print()
 
         return 0
 
@@ -502,6 +670,18 @@ Aggregation Semantics:
         "--select",
         nargs="*",
         help="Select specific bricks and/or MacroBricks to analyze",
+    )
+    journal_parser.add_argument(
+        "--transfer-visibility",
+        choices=["OFF", "ONLY", "BOUNDARY_ONLY", "ALL"],
+        default="BOUNDARY_ONLY",
+        help="Transfer visibility setting (default: BOUNDARY_ONLY)",
+    )
+    journal_parser.add_argument(
+        "--month", help="Filter entries by month (format: YYYY-MM, e.g., 2026-01)"
+    )
+    journal_parser.add_argument(
+        "--sample", type=int, default=5, help="Number of sample entries to show (default: 5, 0 to disable)"
     )
     journal_parser.add_argument(
         "--json", action="store_true", help="Output in JSON format"
