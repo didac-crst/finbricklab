@@ -35,9 +35,16 @@ class TestETFUnitizedMath:
             },
         )
 
-        # Create context for 12 months
+        # Create context for 12 months (V2: requires journal)
+        from finbricklab.core.accounts import AccountRegistry
+        from finbricklab.core.journal import Journal
+
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        ctx = ScenarioContext(
+            t_index=t_index, currency="EUR", registry={}, journal=journal
+        )
 
         strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
@@ -80,8 +87,16 @@ class TestETFUnitizedMath:
             },
         )
 
+        # Create context for 12 months (V2: requires journal)
+        from finbricklab.core.accounts import AccountRegistry
+        from finbricklab.core.journal import Journal
+
         t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        ctx = ScenarioContext(
+            t_index=t_index, currency="EUR", registry={}, journal=journal
+        )
 
         strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
@@ -115,8 +130,16 @@ class TestETFUnitizedMath:
             },
         )
 
+        # Create context for 24 months (V2: requires journal)
+        from finbricklab.core.accounts import AccountRegistry
+        from finbricklab.core.journal import Journal
+
         t_index = np.arange("2026-01", "2028-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        ctx = ScenarioContext(
+            t_index=t_index, currency="EUR", registry={}, journal=journal
+        )
 
         strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
@@ -220,8 +243,16 @@ class TestETFUnitizedMath:
                 },
             )
 
+            # Create context for 12 months (V2: requires journal)
+            from finbricklab.core.accounts import AccountRegistry
+            from finbricklab.core.journal import Journal
+
             t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
-            ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+            account_registry = AccountRegistry()
+            journal = Journal(account_registry)
+            ctx = ScenarioContext(
+                t_index=t_index, currency="EUR", registry={}, journal=journal
+            )
 
             strategy = ValuationSecurityUnitized()
             strategy.prepare(etf, ctx)
@@ -252,9 +283,16 @@ class TestETFUnitizedMath:
             },
         )
 
-        # Use longer time period to see volatility effects
+        # Use longer time period to see volatility effects (V2: requires journal)
+        from finbricklab.core.accounts import AccountRegistry
+        from finbricklab.core.journal import Journal
+
         t_index = np.arange("2026-01", "2029-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        ctx = ScenarioContext(
+            t_index=t_index, currency="EUR", registry={}, journal=journal
+        )
 
         strategy = ValuationSecurityUnitized()
         strategy.prepare(etf, ctx)
