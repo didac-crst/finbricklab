@@ -1163,6 +1163,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for transfer brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1178,11 +1179,12 @@ class Scenario:
         # Get currency from brick spec (default to scenario currency)
         currency = brick.spec.get("currency", self.currency)
 
-        # Money goes out from source account (credit)
+        # Use node IDs for account_id (consistent with V2 model)
         if cash_out > 0:
+            from_node_id = get_node_id(brick.links["from"], "a")
             postings.append(
                 Posting(
-                    f"asset:{brick.links['from']}",
+                    from_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "transfer_out",
@@ -1194,9 +1196,10 @@ class Scenario:
 
         # Money comes in to destination account (debit)
         if cash_in > 0:
+            to_node_id = get_node_id(brick.links["to"], "a")
             postings.append(
                 Posting(
-                    f"asset:{brick.links['to']}",
+                    to_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "transfer_in",
@@ -1227,6 +1230,15 @@ class Scenario:
             },
         )
 
+        # Stamp posting metadata with node_id (V2 requirement)
+        from .journal import stamp_posting_metadata
+
+        for posting in entry.postings:
+            if posting.account_id.startswith("a:"):
+                stamp_posting_metadata(
+                    posting, node_id=posting.account_id, type_tag="transfer"
+                )
+
         journal.post(entry)
 
     def _create_flow_journal_entry(
@@ -1239,6 +1251,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for flow brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1269,6 +1282,9 @@ class Scenario:
 
         if not cash_account:
             return  # Still no cash account available
+
+        # Use node ID for cash account (consistent with V2 model)
+        cash_node_id = get_node_id(cash_account, "a")
 
         # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
@@ -1311,7 +1327,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "income_allocation",
@@ -1324,7 +1340,7 @@ class Scenario:
             # Expense: credit asset cash, debit expense (boundary)
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "expense_payment",
@@ -1363,6 +1379,30 @@ class Scenario:
             },
         )
 
+        # Stamp posting metadata with node_id (V2 requirement)
+        from .journal import stamp_posting_metadata
+        from .accounts import BOUNDARY_NODE_ID
+
+        for posting in entry.postings:
+            if posting.account_id == boundary_account:
+                # Boundary posting - use boundary account ID
+                category = (
+                    "income.recurring"
+                    if transaction_type == "income"
+                    else "expense.recurring"
+                )
+                stamp_posting_metadata(
+                    posting,
+                    node_id=BOUNDARY_NODE_ID,
+                    category=category,
+                    type_tag=transaction_type,
+                )
+            elif posting.account_id == cash_node_id:
+                # Cash posting - use node ID
+                stamp_posting_metadata(
+                    posting, node_id=cash_node_id, type_tag=transaction_type
+                )
+
         journal.post(entry)
 
     def _create_liability_journal_entry(
@@ -1375,6 +1415,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for liability brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1401,6 +1442,9 @@ class Scenario:
                 # No cash account available - skip journal entry
                 return
             cash_account = cash_ids[0]
+
+        # Use node ID for cash account (consistent with V2 model)
+        cash_node_id = get_node_id(cash_account, "a")
 
         # Create boundary account for the liability using brick_id
         boundary_account = f"liability:{brick.id}"
@@ -1437,7 +1481,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "liability_disbursement",
@@ -1472,6 +1516,24 @@ class Scenario:
                 postings=postings.copy(),
                 metadata=disbursement_metadata,
             )
+
+            # Stamp posting metadata with node_id (V2 requirement)
+            from .journal import stamp_posting_metadata
+            from .accounts import BOUNDARY_NODE_ID
+
+            for posting in disbursement_entry.postings:
+                if posting.account_id == boundary_account:
+                    stamp_posting_metadata(
+                        posting,
+                        node_id=BOUNDARY_NODE_ID,
+                        category="liability.disbursement",
+                        type_tag="disbursement",
+                    )
+                elif posting.account_id == cash_node_id:
+                    stamp_posting_metadata(
+                        posting, node_id=cash_node_id, type_tag="disbursement"
+                    )
+
             journal.post(disbursement_entry)
 
             # Reset postings for payment entry
@@ -1490,7 +1552,7 @@ class Scenario:
             # Payment: credit asset cash, debit liability (boundary)
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "loan_payment",
@@ -1553,6 +1615,25 @@ class Scenario:
                 postings=postings,
                 metadata=metadata,
             )
+
+            # Stamp posting metadata with node_id (V2 requirement)
+            from .journal import stamp_posting_metadata
+            from .accounts import BOUNDARY_NODE_ID
+
+            for posting in entry.postings:
+                if posting.account_id == boundary_account:
+                    stamp_posting_metadata(
+                        posting,
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.interest"
+                        if interest_amount > 0
+                        else "liability.payment",
+                        type_tag="payment",
+                    )
+                elif posting.account_id == cash_node_id:
+                    stamp_posting_metadata(
+                        posting, node_id=cash_node_id, type_tag="payment"
+                    )
 
             journal.post(entry)
 
