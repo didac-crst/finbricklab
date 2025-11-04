@@ -860,9 +860,14 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+**Testing**
+
+* Tests are organized by area: `tests/core/`, `tests/strategies/`, `tests/integration/`
+* See [CONTRIBUTING.md](docs/CONTRIBUTING.md#testing-guidelines) for test structure and naming conventions
+
 **Releases**
 
-* Tag with semantic versioning (e.g., `v0.1.0`).
+* Tag with semantic versioning (e.g., `v0.2.0`).
 * CI should execute README snippets to avoid drift.
 
 ---
