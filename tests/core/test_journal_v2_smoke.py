@@ -1874,7 +1874,7 @@ class TestJournalDiagnostics:
             id="transfer",
             name="Transfer",
             kind="t.transfer.recurring",
-            spec={"amount_monthly": 300.0},
+            spec={"amount": 300.0},
             links={"from": "cash", "to": "savings"},
         )
 
