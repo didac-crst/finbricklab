@@ -836,6 +836,8 @@ class TestTransferRecurring:
         ), "Internal transfer should be hidden"
 
         # Test ONLY: show only transfer entries
+        # Note: Cancellation applies regardless of visibility - internal transfers
+        # cancel when both nodes are in selection, even with ONLY mode.
         df = _aggregate_journal_monthly(
             journal=journal,
             registry=registry,
@@ -843,11 +845,9 @@ class TestTransferRecurring:
             selection=selection,
             transfer_visibility=TransferVisibility.ONLY,
         )
-        assert df.loc["2026-01", "cash_in"] == 1000.0, "Transfer should show"
-        assert df.loc["2026-01", "cash_out"] == 1000.0, "Transfer should show"
-        # Note: With both nodes in selection, transfer cancels to 0, but with ONLY mode,
-        # we're showing the transfer entries themselves. This depends on implementation.
-        # For now, we'll verify the behavior is consistent.
+        # With both nodes in selection, internal transfer cancels to 0 net
+        assert df.loc["2026-01", "cash_in"] == 0.0, "Internal transfer cancels (both nodes in selection)"
+        assert df.loc["2026-01", "cash_out"] == 0.0, "Internal transfer cancels (both nodes in selection)"
 
         # Test BOUNDARY_ONLY: show only boundary-touching entries
         df = _aggregate_journal_monthly(
