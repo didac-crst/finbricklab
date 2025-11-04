@@ -5,7 +5,7 @@
 **V2 Postings Model (Current Development)**
 - **Branch**: `feat/postings-model-v2`
 - **Issue**: #15 (V2 Postings Model Implementation)
-- **Specs**: 
+- **Specs**:
   - Logic spec: `docs/POSTINGS_MODEL_AND_BRICK_TYPES.md`
   - Technical spec: `docs/TECHNICAL_SPEC_POSTINGS_MODEL.md`
 - **Status**: ✅ Core implementation complete (24 V2 smoke tests passing)

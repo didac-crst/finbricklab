@@ -108,7 +108,9 @@ class TestMacroBrick:
         mb = MacroBrick(id="test", name="Test", members=["brick1", "unknown_brick"])
 
         # Attempting to expand should raise ConfigError
-        with pytest.raises(ConfigError, match="Unknown member id 'unknown_brick'"):
+        with pytest.raises(
+            ConfigError, match="contains unknown member id 'unknown_brick'"
+        ):
             mb.expand_member_bricks(registry)
 
 
@@ -371,17 +373,18 @@ class TestScenarioIntegration:
             struct_output["liabilities"],
             house_output["liabilities"] + mortgage_output["liabilities"],
         )
-        
+
         # V2: For cash flows, use journal-first aggregation instead of per-brick arrays
         # Verify that journal has entries for the MacroBrick members
         journal = results["journal"]
         # Get node IDs for the MacroBrick members
         from finbricklab.core.accounts import get_node_id
+
         selection = {get_node_id("house", "a"), get_node_id("mortgage", "l")}
-        
+
         # Use journal-first aggregation with selection
         monthly = results["views"].monthly(selection=selection)
-        
+
         # Verify cash flows are present (if there are any journal entries)
         # Note: Property and mortgage don't generate cash flows in V2 (they're A/L bricks)
         # So cash_in/cash_out may be zero, which is expected
@@ -511,17 +514,18 @@ class TestAggregationCorrectness:
         # Compare with automatic aggregation (assets/liabilities)
         assert np.allclose(struct_output["assets"], manual_assets)
         assert np.allclose(struct_output["liabilities"], manual_liabilities)
-        
+
         # V2: For cash flows, use journal-first aggregation instead of per-brick arrays
         # Verify that journal has entries for the MacroBrick members
         journal = results["journal"]
         # Get node IDs for the MacroBrick members
         from finbricklab.core.accounts import get_node_id
+
         selection = {get_node_id("house", "a"), get_node_id("mortgage", "l")}
-        
+
         # Use journal-first aggregation with selection
         monthly = results["views"].monthly(selection=selection)
-        
+
         # Verify cash flows are present (if there are any journal entries)
         # Note: Property and mortgage don't generate cash flows directly in V2 (they're A/L bricks)
         # Cash flows come from related flows (income/expense) that route to/from these accounts

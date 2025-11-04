@@ -10,7 +10,14 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 
-from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
+from finbricklab.core.accounts import (
+    BOUNDARY_NODE_ID,
+    FX_CLEAR_NODE_ID,
+    Account,
+    AccountScope,
+    AccountType,
+    get_node_id,
+)
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
@@ -221,61 +228,66 @@ class TransferScheduled(ITransferStrategy):
             else:
                 transfer_timestamp = datetime.fromisoformat(str(transfer_timestamp))
 
+            # Check if FX is specified
+            has_fx = "fx" in brick.spec
+
             # V2: Create journal entry for internal transfer (INTERNAL↔INTERNAL)
             # DR destination asset, CR source asset
-            operation_id = create_operation_id(f"ts:{brick.id}", transfer_timestamp)
-            entry_id = create_entry_id(operation_id, sequence + 1)
-            origin_id = generate_transaction_id(
-                brick.id,
-                transfer_timestamp,
-                {"schedule_entry": entry},
-                brick.links or {},
-                sequence=sequence,
-            )
+            # Skip regular transfer entry if FX is present (FX entries replace it)
+            if not has_fx:
+                operation_id = create_operation_id(f"ts:{brick.id}", transfer_timestamp)
+                entry_id = create_entry_id(operation_id, sequence + 1)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    transfer_timestamp,
+                    {"schedule_entry": entry},
+                    brick.links or {},
+                    sequence=sequence,
+                )
 
-            transfer_entry = JournalEntry(
-                id=entry_id,
-                timestamp=transfer_timestamp,
-                postings=[
-                    Posting(
-                        account_id=to_node_id,
-                        amount=create_amount(float(amount), currency),
-                        metadata={},
-                    ),
-                    Posting(
-                        account_id=from_node_id,
-                        amount=create_amount(-float(amount), currency),
-                        metadata={},
-                    ),
-                ],
-                metadata={},
-            )
+                transfer_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=transfer_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=to_node_id,
+                            amount=create_amount(float(amount), currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=from_node_id,
+                            amount=create_amount(-float(amount), currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
 
-            stamp_entry_metadata(
-                transfer_entry,
-                parent_id=f"ts:{brick.id}",
-                timestamp=transfer_timestamp,
-                tags={"type": "transfer"},
-                sequence=1,
-                origin_id=origin_id,
-            )
+                stamp_entry_metadata(
+                    transfer_entry,
+                    parent_id=f"ts:{brick.id}",
+                    timestamp=transfer_timestamp,
+                    tags={"type": "transfer"},
+                    sequence=1,
+                    origin_id=origin_id,
+                )
 
-            # Set transaction_type for transfers
-            transfer_entry.metadata["transaction_type"] = "transfer"
+                # Set transaction_type for transfers
+                transfer_entry.metadata["transaction_type"] = "transfer"
 
-            # Stamp both postings with node_id and type_tag
-            stamp_posting_metadata(
-                transfer_entry.postings[0],
-                node_id=to_node_id,
-                type_tag="transfer",
-            )
-            stamp_posting_metadata(
-                transfer_entry.postings[1],
-                node_id=from_node_id,
-                type_tag="transfer",
-            )
+                # Stamp both postings with node_id and type_tag
+                stamp_posting_metadata(
+                    transfer_entry.postings[0],
+                    node_id=to_node_id,
+                    type_tag="transfer",
+                )
+                stamp_posting_metadata(
+                    transfer_entry.postings[1],
+                    node_id=from_node_id,
+                    type_tag="transfer",
+                )
 
-            journal.post(transfer_entry)
+                journal.post(transfer_entry)
 
             # Create transfer event
             event = Event(
@@ -381,18 +393,275 @@ class TransferScheduled(ITransferStrategy):
                 )
                 events.append(fee_event)
 
-            # Add FX event if specified (using same event_t)
-            # Note: FX transfers will be handled separately in a future conversion
-            if "fx" in brick.spec:
+            # Handle FX if specified (V2: create FX journal entries)
+            if has_fx:
                 fx = brick.spec["fx"]
+                assert "rate" in fx, "FX rate is required"
+                assert "pair" in fx, "FX pair is required"
+
+                # Parse FX pair (e.g., "USD/EUR")
+                # The transfer's currency is the source currency
+                pair = fx["pair"].split("/")
+                if len(pair) != 2:
+                    raise ValueError(f"Invalid FX pair format: {fx['pair']}")
+                # Source currency comes from transfer spec, dest from FX pair
+                source_currency = currency  # Transfer's currency is source
+                # Verify FX pair matches transfer currency
+                if pair[0] != source_currency:
+                    raise ValueError(
+                        f"FX pair source currency ({pair[0]}) doesn't match transfer currency ({source_currency})"
+                    )
+                dest_currency = pair[1]
+
+                # Get P&L account (default to "P&L:FX")
+                pnl_account = fx.get("pnl_account", "P&L:FX")
+                pnl_node_id = pnl_account  # Use as-is (will be registered as boundary)
+
+                # Ensure FX clearing and P&L accounts are registered
+                account_registry = ctx.journal.account_registry if ctx.journal else None
+                if account_registry:
+                    # Register P&L account if not already registered
+                    if not account_registry.get_account(pnl_node_id):
+                        account_registry.register_account(
+                            Account(
+                                pnl_node_id,
+                                "FX P&L",
+                                AccountScope.BOUNDARY,
+                                AccountType.PNL,
+                            )
+                        )
+
+                # Calculate destination amount
+                fx_rate = Decimal(str(fx["rate"]))
+                amount_source = amount
+                amount_dest = amount_source * fx_rate
+
+                # Get explicit destination amount if provided (for P&L calculation)
+                amount_dest_explicit = fx.get("amount_dest")
+                if amount_dest_explicit is not None:
+                    amount_dest_explicit = Decimal(str(amount_dest_explicit))
+                    # Use explicit amount for destination
+                    amount_dest = amount_dest_explicit
+
+                # Calculate P&L (residual between rate-derived and explicit amounts)
+                # If no explicit amount, P&L is zero (rounding differences only)
+                amount_dest_rate_based = amount_source * fx_rate
+                if amount_dest_explicit is not None:
+                    pnl_amount = amount_dest_explicit - amount_dest_rate_based
+                else:
+                    pnl_amount = Decimal("0")
+
+                # Entry 1: Source leg (source currency)
+                # DR b:fx_clear (source currency), CR a:<from> (source currency)
+                fx_operation_id = create_operation_id(
+                    f"ts:{brick.id}:fx", transfer_timestamp
+                )
+                fx_entry_id_1 = create_entry_id(fx_operation_id, 1)
+                fx_origin_id_1 = generate_transaction_id(
+                    brick.id,
+                    transfer_timestamp,
+                    {**(brick.spec or {}), "fx_leg": "source", "schedule_entry": entry},
+                    brick.links or {},
+                    sequence=sequence * 100 + 1,
+                )
+
+                fx_entry_1 = JournalEntry(
+                    id=fx_entry_id_1,
+                    timestamp=transfer_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=FX_CLEAR_NODE_ID,
+                            amount=create_amount(float(amount_source), source_currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=from_node_id,
+                            amount=create_amount(
+                                -float(amount_source), source_currency
+                            ),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    fx_entry_1,
+                    parent_id=f"ts:{brick.id}",
+                    timestamp=transfer_timestamp,
+                    tags={"type": "fx_transfer", "fx_leg": "source"},
+                    sequence=1,
+                    origin_id=fx_origin_id_1,
+                )
+                fx_entry_1.metadata["transaction_type"] = "fx_transfer"
+
+                stamp_posting_metadata(
+                    fx_entry_1.postings[0],
+                    node_id=FX_CLEAR_NODE_ID,
+                    type_tag="fx_clear",
+                    category="fx.clearing",
+                )
+                stamp_posting_metadata(
+                    fx_entry_1.postings[1],
+                    node_id=from_node_id,
+                    type_tag="fx_transfer",
+                )
+
+                # Guard: Skip posting if entry with same ID already exists
+                if not any(e.id == fx_entry_1.id for e in journal.entries):
+                    journal.post(fx_entry_1)
+
+                # Entry 2: Destination leg (destination currency)
+                # DR a:<to> (destination currency), CR b:fx_clear (destination currency)
+                fx_entry_id_2 = create_entry_id(fx_operation_id, 2)
+                fx_origin_id_2 = generate_transaction_id(
+                    brick.id,
+                    transfer_timestamp,
+                    {**(brick.spec or {}), "fx_leg": "dest", "schedule_entry": entry},
+                    brick.links or {},
+                    sequence=sequence * 100 + 2,
+                )
+
+                fx_entry_2 = JournalEntry(
+                    id=fx_entry_id_2,
+                    timestamp=transfer_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=to_node_id,
+                            amount=create_amount(float(amount_dest), dest_currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=FX_CLEAR_NODE_ID,
+                            amount=create_amount(-float(amount_dest), dest_currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    fx_entry_2,
+                    parent_id=f"ts:{brick.id}",
+                    timestamp=transfer_timestamp,
+                    tags={"type": "fx_transfer", "fx_leg": "dest"},
+                    sequence=2,
+                    origin_id=fx_origin_id_2,
+                )
+                fx_entry_2.metadata["transaction_type"] = "fx_transfer"
+
+                stamp_posting_metadata(
+                    fx_entry_2.postings[0],
+                    node_id=to_node_id,
+                    type_tag="fx_transfer",
+                )
+                stamp_posting_metadata(
+                    fx_entry_2.postings[1],
+                    node_id=FX_CLEAR_NODE_ID,
+                    type_tag="fx_clear",
+                    category="fx.clearing",
+                )
+
+                # Guard: Skip posting if entry with same ID already exists
+                if not any(e.id == fx_entry_2.id for e in journal.entries):
+                    journal.post(fx_entry_2)
+
+                # Entry 3: P&L entry (if non-zero)
+                if abs(pnl_amount) > Decimal("1e-6"):  # Only create if significant
+                    fx_entry_id_3 = create_entry_id(fx_operation_id, 3)
+                    fx_origin_id_3 = generate_transaction_id(
+                        brick.id,
+                        transfer_timestamp,
+                        {
+                            **(brick.spec or {}),
+                            "fx_leg": "pnl",
+                            "schedule_entry": entry,
+                        },
+                        brick.links or {},
+                        sequence=sequence * 100 + 3,
+                    )
+
+                    # P&L: DR/CR between b:fx_clear and P&L:FX
+                    # If P&L is positive (gain), it's income: CR P&L account (income), DR fx_clear
+                    # If P&L is negative (loss), it's expense: DR P&L account (expense), CR fx_clear
+                    abs_pnl = abs(pnl_amount)
+                    if pnl_amount > 0:
+                        # Positive P&L (gain): income - CR P&L account, DR clearing
+                        pnl_postings = [
+                            Posting(
+                                account_id=pnl_node_id,
+                                amount=create_amount(float(abs_pnl), dest_currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=FX_CLEAR_NODE_ID,
+                                amount=create_amount(-float(abs_pnl), dest_currency),
+                                metadata={},
+                            ),
+                        ]
+                        pnl_category = "income.fx"
+                    else:
+                        # Negative P&L (loss): expense - DR P&L account, CR clearing
+                        pnl_postings = [
+                            Posting(
+                                account_id=pnl_node_id,
+                                amount=create_amount(-float(abs_pnl), dest_currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=FX_CLEAR_NODE_ID,
+                                amount=create_amount(float(abs_pnl), dest_currency),
+                                metadata={},
+                            ),
+                        ]
+                        pnl_category = "expense.fx"
+
+                    fx_entry_3 = JournalEntry(
+                        id=fx_entry_id_3,
+                        timestamp=transfer_timestamp,
+                        postings=pnl_postings,
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        fx_entry_3,
+                        parent_id=f"ts:{brick.id}",
+                        timestamp=transfer_timestamp,
+                        tags={"type": "fx_transfer", "fx_leg": "pnl"},
+                        sequence=3,
+                        origin_id=fx_origin_id_3,
+                    )
+                    fx_entry_3.metadata["transaction_type"] = "fx_transfer"
+
+                    stamp_posting_metadata(
+                        fx_entry_3.postings[0],
+                        node_id=FX_CLEAR_NODE_ID if pnl_amount > 0 else pnl_node_id,
+                        type_tag="fx_transfer",
+                        category=pnl_category,
+                    )
+                    stamp_posting_metadata(
+                        fx_entry_3.postings[1],
+                        node_id=pnl_node_id if pnl_amount > 0 else FX_CLEAR_NODE_ID,
+                        type_tag="fx_transfer",
+                        category=pnl_category,
+                    )
+
+                    # Guard: Skip posting if entry with same ID already exists
+                    if not any(e.id == fx_entry_3.id for e in journal.entries):
+                        journal.post(fx_entry_3)
+
+                # Create FX event
                 fx_event = Event(
                     ctx.t_index[month_idx],
                     "fx_transfer",
                     f"FX transfer: {fx['pair']} @ {fx['rate']}",
                     {
-                        "rate": fx["rate"],
+                        "rate": float(fx_rate),
                         "pair": fx["pair"],
-                        "pnl_account": fx.get("pnl_account", "P&L:FX"),
+                        "pnl_account": pnl_account,
+                        "amount_source": float(amount_source),
+                        "amount_dest": float(amount_dest),
+                        "pnl_amount": float(pnl_amount),
                     },
                 )
                 events.append(fx_event)

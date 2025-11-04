@@ -556,7 +556,13 @@ class Scenario:
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ):
         """Simulate all bricks using Journal-based system."""
-        from .accounts import Account, AccountScope, AccountType, BOUNDARY_NODE_ID, get_node_id
+        from .accounts import (
+            BOUNDARY_NODE_ID,
+            Account,
+            AccountScope,
+            AccountType,
+            get_node_id,
+        )
 
         outputs: dict[str, BrickOutput] = {}
 
@@ -878,7 +884,7 @@ class Scenario:
             try:
                 validate_origin_id_uniqueness(journal)
             except ValueError as e:
-                raise AssertionError(f"Journal origin_id validation failed: {e}")
+                raise AssertionError(f"Journal origin_id validation failed: {e}") from e
 
         return outputs, journal
 
@@ -1380,8 +1386,8 @@ class Scenario:
         )
 
         # Stamp posting metadata with node_id (V2 requirement)
-        from .journal import stamp_posting_metadata
         from .accounts import BOUNDARY_NODE_ID
+        from .journal import stamp_posting_metadata
 
         for posting in entry.postings:
             if posting.account_id == boundary_account:
@@ -1518,8 +1524,8 @@ class Scenario:
             )
 
             # Stamp posting metadata with node_id (V2 requirement)
-            from .journal import stamp_posting_metadata
             from .accounts import BOUNDARY_NODE_ID
+            from .journal import stamp_posting_metadata
 
             for posting in disbursement_entry.postings:
                 if posting.account_id == boundary_account:
@@ -1617,8 +1623,8 @@ class Scenario:
             )
 
             # Stamp posting metadata with node_id (V2 requirement)
-            from .journal import stamp_posting_metadata
             from .accounts import BOUNDARY_NODE_ID
+            from .journal import stamp_posting_metadata
 
             for posting in entry.postings:
                 if posting.account_id == boundary_account:

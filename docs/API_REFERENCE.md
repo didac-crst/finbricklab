@@ -68,8 +68,15 @@ class ScenarioResults:
     def __init__(self, totals: pd.DataFrame, registry: Registry = None, outputs: Dict = None, journal: Journal = None):
         """Initialize with monthly totals and optional journal."""
 
-    def monthly(self) -> pd.DataFrame:
-        """Get monthly aggregated results."""
+    def monthly(self, transfer_visibility: TransferVisibility = TransferVisibility.BOUNDARY_ONLY, selection: set[str] | None = None) -> pd.DataFrame:
+        """Get monthly aggregated results (journal-first).
+
+        Args:
+            transfer_visibility: OFF | ONLY | BOUNDARY_ONLY | ALL
+            selection: Optional set of A/L node IDs (e.g., {"a:cash", "l:mortgage"}) and/or MacroBrick IDs
+        Returns:
+            Monthly DataFrame with journal-first cashflow aggregation.
+        """
 
     def quarterly(self) -> pd.DataFrame:
         """Get quarterly aggregated results."""
@@ -85,14 +92,19 @@ def journal(self) -> pd.DataFrame:
         """Get all transactions for a specific account."""
 
     def filter(self, brick_ids: List[str]) -> ScenarioResults:
-        """Filter results to specific bricks or MacroBricks."""
+        """Filter results to specific bricks or MacroBricks (legacy, non-journal-first behavior).
+
+        Notes:
+            This method uses legacy aggregation logic and may not reflect journal-first semantics.
+            For V2 journal-first aggregation, use `monthly(selection=...)` instead.
+        """
 ```
 
-**Key Features:**
+**Key Features (V2):**
 - **Time Aggregation**: Monthly, quarterly, yearly views
 - **Journal Analysis**: Complete transaction-level detail with canonical structure
 - **Account Filtering**: Get transactions for specific accounts
-- **Component Filtering**: Focus on specific bricks or MacroBricks
+- **Selection-based Aggregation**: Focus on specific A/L nodes or MacroBricks via `monthly(selection=...)`
 - **Double-Entry Validation**: Ensure proper accounting
 - **Canonical Structure**: Self-documenting record IDs and primary columns for easy analysis
 

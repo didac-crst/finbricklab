@@ -63,7 +63,33 @@ class BrickCompiler:
             Posting(to_account, +amount_obj, {"type": "transfer_in"}),
         ]
 
-        # Add fee postings if specified
+        # Normalize timestamp to datetime
+        timestamp = brick.start_date if brick.start_date else ctx.t_index[0]
+        if isinstance(timestamp, str):
+            timestamp_dt = datetime.fromisoformat(timestamp)
+        elif isinstance(timestamp, date) and not isinstance(timestamp, datetime):
+            timestamp_dt = datetime.combine(timestamp, datetime.min.time())
+        else:
+            timestamp_dt = timestamp
+
+        # Create transfer entry (must be 2 postings)
+        txn_id = generate_transaction_id(
+            brick.id, timestamp_dt, brick.spec, brick.links, sequence
+        )
+        entry = JournalEntry(
+            id=txn_id,
+            timestamp=timestamp_dt,
+            postings=postings,
+            metadata={
+                "brick_id": brick.id,
+                "brick_type": "transfer",
+                "kind": brick.kind,
+                "transaction_type": "transfer",
+            },
+        )
+        entries.append(entry)
+
+        # Handle fees if specified (create separate fee entry - V2 pattern)
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
             fee_amount = Decimal(str(fees["amount"]))
@@ -71,90 +97,39 @@ class BrickCompiler:
             fee_amount_obj = create_amount(fee_amount, fee_currency)
             fee_account = fees["account"]
 
-            # Add fee postings (fee reduces destination, expense increases)
-            postings.extend(
-                [
-                    Posting(to_account, -fee_amount_obj, {"type": "fee_payment"}),
-                    Posting(fee_account, +fee_amount_obj, {"type": "fee_income"}),
-                ]
-            )
-
-        # Add FX postings if specified
-        if "fx" in brick.spec:
-            fx = brick.spec["fx"]
-            rate = Decimal(str(fx["rate"]))
-            pair = fx["pair"]
-            pnl_account = fx.get("pnl_account", "P&L:FX")
-
-            # Validate FX pair base matches source currency
-            base_ccy, dest_ccy = pair.split("/", 1)
-            if base_ccy != currency:
-                raise ValueError(
-                    f"FX pair base '{base_ccy}' does not match source currency '{currency}'"
-                )
-
-            # Calculate destination amount in different currency
-            dest_amount = amount * rate
-            dest_currency = dest_ccy  # Use extracted destination currency
-            dest_amount_obj = create_amount(dest_amount, dest_currency)
-
-            # Remove original positive dest posting and replace with FX-adjusted dest leg
-            postings = [
-                p
-                for p in postings
-                if not (p.account_id == to_account and p.amount.value > 0)
+            # V2: Fee entry is separate with 2 postings: DR expense (BOUNDARY), CR destination (INTERNAL)
+            # Fee entry: destination account pays fee, boundary account receives it
+            fee_postings = [
+                Posting(to_account, -fee_amount_obj, {"type": "fee_payment"}),
+                Posting(fee_account, +fee_amount_obj, {"type": "fee_income"}),
             ]
-            postings.append(
-                Posting(to_account, +dest_amount_obj, {"type": "fx_transfer_in"})
-            )
 
-            # Add balancing P&L legs so each currency zero-sums independently
-            # Asset legs: source_account -= amount (source ccy), dest_account += dest_amount (dest ccy)
-            # P&L legs must mirror those signs per currency:
-            # Source currency: P&L debits +amount to offset the source credit
-            postings.append(Posting(pnl_account, +amount_obj, {"type": "fx_source"}))
-            # Dest currency: P&L credits -dest_amount to offset the destination debit
-            postings.append(Posting(pnl_account, -dest_amount_obj, {"type": "fx_dest"}))
-
-        # Create journal entry
-        timestamp = brick.start_date if brick.start_date else ctx.t_index[0]
-        if isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp)
-        elif isinstance(timestamp, date) and not isinstance(timestamp, datetime):
-            # Convert date to datetime for the transaction ID generation
-            timestamp_dt = datetime.combine(timestamp, datetime.min.time())
-            txn_id = generate_transaction_id(
-                brick.id, timestamp_dt, brick.spec, brick.links, sequence
+            # Generate fee entry ID (use sequence + 1 for fee entry)
+            fee_txn_id = generate_transaction_id(
+                brick.id, timestamp_dt, brick.spec, brick.links, sequence + 1
             )
-            entry = JournalEntry(
-                id=txn_id,
+            fee_entry = JournalEntry(
+                id=fee_txn_id,
                 timestamp=timestamp_dt,
-                postings=postings,
+                postings=fee_postings,
                 metadata={
                     "brick_id": brick.id,
                     "brick_type": "transfer",
                     "kind": brick.kind,
+                    "transaction_type": "transfer",
+                    "fee": True,
                 },
             )
-            entries.append(entry)
-            return entries
-        else:
-            txn_id = generate_transaction_id(
-                brick.id, timestamp, brick.spec, brick.links, sequence
-            )
+            entries.append(fee_entry)
 
-        entry = JournalEntry(
-            id=txn_id,
-            timestamp=timestamp,
-            postings=postings,
-            metadata={
-                "brick_id": brick.id,
-                "brick_type": "transfer",
-                "kind": brick.kind,
-            },
-        )
+        # Handle FX if specified (FX entries are handled by transfer strategies)
+        # V2: Compiler delegates to strategy layer for FX handling
+        # Strategies will create FX entries during simulate() phase
+        if "fx" in brick.spec:
+            # FX handling is done in transfer strategies, not compiler
+            # This is a no-op here - strategies will create FX entries
+            pass
 
-        entries.append(entry)
         return entries
 
     def compile_fbrick(

@@ -734,17 +734,23 @@ The diagnostics command reports:
 
 ## Outputs
 
-Each strategy returns a conceptual **`BrickOutput`**:
+V2 uses a journal‑first model for cash flows and keeps per‑brick balances/KPIs in outputs:
 
-* `cash_in[T]`, `cash_out[T]` — arrays aligned to the scenario timeline
-* `assets[T]`, `liabilities[T]` — arrays aligned to the timeline
-* `events[]` — optional discrete events (fees, prepayments, etc.)
+- `BrickOutput` (per strategy):
+  - `assets[T]`, `liabilities[T]`, `interest[T]` — arrays aligned to the scenario timeline
+  - `events[]` — optional discrete events (fees, prepayments, etc.)
+  - `cash_in/cash_out` are deprecated and may be omitted (they are ignored by aggregation)
 
-A **Scenario run** returns a structure that includes:
+- Scenario results:
+  - `results["views"].monthly(transfer_visibility=..., selection=...)` — journal‑first aggregation of cash flows with selection and visibility filters
+  - `results["views"].to_freq("Q"|"Y")` — time aggregation helpers
+  - `results["views"].journal()` — journal entries as a DataFrame with metadata (transaction_type, categories, node_ids)
+  - `totals` — a **DataFrame** with time index; common columns include `cash`, `non_cash`, `assets`, `liabilities`, `interest`, `equity`
 
-* `bricks` — per‑brick outputs
-* `totals` — a **DataFrame** with time index; typical columns include `cash`, `assets`, `liabilities` (and may include others depending on your build)
-* JSON export — via `export_run_json()` (shape stable within a minor series)
+Notes
+- Cash flow aggregation comes from the Journal (not per‑brick arrays)
+- Selection accepts A/L node IDs (e.g., `a:cash`, `l:mortgage`) and MacroBrick IDs (expanded to A/L)
+- Transfer visibility: `BOUNDARY_ONLY` (default), `ALL`, `ONLY`, `OFF`
 
 ---
 

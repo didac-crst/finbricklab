@@ -6,6 +6,8 @@ This document describes the Entity system and canonical schema for financial sce
 
 The Entity system provides a clean, consistent way to group and compare multiple financial scenarios. It introduces a canonical schema that ensures all scenarios emit the same data structure, enabling apples-to-apples comparisons and standardized visualizations.
 
+Note (V2): Cash flows aggregate from the Journal (journal‑first). MacroGroups accept only Asset/Liability bricks (and nested MacroGroups); internal transfers between selected A/L nodes cancel in aggregation, while boundary‑touching entries (income/expense) never cancel. Use `ScenarioResults.monthly(selection=..., transfer_visibility=...)` to analyze cash flows by selection and visibility.
+
 ## Entity Class
 
 The `Entity` class serves as the top-level aggregator for multiple financial scenarios.

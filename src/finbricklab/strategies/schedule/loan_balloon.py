@@ -292,7 +292,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
+                            sequence=month_idx * 100
+                            + sequence,  # Unique per entry in same month
                         )
 
                         principal_entry = JournalEntry(
@@ -301,12 +302,16 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             postings=[
                                 Posting(
                                     account_id=liability_node_id,
-                                    amount=create_amount(float(balloon_payment), ctx.currency),
+                                    amount=create_amount(
+                                        float(balloon_payment), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                                 Posting(
                                     account_id=cash_node_id,
-                                    amount=create_amount(-float(balloon_payment), ctx.currency),
+                                    amount=create_amount(
+                                        -float(balloon_payment), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                             ],
@@ -349,7 +354,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
+                            sequence=month_idx * 100
+                            + sequence,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(
@@ -363,7 +369,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                 ),
                                 Posting(
                                     account_id=cash_node_id,
-                                    amount=create_amount(-float(interest), ctx.currency),
+                                    amount=create_amount(
+                                        -float(interest), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                             ],
@@ -437,7 +445,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
+                            sequence=month_idx * 100
+                            + sequence,  # Unique per entry in same month
                         )
 
                         principal_entry = JournalEntry(
@@ -446,12 +455,16 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             postings=[
                                 Posting(
                                     account_id=liability_node_id,
-                                    amount=create_amount(float(principal_payment), ctx.currency),
+                                    amount=create_amount(
+                                        float(principal_payment), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                                 Posting(
                                     account_id=cash_node_id,
-                                    amount=create_amount(-float(principal_payment), ctx.currency),
+                                    amount=create_amount(
+                                        -float(principal_payment), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                             ],
@@ -494,7 +507,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
+                            sequence=month_idx * 100
+                            + sequence,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(
@@ -508,7 +522,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                 ),
                                 Posting(
                                     account_id=cash_node_id,
-                                    amount=create_amount(-float(interest), ctx.currency),
+                                    amount=create_amount(
+                                        -float(interest), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                             ],
@@ -579,7 +595,8 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx * 100 + 1,  # Unique per entry in same month
+                            sequence=month_idx * 100
+                            + 1,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(
@@ -593,7 +610,9 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                 ),
                                 Posting(
                                     account_id=cash_node_id,
-                                    amount=create_amount(-float(interest), ctx.currency),
+                                    amount=create_amount(
+                                        -float(interest), ctx.currency
+                                    ),
                                     metadata={},
                                 ),
                             ],

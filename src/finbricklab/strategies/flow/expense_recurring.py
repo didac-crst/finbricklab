@@ -10,6 +10,7 @@ from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import FBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.journal import (
     JournalEntry,
@@ -109,7 +110,7 @@ class FlowExpenseRecurring(IFlowStrategy):
         amount = float(brick.spec["amount_monthly"])
         category = brick.spec.get("category", "expense.recurring")
 
-        events = []
+        events: list[Event] = []
 
         # Calculate expense for each month
         for t in range(T):

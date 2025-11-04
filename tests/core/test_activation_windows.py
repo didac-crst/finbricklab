@@ -215,7 +215,9 @@ class TestActivationWindows:
         # Check that property purchase occurred (month 2 = index 1 when asset starts)
         # The purchase amount may be in cash_out or handled via internal transfers
         # For now, just verify the property was purchased (asset value > 0 in month 2)
-        assert asset_value[1] > 0, "Month 2 should have asset value (property purchased)"
+        assert (
+            asset_value[1] > 0
+        ), "Month 2 should have asset value (property purchased)"
         # Cash outflow for purchase may be in cash_out or journal entries
         # The exact behavior depends on property strategy implementation
 

@@ -185,11 +185,14 @@ class TestETFUnitizedMath:
         ]
 
         # Should have transfer entries (liquidation at end)
-        assert len(transfer_entries) > 0, "Should have transfer entries from liquidation"
+        assert (
+            len(transfer_entries) > 0
+        ), "Should have transfer entries from liquidation"
 
         # Find liquidation entry (final month)
-        from finbricklab.core.accounts import get_node_id
         from datetime import datetime
+
+        from finbricklab.core.accounts import get_node_id
 
         cash_node_id = get_node_id("cash", "a")
         etf_node_id = get_node_id("etf", "a")
@@ -203,7 +206,9 @@ class TestETFUnitizedMath:
         ]
 
         # Should have liquidation entry in final month
-        assert len(liquidation_entries) > 0, "Should have liquidation entry in final month"
+        assert (
+            len(liquidation_entries) > 0
+        ), "Should have liquidation entry in final month"
 
         # Extract cash inflow from liquidation entry
         liquidation_entry = liquidation_entries[0]

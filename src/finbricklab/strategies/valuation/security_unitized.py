@@ -456,15 +456,21 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     # Cash dividend: V2: Create journal entry (BOUNDARY↔INTERNAL: CR income.dividend, DR cash)
                     dividend_timestamp = ctx.t_index[t]
                     if isinstance(dividend_timestamp, np.datetime64):
-                        dividend_timestamp = pd.Timestamp(dividend_timestamp).to_pydatetime()
+                        dividend_timestamp = pd.Timestamp(
+                            dividend_timestamp
+                        ).to_pydatetime()
                     elif hasattr(dividend_timestamp, "astype"):
                         dividend_timestamp = pd.Timestamp(
                             dividend_timestamp.astype("datetime64[D]")
                         ).to_pydatetime()
                     else:
-                        dividend_timestamp = datetime.fromisoformat(str(dividend_timestamp))
+                        dividend_timestamp = datetime.fromisoformat(
+                            str(dividend_timestamp)
+                        )
 
-                    operation_id = create_operation_id(f"a:{brick.id}", dividend_timestamp)
+                    operation_id = create_operation_id(
+                        f"a:{brick.id}", dividend_timestamp
+                    )
                     entry_id = create_entry_id(operation_id, 1)
                     origin_id = generate_transaction_id(
                         brick.id,
@@ -555,7 +561,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             units[t] += add_u
 
                             # Create journal entry for DCA buy
-                            operation_id = create_operation_id(f"a:{brick.id}", dca_timestamp)
+                            operation_id = create_operation_id(
+                                f"a:{brick.id}", dca_timestamp
+                            )
                             entry_id = create_entry_id(operation_id, 1)
                             origin_id = generate_transaction_id(
                                 brick.id,
@@ -606,7 +614,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 type_tag="buy",
                             )
 
-                            journal.post(dca_entry)
+                            # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                            if not any(e.id == dca_entry.id for e in journal.entries):
+                                journal.post(dca_entry)
 
                             if ev_lvl == "all":
                                 events.append(
@@ -628,7 +638,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             units[t] += u
 
                             # Create journal entry for DCA buy
-                            operation_id = create_operation_id(f"a:{brick.id}", dca_timestamp)
+                            operation_id = create_operation_id(
+                                f"a:{brick.id}", dca_timestamp
+                            )
                             entry_id = create_entry_id(operation_id, 1)
                             origin_id = generate_transaction_id(
                                 brick.id,
@@ -679,7 +691,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 type_tag="buy",
                             )
 
-                            journal.post(dca_entry)
+                            # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                            if not any(e.id == dca_entry.id for e in journal.entries):
+                                journal.post(dca_entry)
 
                             if ev_lvl == "all":
                                 events.append(
@@ -715,7 +729,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         # Create journal entry for sell
                         sell_timestamp = ctx.t_index[t]
                         if isinstance(sell_timestamp, np.datetime64):
-                            sell_timestamp = pd.Timestamp(sell_timestamp).to_pydatetime()
+                            sell_timestamp = pd.Timestamp(
+                                sell_timestamp
+                            ).to_pydatetime()
                         elif hasattr(sell_timestamp, "astype"):
                             sell_timestamp = pd.Timestamp(
                                 sell_timestamp.astype("datetime64[D]")
@@ -723,7 +739,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         else:
                             sell_timestamp = datetime.fromisoformat(str(sell_timestamp))
 
-                        operation_id = create_operation_id(f"a:{brick.id}", sell_timestamp)
+                        operation_id = create_operation_id(
+                            f"a:{brick.id}", sell_timestamp
+                        )
                         entry_id = create_entry_id(operation_id, 1)
                         origin_id = generate_transaction_id(
                             brick.id,
@@ -774,7 +792,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             type_tag="sell",
                         )
 
-                        journal.post(sell_entry)
+                        # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                        if not any(e.id == sell_entry.id for e in journal.entries):
+                            journal.post(sell_entry)
 
                         if ev_lvl in ("major", "all"):
                             events.append(
@@ -819,7 +839,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         units[t] -= sell_units
 
                         # Create journal entry for SDCA sell
-                        operation_id = create_operation_id(f"a:{brick.id}", sdca_timestamp)
+                        operation_id = create_operation_id(
+                            f"a:{brick.id}", sdca_timestamp
+                        )
                         entry_id = create_entry_id(operation_id, 1)
                         origin_id = generate_transaction_id(
                             brick.id,
@@ -914,13 +936,17 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 # Create journal entries for liquidation
                 liquidate_timestamp = ctx.t_index[t_stop]
                 if isinstance(liquidate_timestamp, np.datetime64):
-                    liquidate_timestamp = pd.Timestamp(liquidate_timestamp).to_pydatetime()
+                    liquidate_timestamp = pd.Timestamp(
+                        liquidate_timestamp
+                    ).to_pydatetime()
                 elif hasattr(liquidate_timestamp, "astype"):
                     liquidate_timestamp = pd.Timestamp(
                         liquidate_timestamp.astype("datetime64[D]")
                     ).to_pydatetime()
                 else:
-                    liquidate_timestamp = datetime.fromisoformat(str(liquidate_timestamp))
+                    liquidate_timestamp = datetime.fromisoformat(
+                        str(liquidate_timestamp)
+                    )
 
                 operation_id = create_operation_id(f"a:{brick.id}", liquidate_timestamp)
                 sequence = 1

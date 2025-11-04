@@ -10,6 +10,9 @@ from typing import Optional
 # BoundaryInterface constant
 BOUNDARY_NODE_ID = "b:boundary"
 
+# FX clearing account constant
+FX_CLEAR_NODE_ID = "b:fx_clear"
+
 
 class AccountScope(Enum):
     """Account scope classification."""
@@ -110,6 +113,14 @@ class AccountRegistry:
             account_type=AccountType.PNL,
         )
         self.register_account(boundary_account)
+        # Auto-register FX clearing account
+        fx_clear_account = Account(
+            id=FX_CLEAR_NODE_ID,
+            name="FX Clearing",
+            scope=AccountScope.BOUNDARY,
+            account_type=AccountType.EQUITY,
+        )
+        self.register_account(fx_clear_account)
 
     def register_account(self, account: Account) -> None:
         """Register an account."""

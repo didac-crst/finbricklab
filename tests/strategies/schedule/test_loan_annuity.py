@@ -9,7 +9,6 @@ from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
-from finbricklab.strategies.schedule.loan_annuity import ScheduleLoanAnnuity
 
 
 class TestMortgageAnnuityMath:
@@ -47,34 +46,39 @@ class TestMortgageAnnuityMath:
         # V2: Extract payment amounts from journal entries (not per-brick cash_out arrays)
         # Principal and interest are separate entries - need to sum them by month
         journal = results["journal"]
-        from finbricklab.core.accounts import get_node_id, BOUNDARY_NODE_ID
         from datetime import datetime
-        import pandas as pd
+
+        from finbricklab.core.accounts import get_node_id
 
         cash_node_id = get_node_id("cash", "a")
-        
+
         # Group entries by month and sum principal + interest
         payments_by_month = {}  # month_str -> total_payment
-        
+
         for entry in journal.entries:
             if entry.metadata.get("transaction_type") != "payment":
                 continue
             if "l:mortgage" not in entry.metadata.get("parent_id", ""):
                 continue
-            
+
             # Normalize timestamp to month string
             if isinstance(entry.timestamp, datetime):
                 month_str = entry.timestamp.strftime("%Y-%m")
             else:
                 month_str = str(entry.timestamp)[:7]  # YYYY-MM
-            
+
             # Find cash posting amount (outflow)
             for posting in entry.postings:
-                if posting.metadata.get("node_id") == cash_node_id and posting.is_credit():
+                if (
+                    posting.metadata.get("node_id") == cash_node_id
+                    and posting.is_credit()
+                ):
                     amount = abs(float(posting.amount.value))
-                    payments_by_month[month_str] = payments_by_month.get(month_str, 0.0) + amount
+                    payments_by_month[month_str] = (
+                        payments_by_month.get(month_str, 0.0) + amount
+                    )
                     break
-        
+
         # Convert to list sorted by month
         payments = [payments_by_month[m] for m in sorted(payments_by_month.keys())]
 
@@ -223,7 +227,7 @@ class TestMortgageAnnuityMath:
         scenario = Scenario(id="test", name="Test", bricks=[cash, mortgage])
         # Run the full term (60 months) to verify amortization
         results = scenario.run(start=date(2026, 1, 1), months=term_months)
-        
+
         # V2: Final balance should be near zero (within rounding tolerance) (KPI test - still valid)
         final_balance = results["outputs"]["mortgage"]["liabilities"][-1]
         # With a 60-month term and full amortization, balance should be near zero
@@ -281,9 +285,10 @@ class TestMortgageAnnuityMath:
         for entry in payment_entries:
             # Find the interest posting (expense.interest category)
             for posting in entry.postings:
-                if (
-                    posting.metadata.get("node_id") == BOUNDARY_NODE_ID
-                    and "interest" in posting.metadata.get("category", "")
+                if posting.metadata.get(
+                    "node_id"
+                ) == BOUNDARY_NODE_ID and "interest" in posting.metadata.get(
+                    "category", ""
                 ):
                     interest_payments.append(abs(float(posting.amount.value)))
                     break
@@ -330,46 +335,56 @@ class TestMortgageAnnuityMath:
                 kind=K.A_CASH,
                 spec={"initial_balance": 100000.0, "interest_pa": 0.0},
             )
-            scenario = Scenario(id=f"test_{rate_pa}", name="Test", bricks=[cash, mortgage])
+            scenario = Scenario(
+                id=f"test_{rate_pa}", name="Test", bricks=[cash, mortgage]
+            )
             results = scenario.run(start=date(2026, 1, 1), months=12)
 
             # V2: Extract payment amount from journal entries (sum principal + interest by month)
             journal = results["journal"]
-            from finbricklab.core.accounts import get_node_id
             from datetime import datetime
 
+            from finbricklab.core.accounts import get_node_id
+
             cash_node_id = get_node_id("cash", "a")
-            
+
             # Group entries by month and sum principal + interest
             payments_by_month = {}  # month_str -> total_payment
-            
+
             for entry in journal.entries:
                 if entry.metadata.get("transaction_type") != "payment":
                     continue
                 if f"l:mortgage_{rate_pa}" not in entry.metadata.get("parent_id", ""):
                     continue
-                
+
                 # Normalize timestamp to month string
                 if isinstance(entry.timestamp, datetime):
                     month_str = entry.timestamp.strftime("%Y-%m")
                 else:
                     month_str = str(entry.timestamp)[:7]  # YYYY-MM
-                
+
                 # Find cash posting amount (outflow)
                 for posting in entry.postings:
-                    if posting.metadata.get("node_id") == cash_node_id and posting.is_credit():
+                    if (
+                        posting.metadata.get("node_id") == cash_node_id
+                        and posting.is_credit()
+                    ):
                         amount = abs(float(posting.amount.value))
-                        payments_by_month[month_str] = payments_by_month.get(month_str, 0.0) + amount
+                        payments_by_month[month_str] = (
+                            payments_by_month.get(month_str, 0.0) + amount
+                        )
                         break
-            
+
             # Get the regular payment (skip initial disbursement month)
             sorted_months = sorted(payments_by_month.keys())
             if len(sorted_months) > 1:
                 # Get second month's payment (skip disbursement)
                 regular_payment = payments_by_month[sorted_months[1]]
             else:
-                regular_payment = payments_by_month[sorted_months[0]] if sorted_months else 0.0
-            
+                regular_payment = (
+                    payments_by_month[sorted_months[0]] if sorted_months else 0.0
+                )
+
             payments.append(regular_payment)
 
         # Higher rate should produce higher payment

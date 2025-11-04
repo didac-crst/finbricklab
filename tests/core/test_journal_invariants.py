@@ -5,7 +5,6 @@ Tests for Journal system invariants and validation.
 from datetime import date
 from decimal import Decimal
 
-import numpy as np
 import pytest
 from finbricklab import Entity
 from finbricklab.core.accounts import (
@@ -241,9 +240,7 @@ class TestJournalInvariants:
         # V2: Check that income and expense are generating journal entries
         journal = results["journal"]
         income_entries = [
-            e
-            for e in journal.entries
-            if e.metadata.get("transaction_type") == "income"
+            e for e in journal.entries if e.metadata.get("transaction_type") == "income"
         ]
         expense_entries = [
             e

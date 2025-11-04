@@ -26,17 +26,21 @@ graph LR
   end
 
   B((b:boundary))
+  FX((b:fx_clear))
 
   FS --> CP1
   TS --> CP2
-  L  --> CP3
+  TS -.FX.-> CP3
+  L  --> CP4
 
   CP1((CDPair)) --> A
   CP1 --> B
   CP2((CDPair)) --> A
   CP2 --> A
-  CP3((CDPair)) --> A
-  CP3 --> L
+  CP3((FX CDPair)) --> A
+  CP3 --> FX
+  CP4((CDPair)) --> A
+  CP4 --> L
 
   classDef boundary fill:#ffe3d3,stroke:#f66,color:#000;
   class B boundary;
@@ -199,6 +203,7 @@ Node IDs
 - FlowShell: `fs:<slug>` (e.g., `fs:salary`)
 - TransferShell: `ts:<slug>` (e.g., `ts:contrib_etf`)
 - BoundaryInterface: `b:boundary` (singleton)
+- FX Clearing: `b:fx_clear` (singleton, used for cross-currency transfers)
 - MacroGroup: `mg:<slug>`
 
 Notes
@@ -212,7 +217,12 @@ The following practices reduce foot‑guns and make failures obvious:
   - Include `envelope_brick_id` and `type` tags (`principal`, `interest`, `fee`, `contribution`, `dividend`, etc.).
 
 - Per‑currency zero‑sum
-  - Keep `JournalEntry` zero‑sum by currency (already enforced). For cross‑currency events, split into two entries: trade legs and FX P&L, or use explicit FX accounts so each entry balances per currency.
+  - Keep `JournalEntry` zero‑sum by currency (already enforced). For cross‑currency events (FX transfers), use a three-leg pattern:
+    1. Source leg entry (source currency): DR `b:fx_clear` / CR source asset (e.g., `a:cash_usd`)
+    2. Destination leg entry (destination currency): DR destination asset (e.g., `a:cash_eur`) / CR `b:fx_clear`
+    3. Optional P&L leg entry (if non-zero): DR/CR between `b:fx_clear` and P&L account (e.g., `P&L:FX`)
+  - The FX clearing account (`b:fx_clear`) is a boundary account that bridges the currency gap. Each entry balances per currency.
+  - P&L handling: Gains credit the P&L account (income), losses debit it (expense). The clearing account takes the offset.
 
 - Account scope/type validation
   - Use `AccountRegistry.validate_transfer_accounts(from, to)` for TBricks (both must be INTERNAL).
@@ -344,6 +354,19 @@ Loan principal (internal)
 - Entry: `cp:op:l:mortgage:2026-01:1`, tags.type=principal
   - DR: 1000 → `l:mortgage`
   - CR: 1000 → `a:cash`
+
+FX transfer (cross-currency)
+- Parent: `ts:fx_transfer_usd_eur`
+- Entry 1 (source leg, USD): `cp:op:ts:fx_transfer_usd_eur:fx:2026-01:1`
+  - DR: 1000 USD → `b:fx_clear`
+  - CR: 1000 USD → `a:cash_usd`
+- Entry 2 (destination leg, EUR): `cp:op:ts:fx_transfer_usd_eur:fx:2026-01:2`
+  - DR: 900 EUR → `a:cash_eur`
+  - CR: 900 EUR → `b:fx_clear`
+- Entry 3 (P&L, if non-zero): `cp:op:ts:fx_transfer_usd_eur:fx:2026-01:3`
+  - DR/CR: P&L amount → `b:fx_clear` ↔ `P&L:FX`
+  - Gains: CR P&L account (income), DR clearing
+  - Losses: DR P&L account (expense), CR clearing
 
 Loan interest (boundary)
 - Parent: `l:mortgage`

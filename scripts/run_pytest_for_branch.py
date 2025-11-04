@@ -29,17 +29,17 @@ def get_current_branch() -> str:
 def main() -> int:
     """Run pytest with appropriate markers based on branch."""
     branch = get_current_branch()
-    
+
     # On v2 feature branch, run only v2 tests
     if branch == "feat/postings-model-v2":
         args = ["poetry", "run", "pytest", "-m", "v2", "-q"]
     else:
         # On other branches, run all tests
         args = ["poetry", "run", "pytest", "-q"]
-    
+
     # Pass through any additional arguments
     args.extend(sys.argv[1:])
-    
+
     # Run pytest
     result = subprocess.run(args, cwd=Path(__file__).parent.parent)
     return result.returncode
@@ -47,4 +47,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

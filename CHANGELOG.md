@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Opening Entry Normalization**: Opening entries now use canonical node IDs (`BOUNDARY_NODE_ID` and `get_node_id(cash_id, "a")`) for consistency
 - **Transaction Type Metadata**: All journal entries now include `transaction_type` metadata (opening, disbursement, payment, income, expense, transfer, fx_transfer, maturity_transfer)
 - **Origin ID Uniqueness**: Deterministic `origin_id` generation with sequence-based uniqueness (e.g., `t*100 + sequence` or `month_idx*100 + sequence`)
+- **FX Transfer Support**: Full V2-compliant FX transfer implementation with three-leg pattern (source leg, destination leg, optional P&L leg)
+  - FX clearing account (`b:fx_clear`) as boundary account for cross-currency bridging
+  - P&L handling with correct income/expense classification
+  - Support in all transfer strategies (lump sum, recurring, scheduled)
 - **Test Structure Standardization**: Reorganized test suite into `tests/core/`, `tests/strategies/` (with flow/schedule/valuation subdirectories), and `tests/integration/` with consistent naming conventions
 
 ### Changed
@@ -39,12 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **None Node ID Handling**: Added graceful handling of `None` node_id in aggregation for legacy entries
 - **Cash and Non-Cash Columns**: Added `cash` and `non_cash` columns to journal aggregation for `monthly()` DataFrame consistency
 - **Single-Node Selection**: Fixed aggregation to prioritize ASSET postings whose `node_id` is in selection set when provided
+- **FX Transfers**: Fixed FX transfer visibility in `BOUNDARY_ONLY` mode (FX entries now recognized as boundary-touching via `b:fx_clear`)
+- **FX P&L Signs**: Fixed inverted debit/credit logic for FX P&L entries (gains now credit P&L account as income, losses debit it as expense)
+- **FX Diagnostics**: Updated CLI diagnostics to properly categorize FX transfers and include `fx_transfer` in transfer entry detection
 
 ### Documentation
 - Added comprehensive diagnostics section to README with examples, output description, visibility modes, and cancellation policy
 - Added test structure and pytest marker policy to CONTRIBUTING.md
 - Updated README repository layout to reflect new test directory structure
 - Added "At a Glance" section in AGENTS.md (if applicable) with V2 status, specs, and cancellation policy
+- Added FX transfer documentation to `POSTINGS_MODEL_AND_BRICK_TYPES.md` and `STRATEGIES.md`:
+  - Three-leg FX transfer pattern explanation (source leg, destination leg, P&L leg)
+  - FX clearing account (`b:fx_clear`) role and behavior
+  - P&L handling (gains as income, losses as expense)
+  - FX transfer visibility in `BOUNDARY_ONLY` mode
 
 ### Migration Notes
 - **Legacy Tests**: Many legacy tests still check `cash_in`/`cash_out` arrays; these need migration to journal-first assertions using `results["views"].monthly()` or diagnostics JSON

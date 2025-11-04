@@ -293,51 +293,48 @@ print(f"Investment assets: €{investment_totals['asset_value'][-1]:,.2f}")
 
 ---
 
-## Filtered Results
+## Selection-Based Aggregation (V2)
 
-### Filter by Specific Bricks
+### Select by Specific Node IDs
 
 ```python
-# Filter to show only cash and salary
-cash_salary_view = results["views"].filter(brick_ids=["cash", "salary"])
-cash_salary_monthly = cash_salary_view.monthly()
+# Select only the cash account (salary inflows appear on the cash node)
+cash_only_monthly = results["views"].monthly(selection={"a:cash"})
 
-print("Cash + Salary monthly totals:")
-print(cash_salary_monthly.head())
+print("Cash-only monthly totals:")
+print(cash_only_monthly.head())
 ```
 
-### Filter by MacroBricks
+### Select by MacroBricks
 
 ```python
-# Filter to show only investment portfolio
-investments_view = results["views"].filter(brick_ids=["investments"])
-investments_monthly = investments_view.monthly()
+# Select investment portfolio MacroBrick (expanded to A/L nodes)
+investments_monthly = results["views"].monthly(selection={"investments"})
 
 print("Investment portfolio monthly totals:")
 print(investments_monthly.head())
 ```
 
-### Mixed Filtering
+### Mixed Selection
 
 ```python
-# Filter to show cash + real estate MacroBrick
-mixed_view = results["views"].filter(brick_ids=["cash", "housing"])
-mixed_monthly = mixed_view.monthly()
+# Select both cash and real estate MacroBrick
+mixed_monthly = results["views"].monthly(selection={"a:cash", "housing"})
 
 print("Cash + Real Estate monthly totals:")
 print(mixed_monthly.head())
 ```
 
-### Time Aggregation on Filtered Data
+### Time Aggregation with Selection
 
 ```python
-# Quarterly aggregation on filtered data
-investments_quarterly = investments_view.quarterly()
+# Quarterly aggregation with selection
+investments_quarterly = results["views"].to_freq("Q", selection={"investments"})
 print("Investment portfolio quarterly totals:")
 print(investments_quarterly)
 
-# Yearly aggregation on filtered data
-housing_yearly = housing_view.yearly()
+# Yearly aggregation with selection
+housing_yearly = results["views"].to_freq("Y", selection={"housing"})
 print("Housing yearly totals:")
 print(housing_yearly)
 ```
@@ -552,12 +549,18 @@ print("Checking account transactions:")
 print(checking_txns[['timestamp', 'amount', 'metadata']].head())
 ```
 
-### Filtered Journal Analysis
+### Filtered Journal Analysis (V2)
 
 ```python
-# Get journal for specific components
-income_journal = results["views"].filter(brick_ids=["income_sources"]).journal()
-investment_journal = results["views"].filter(brick_ids=["investment_strategy"]).journal()
+# Filter journal by category (income sources)
+journal_df = results["views"].journal()
+income_journal = journal_df[journal_df["metadata"].apply(lambda m: m.get("category", "").startswith("income."))]
+
+# Filter journal by brick_id or transaction type
+investment_journal = journal_df[
+    journal_df["brick_id"].isin(["investment_strategy", "etf"]) |
+    journal_df["metadata"].apply(lambda m: m.get("transaction_type", "") in {"transfer", "dividend"})
+]
 
 print(f"Income transactions: {len(income_journal)}")
 print(f"Investment transactions: {len(investment_journal)}")

@@ -11,7 +11,7 @@ def test_import_finbricklab():
     import finbricklab
 
     assert hasattr(finbricklab, "__version__")
-    assert finbricklab.__version__ == "0.1.0"
+    assert finbricklab.__version__ == "0.2.0"
 
 
 def test_legacy_api_failures():

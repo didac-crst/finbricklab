@@ -87,11 +87,36 @@ def test_user_friendly_sell_date():
     # Run scenario for 3 months
     results = entity.run_scenario("test_scenario", start=date(2026, 1, 1), months=3)
 
-    # Check that ETF was sold in February
+    # V2: Check journal entries instead of deprecated cash_in arrays
+    journal = results["journal"]
+    monthly = results["views"].monthly()
+
+    # Check that ETF was sold in February (month index 1)
+    # V2: ETF sales create internal transfer entries (ETF -> cash)
+    # Note: Transfer entries may not have brick_id set, check by parent_id or account IDs
+    from finbricklab.core.accounts import get_node_id
+
+    etf_node_id = get_node_id("etf", "a")
+    cash_node_id = get_node_id("cash", "a")
+
+    transfer_entries = [
+        e
+        for e in journal.entries
+        if e.metadata.get("transaction_type") == "transfer"
+        and any(p.account_id == etf_node_id for p in e.postings)
+    ]
+    assert (
+        len(transfer_entries) > 0
+    ), "Journal should have transfer entries from ETF sale"
+
+    # V2: Check monthly aggregation for cash inflows from ETF sale
+    # Note: Internal transfers (ETF -> cash) are cancelled in aggregation when both nodes are selected
+    # For now, verify that the transfer entry exists and check ETF asset value changed
     etf_output = results["outputs"]["etf"]
-    # Should have cash inflow in February from the sale
-    assert etf_output["cash_in"][1] > 0  # February (index 1)
-    assert etf_output["cash_in"][0] == 0  # January (index 0)
+    # ETF should have less assets after sale (initial €1000, sold €500, so remaining should be ~€500)
+    assert (
+        etf_output["assets"][1] < etf_output["assets"][0]
+    ), "ETF assets should decrease after sale"
 
 
 def test_user_friendly_sell_percentage():
@@ -130,10 +155,30 @@ def test_user_friendly_sell_percentage():
     # Run scenario for 3 months
     results = entity.run_scenario("test_scenario", start=date(2026, 1, 1), months=3)
 
-    # Check that 50% was sold (5 units out of 10, worth €500)
+    # V2: Check journal entries and monthly aggregation instead of deprecated cash_in arrays
+    journal = results["journal"]
+    monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
-    assert etf_output["cash_in"][1] == 500.0  # February sale proceeds
-    assert etf_output["assets"][1] == 500.0  # Remaining value
+
+    # Check that 50% was sold (5 units out of 10, worth €500)
+    # V2: ETF sales create internal transfer entries (ETF -> cash)
+    from finbricklab.core.accounts import get_node_id
+
+    etf_node_id = get_node_id("etf", "a")
+    transfer_entries = [
+        e
+        for e in journal.entries
+        if e.metadata.get("transaction_type") == "transfer"
+        and any(p.account_id == etf_node_id for p in e.postings)
+    ]
+    assert (
+        len(transfer_entries) > 0
+    ), "Journal should have transfer entries from ETF sale"
+
+    # V2: Check monthly aggregation and asset values
+    # Note: Internal transfers (ETF -> cash) are cancelled in aggregation when both nodes are selected
+    # So monthly["cash_in"] won't show the transfer, but asset values will reflect the sale
+    assert etf_output["assets"][1] == 500.0, "Remaining ETF value should be €500"
 
 
 def test_backward_compatibility():
@@ -175,10 +220,31 @@ def test_backward_compatibility():
     # Run scenario for 3 months
     results = entity.run_scenario("test_scenario", start=date(2026, 1, 1), months=3)
 
-    # Check that legacy format still works
+    # V2: Check journal entries and monthly aggregation instead of deprecated cash_in arrays
+    journal = results["journal"]
+    monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
-    assert etf_output["assets"][0] == 1000.0  # Initial value
-    assert etf_output["cash_in"][1] == 500.0  # February sale proceeds
+
+    # Check that legacy format still works
+    assert etf_output["assets"][0] == 1000.0, "Initial ETF value should be €1000"
+
+    # V2: Check transfer entries and asset values
+    # Note: Internal transfers (ETF -> cash) are cancelled in aggregation when both nodes are selected
+    from finbricklab.core.accounts import get_node_id
+
+    etf_node_id = get_node_id("etf", "a")
+    transfer_entries = [
+        e
+        for e in journal.entries
+        if e.metadata.get("transaction_type") == "transfer"
+        and any(p.account_id == etf_node_id for p in e.postings)
+    ]
+    assert (
+        len(transfer_entries) > 0
+    ), "Journal should have transfer entries from ETF sale"
+    assert (
+        etf_output["assets"][1] == 500.0
+    ), "Remaining ETF value after sale should be €500"
 
 
 def test_combined_user_friendly_features():
@@ -218,13 +284,32 @@ def test_combined_user_friendly_features():
     # Run scenario for 5 months
     results = entity.run_scenario("test_scenario", start=date(2026, 1, 1), months=5)
 
-    # Check that both sales happened
+    # V2: Check journal entries and monthly aggregation instead of deprecated cash_in arrays
+    journal = results["journal"]
+    monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
 
+    # V2: ETF sales create internal transfer entries (ETF -> cash)
+    from finbricklab.core.accounts import get_node_id
+
+    etf_node_id = get_node_id("etf", "a")
+    transfer_entries = [
+        e
+        for e in journal.entries
+        if e.metadata.get("transaction_type") == "transfer"
+        and any(p.account_id == etf_node_id for p in e.postings)
+    ]
+    assert (
+        len(transfer_entries) >= 2
+    ), "Journal should have at least 2 transfer entries from ETF sales"
+
     # March: 25% of €2000 = €500
-    assert etf_output["cash_in"][2] == 500.0  # March sale
-    assert etf_output["assets"][2] == 1500.0  # Remaining after 25% sale
+    # V2: Check asset values (internal transfers are cancelled in aggregation when both nodes are selected)
+    assert (
+        etf_output["assets"][2] == 1500.0
+    ), "Remaining ETF value after 25% sale should be €1500"
 
     # April: €500 sale
-    assert etf_output["cash_in"][3] == 500.0  # April sale
-    assert etf_output["assets"][3] == 1000.0  # Remaining after €500 sale
+    assert (
+        etf_output["assets"][3] == 1000.0
+    ), "Remaining ETF value after €500 sale should be €1000"

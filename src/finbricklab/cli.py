@@ -329,11 +329,8 @@ def cmd_journal_diagnostics(args) -> int:
 
         # Calculate diagnostics using same logic as aggregation
         from finbricklab.core.accounts import (
-            BOUNDARY_NODE_ID,
             AccountScope,
-            AccountType,
             get_node_scope,
-            get_node_type,
         )
         from finbricklab.core.transfer_visibility import touches_boundary
 
@@ -350,10 +347,12 @@ def cmd_journal_diagnostics(args) -> int:
             touches_bound = touches_boundary(entry, account_registry)
 
             # Check if this is a transfer entry
+            # Include fx_transfer so it participates in transfer-visibility logic
             is_transfer_entry = entry.metadata.get("transaction_type") in {
                 "transfer",
                 "tbrick",
                 "maturity_transfer",
+                "fx_transfer",
             }
 
             # Check if both postings are INTERNAL and in selection (cancellation logic)
@@ -398,10 +397,25 @@ def cmd_journal_diagnostics(args) -> int:
             if touches_bound:
                 boundary_entries.append(entry)
                 # Sum boundary amounts by category
+                # Include FX clearing account (b:fx_clear) and P&L accounts
                 for posting in entry.postings:
                     node_id = posting.metadata.get("node_id")
-                    if node_id == BOUNDARY_NODE_ID:
+                    # Check if this is a boundary node (b:boundary, b:fx_clear, or P&L accounts)
+                    scope = (
+                        get_node_scope(node_id, account_registry) if node_id else None
+                    )
+                    if scope == AccountScope.BOUNDARY:
                         category = posting.metadata.get("category", "unknown")
+                        # Default category for FX transfers
+                        if entry.metadata.get("transaction_type") == "fx_transfer":
+                            fx_leg = entry.metadata.get("tags", {}).get("fx_leg")
+                            if fx_leg == "pnl":
+                                # Use P&L category from posting metadata
+                                category = posting.metadata.get(
+                                    "category", "fx.clearing"
+                                )
+                            else:
+                                category = "fx.clearing"
                         amount = abs(float(posting.amount.value))
                         boundary_by_category[category] = (
                             boundary_by_category.get(category, 0.0) + amount
@@ -469,7 +483,9 @@ def cmd_journal_diagnostics(args) -> int:
             if args.month:
                 output["month"] = args.month
             if selection:
-                output["selection"] = list(selection_set) if selection_set else selection
+                output["selection"] = (
+                    list(selection_set) if selection_set else selection
+                )
             output["transfer_visibility"] = transfer_visibility.value
             json.dump(output, sys.stdout, indent=2)
             sys.stdout.write("\n")
@@ -486,11 +502,17 @@ def cmd_journal_diagnostics(args) -> int:
             print(f"Transfer visibility: {transfer_visibility.value}")
             print()
             print(f"Total entries: {total_entries}")
-            print(f"  Boundary entries: {len(boundary_entries)} (Σ={boundary_total:,.2f})")
-            print(f"  Transfer entries: {len(transfer_entries)} (Σ={transfer_total:,.2f})")
+            print(
+                f"  Boundary entries: {len(boundary_entries)} (Σ={boundary_total:,.2f})"
+            )
+            print(
+                f"  Transfer entries: {len(transfer_entries)} (Σ={transfer_total:,.2f})"
+            )
             print(f"    Internal transfers: {len(internal_transfer_entries)}")
             if cancelled_count > 0:
-                print(f"  Cancelled entries: {cancelled_count} (internal transfers in selection)")
+                print(
+                    f"  Cancelled entries: {cancelled_count} (internal transfers in selection)"
+                )
             print()
 
             # Show boundary totals by category
@@ -508,7 +530,9 @@ def cmd_journal_diagnostics(args) -> int:
                     print(f"    Type: {entry['transaction_type']}")
                     for posting in entry["postings"]:
                         node_id = posting["node_id"] or posting["account_id"]
-                        category_str = f" [{posting['category']}]" if posting["category"] else ""
+                        category_str = (
+                            f" [{posting['category']}]" if posting["category"] else ""
+                        )
                         print(
                             f"    {posting['account_id']} ({node_id}){category_str}: "
                             f"{posting['amount']:,.2f} {posting['currency']}"
@@ -681,7 +705,10 @@ Aggregation Semantics:
         "--month", help="Filter entries by month (format: YYYY-MM, e.g., 2026-01)"
     )
     journal_parser.add_argument(
-        "--sample", type=int, default=5, help="Number of sample entries to show (default: 5, 0 to disable)"
+        "--sample",
+        type=int,
+        default=5,
+        help="Number of sample entries to show (default: 5, 0 to disable)",
     )
     journal_parser.add_argument(
         "--json", action="store_true", help="Output in JSON format"

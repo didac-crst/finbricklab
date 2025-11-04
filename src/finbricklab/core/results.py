@@ -1060,20 +1060,30 @@ def _aggregate_journal_monthly(
         # Process each entry
         for entry in month_entries:
             # Check if entry touches boundary
+            # Use get_node_scope() to detect boundary accounts (including FX_CLEAR_NODE_ID)
             touches_boundary = False
             for posting in entry.postings:
-                node_id = posting.metadata.get("node_id")
-                if node_id is None:
+                boundary_node_id = posting.metadata.get("node_id")
+                if boundary_node_id is None or not isinstance(boundary_node_id, str):
                     continue  # Skip postings without node_id (legacy entries)
-                if node_id == BOUNDARY_NODE_ID:
-                    touches_boundary = True
-                    break
+                try:
+                    scope = get_node_scope(boundary_node_id, account_registry)
+                    if scope == AccountScope.BOUNDARY:
+                        touches_boundary = True
+                        break
+                except ValueError:
+                    # Fallback to direct comparison for known boundary nodes
+                    if boundary_node_id == BOUNDARY_NODE_ID:
+                        touches_boundary = True
+                        break
 
             # Check if this is a transfer entry
+            # Include fx_transfer so it participates in transfer-visibility logic
             is_transfer_entry = entry.metadata.get("transaction_type") in {
                 "transfer",
                 "tbrick",
                 "maturity_transfer",
+                "fx_transfer",
             }
 
             # Check if both postings are INTERNAL and in selection
@@ -1082,15 +1092,17 @@ def _aggregate_journal_monthly(
                 both_internal = True
                 both_in_selection = True
                 for posting in entry.postings:
-                    node_id = posting.metadata.get("node_id")
-                    if node_id is None:
-                        both_in_selection = False  # Legacy entries can't be internal transfers
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        both_in_selection = (
+                            False  # Legacy entries can't be internal transfers
+                        )
                         break
-                    scope = get_node_scope(node_id, account_registry)
+                    scope = get_node_scope(posting_node_id, account_registry)
                     if scope != AccountScope.INTERNAL:
                         both_internal = False
                         break
-                    if node_id not in selection_set:
+                    if posting_node_id not in selection_set:
                         both_in_selection = False
                 if both_internal and both_in_selection:
                     both_internal_in_selection = True
@@ -1123,12 +1135,15 @@ def _aggregate_journal_monthly(
             if selection_set:
                 # If selection_set is present, prefer the ASSET posting whose node_id is in selection
                 for posting in entry.postings:
-                    node_id = posting.metadata.get("node_id")
-                    if node_id is None:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
                         continue  # Skip postings without node_id (legacy entries)
                     try:
-                        node_type = get_node_type(node_id, account_registry)
-                        if node_type == AccountType.ASSET and node_id in selection_set:
+                        node_type = get_node_type(posting_node_id, account_registry)
+                        if (
+                            node_type == AccountType.ASSET
+                            and posting_node_id in selection_set
+                        ):
                             asset_posting = posting
                             break
                     except ValueError:
@@ -1137,11 +1152,11 @@ def _aggregate_journal_monthly(
             else:
                 # No selection_set: pick the first ASSET posting (status quo)
                 for posting in entry.postings:
-                    node_id = posting.metadata.get("node_id")
-                    if node_id is None:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
                         continue  # Skip postings without node_id (legacy entries)
                     try:
-                        node_type = get_node_type(node_id, account_registry)
+                        node_type = get_node_type(posting_node_id, account_registry)
                         if node_type == AccountType.ASSET:
                             asset_posting = posting
                             break
@@ -1150,8 +1165,12 @@ def _aggregate_journal_monthly(
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
             if asset_posting:
-                node_id = asset_posting.metadata.get("node_id")
-                if not selection_set or node_id in selection_set:
+                asset_node_id = asset_posting.metadata.get("node_id")
+                if (
+                    asset_node_id is not None
+                    and isinstance(asset_node_id, str)
+                    and (not selection_set or asset_node_id in selection_set)
+                ):
                     amount = float(asset_posting.amount.value)
                     if asset_posting.is_debit():
                         cash_in[month_idx] += abs(amount)
@@ -1162,10 +1181,10 @@ def _aggregate_journal_monthly(
         if outputs:
             for brick_id, output in outputs.items():
                 # Check if this brick is in selection
-                brick = registry.get_brick(brick_id) if registry else None
-                if brick and hasattr(brick, "family"):
-                    node_id = f"{brick.family}:{brick_id}"
-                    if not selection_set or node_id in selection_set:
+                output_brick = registry.get_brick(brick_id) if registry else None
+                if output_brick and hasattr(output_brick, "family"):
+                    output_node_id = f"{output_brick.family}:{brick_id}"
+                    if not selection_set or output_node_id in selection_set:
                         assets[month_idx] += output["assets"][month_idx]
                         liabilities[month_idx] += output["liabilities"][month_idx]
                         interest[month_idx] += output["interest"][month_idx]
@@ -1180,10 +1199,18 @@ def _aggregate_journal_monthly(
         from .kinds import K
 
         for brick_id, output in outputs.items():
-            brick = registry.get_brick(brick_id) if registry else None
-            if brick and hasattr(brick, "kind") and brick.kind == K.A_CASH:
-                node_id = f"{brick.family}:{brick_id}" if hasattr(brick, "family") else f"a:{brick_id}"
-                if not selection_set or node_id in selection_set:
+            cash_brick = registry.get_brick(brick_id) if registry else None
+            if (
+                cash_brick
+                and hasattr(cash_brick, "kind")
+                and cash_brick.kind == K.A_CASH
+            ):
+                cash_node_id = (
+                    f"{cash_brick.family}:{brick_id}"
+                    if hasattr(cash_brick, "family")
+                    else f"a:{brick_id}"
+                )
+                if not selection_set or cash_node_id in selection_set:
                     s = output["assets"]
                     cash_assets = s if cash_assets is None else (cash_assets + s)
     cash_assets = cash_assets if cash_assets is not None else np.zeros(len(time_index))

@@ -10,8 +10,6 @@ These tests verify core invariants:
 from datetime import datetime
 
 import pytest
-
-pytestmark = pytest.mark.v2
 from finbricklab.core.accounts import (
     BOUNDARY_NODE_ID,
     Account,
@@ -22,8 +20,11 @@ from finbricklab.core.accounts import (
 from finbricklab.core.currency import create_amount
 from finbricklab.core.journal import Journal, JournalEntry, Posting
 from finbricklab.core.registry import Registry
-from finbricklab.core.results import TransferVisibility, _aggregate_journal_monthly
+from finbricklab.core.results import _aggregate_journal_monthly
+from finbricklab.core.transfer_visibility import TransferVisibility
 from finbricklab.core.validation import validate_origin_id_uniqueness
+
+pytestmark = pytest.mark.v2
 
 
 @pytest.fixture
@@ -846,8 +847,12 @@ class TestTransferRecurring:
             transfer_visibility=TransferVisibility.ONLY,
         )
         # With both nodes in selection, internal transfer cancels to 0 net
-        assert df.loc["2026-01", "cash_in"] == 0.0, "Internal transfer cancels (both nodes in selection)"
-        assert df.loc["2026-01", "cash_out"] == 0.0, "Internal transfer cancels (both nodes in selection)"
+        assert (
+            df.loc["2026-01", "cash_in"] == 0.0
+        ), "Internal transfer cancels (both nodes in selection)"
+        assert (
+            df.loc["2026-01", "cash_out"] == 0.0
+        ), "Internal transfer cancels (both nodes in selection)"
 
         # Test BOUNDARY_ONLY: show only boundary-touching entries
         df = _aggregate_journal_monthly(
@@ -1733,10 +1738,8 @@ class TestParallelScenarios:
         """Two scenarios with boundary entries validate independently."""
         from datetime import date
 
-        import pandas as pd
-
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick, FBrick
+        from finbricklab.core.scenario import Scenario
 
         # Scenario 1: income flow
         cash1 = ABrick(
@@ -1794,16 +1797,12 @@ class TestParallelScenarios:
         boundary_entries_1 = [
             e
             for e in journal1.entries
-            if any(
-                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
-            )
+            if any(p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings)
         ]
         boundary_entries_2 = [
             e
             for e in journal2.entries
-            if any(
-                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
-            )
+            if any(p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings)
         ]
 
         assert len(boundary_entries_1) > 0, "Scenario 1 should have boundary entries"
@@ -1829,7 +1828,9 @@ class TestParallelScenarios:
         # Entry IDs should be different (different brick IDs in scenarios)
         entry_ids_1 = {e.id for e in journal1.entries}
         entry_ids_2 = {e.id for e in journal2.entries}
-        assert entry_ids_1 != entry_ids_2, "Entry IDs should be different between scenarios"
+        assert (
+            entry_ids_1 != entry_ids_2
+        ), "Entry IDs should be different between scenarios"
         # Both should have entries (12 months each)
         assert len(journal1.entries) == 12, "Scenario 1 should have 12 entries"
         assert len(journal2.entries) == 12, "Scenario 2 should have 12 entries"
@@ -1842,8 +1843,8 @@ class TestJournalDiagnostics:
         """Test that diagnostics correctly count entries by type."""
         from datetime import date
 
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick, FBrick, TBrick
+        from finbricklab.core.scenario import Scenario
 
         # Create a simple scenario with income, expense, and transfer
         cash = ABrick(
@@ -1896,9 +1897,7 @@ class TestJournalDiagnostics:
         boundary_entries = [
             e
             for e in journal.entries
-            if any(
-                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
-            )
+            if any(p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings)
         ]
         assert len(boundary_entries) > 0, "Should have boundary entries"
 
@@ -1921,8 +1920,8 @@ class TestCashStrategyDuplicateEntryIds:
         """Test that cash strategy creates unique entry IDs for interest entries."""
         from datetime import date
 
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick
+        from finbricklab.core.scenario import Scenario
 
         # Create a cash account with interest
         cash = ABrick(
@@ -1958,7 +1957,9 @@ class TestCashStrategyDuplicateEntryIds:
 
         # Verify opening entry exists
         opening_entries = [
-            e for e in journal.entries if e.metadata.get("transaction_type") == "opening"
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "opening"
         ]
         assert len(opening_entries) > 0, "Should have opening entries"
 
@@ -1970,8 +1971,8 @@ class TestJournalDiagnosticsJSON:
         """Test that diagnostics JSON output has correct schema and counts."""
         from datetime import date
 
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick, FBrick, TBrick
+        from finbricklab.core.scenario import Scenario
 
         # Create a simple scenario with income, expense, and transfer
         cash = ABrick(
@@ -2018,12 +2019,19 @@ class TestJournalDiagnosticsJSON:
         journal = results["journal"]
 
         # Simulate diagnostics JSON output by manually computing what CLI would output
-        from finbricklab.core.accounts import BOUNDARY_NODE_ID
-        from finbricklab.core.results import TransferVisibility, _aggregate_journal_monthly
         import pandas as pd
+        from finbricklab.core.accounts import BOUNDARY_NODE_ID
+        from finbricklab.core.results import (
+            TransferVisibility,
+            _aggregate_journal_monthly,
+        )
 
         time_index = pd.PeriodIndex(
-            [pd.Period("2026-01", freq="M"), pd.Period("2026-02", freq="M"), pd.Period("2026-03", freq="M")],
+            [
+                pd.Period("2026-01", freq="M"),
+                pd.Period("2026-02", freq="M"),
+                pd.Period("2026-03", freq="M"),
+            ],
             freq="M",
         )
 
@@ -2032,9 +2040,7 @@ class TestJournalDiagnosticsJSON:
         boundary_entries = [
             e
             for e in journal.entries
-            if any(
-                p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
-            )
+            if any(p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings)
         ]
         transfer_entries = [
             e
@@ -2066,14 +2072,23 @@ class TestJournalDiagnosticsJSON:
         assert len(opening_entries) > 0, "Should have opening entries"
 
         # Verify boundary totals by category (check for any income/expense category)
-        income_categories = [k for k in boundary_by_category.keys() if "income" in k.lower()]
-        expense_categories = [k for k in boundary_by_category.keys() if "expense" in k.lower()]
-        assert len(income_categories) > 0, f"Should have income category, got {list(boundary_by_category.keys())}"
-        assert len(expense_categories) > 0, f"Should have expense category, got {list(boundary_by_category.keys())}"
+        income_categories = [
+            k for k in boundary_by_category.keys() if "income" in k.lower()
+        ]
+        expense_categories = [
+            k for k in boundary_by_category.keys() if "expense" in k.lower()
+        ]
+        assert (
+            len(income_categories) > 0
+        ), f"Should have income category, got {list(boundary_by_category.keys())}"
+        assert (
+            len(expense_categories) > 0
+        ), f"Should have expense category, got {list(boundary_by_category.keys())}"
 
         # Verify aggregation matches counts
         # Get registry from scenario
         from finbricklab.core.results import Registry
+
         registry = Registry({}, {})  # Empty registry for test - we just need structure
         df = _aggregate_journal_monthly(
             journal=journal,
@@ -2092,8 +2107,8 @@ class TestLoanStrategyOriginIdUniqueness:
         """Test that loan_annuity creates unique origin_id for all entries."""
         from datetime import date
 
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick, LBrick
+        from finbricklab.core.scenario import Scenario
 
         # Create a loan with cash account
         cash = ABrick(
@@ -2145,8 +2160,8 @@ class TestLoanStrategyOriginIdUniqueness:
         """Test that loan_balloon creates unique origin_id for all entries."""
         from datetime import date
 
-        from finbricklab.core.scenario import Scenario
         from finbricklab.core.bricks import ABrick, LBrick
+        from finbricklab.core.scenario import Scenario
 
         # Create a balloon loan with cash account
         cash = ABrick(
