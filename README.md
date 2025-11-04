@@ -882,9 +882,9 @@ finbricklab/
 │   ├── fx.py                # Foreign exchange utilities
 │   └── cli.py               # finbrick CLI entry point
 ├── tests/                   # unit & integration tests
-│   ├── test_entity_*.py     # Entity system tests
-│   ├── test_kpi_utilities.py # KPI function tests
-│   ├── test_fx_utilities.py  # FX utility tests
+│   ├── core/                # Core functionality tests
+│   ├── strategies/           # Strategy-specific tests
+│   ├── integration/         # Integration tests (Entity, smoke, etc.)
 │   ├── data/golden_12m.csv   # Golden dataset for testing
 │   └── ...                  # other test modules
 ├── docs/                    # comprehensive documentation

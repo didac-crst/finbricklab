@@ -22,7 +22,7 @@ class TestEntityBreakevenGolden:
     @pytest.fixture
     def golden_data(self):
         """Load the golden 12-month dataset."""
-        golden_path = Path(__file__).parent / "data" / "golden_12m.csv"
+        golden_path = Path(__file__).parent.parent / "data" / "golden_12m.csv"
         df = pd.read_csv(golden_path)
         df["date"] = pd.to_datetime(df["date"])
         return df
