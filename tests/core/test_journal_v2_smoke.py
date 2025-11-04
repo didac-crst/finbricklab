@@ -1782,24 +1782,25 @@ class TestParallelScenarios:
         results1 = scenario1.run(start=date(2026, 1, 1), months=12)
         results2 = scenario2.run(start=date(2026, 1, 1), months=12)
 
-        # Both should have journals
-        from finbricklab.core.results import ScenarioResults
-        assert isinstance(results1, ScenarioResults), "Scenario 1 should return ScenarioResults"
-        assert isinstance(results2, ScenarioResults), "Scenario 2 should return ScenarioResults"
-        assert results1.journal is not None, "Scenario 1 should have journal"
-        assert results2.journal is not None, "Scenario 2 should have journal"
+        # Both should have journals (scenario.run returns a dict with 'journal' key)
+        assert "journal" in results1, "Scenario 1 should have journal"
+        assert "journal" in results2, "Scenario 2 should have journal"
+        journal1 = results1["journal"]
+        journal2 = results2["journal"]
+        assert journal1 is not None, "Scenario 1 should have journal"
+        assert journal2 is not None, "Scenario 2 should have journal"
 
         # Both journals should have boundary entries
         boundary_entries_1 = [
             e
-            for e in results1.journal.entries
+            for e in journal1.entries
             if any(
                 p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
             )
         ]
         boundary_entries_2 = [
             e
-            for e in results2.journal.entries
+            for e in journal2.entries
             if any(
                 p.metadata.get("node_id") == BOUNDARY_NODE_ID for p in e.postings
             )
@@ -1811,12 +1812,12 @@ class TestParallelScenarios:
         # Both should validate independently
         from finbricklab.core.validation import validate_origin_id_uniqueness
 
-        validate_origin_id_uniqueness(results1.journal)
-        validate_origin_id_uniqueness(results2.journal)
+        validate_origin_id_uniqueness(journal1)
+        validate_origin_id_uniqueness(journal2)
 
         # Both should aggregate correctly
-        monthly1 = results1.monthly()
-        monthly2 = results2.monthly()
+        monthly1 = results1["views"].monthly()
+        monthly2 = results2["views"].monthly()
 
         # Scenario 1: income should show as cash_in
         assert monthly1.loc["2026-01", "cash_in"] == 1000.0, "Scenario 1 income"
@@ -1824,5 +1825,5 @@ class TestParallelScenarios:
         assert monthly2.loc["2026-01", "cash_out"] == 500.0, "Scenario 2 expense"
 
         # Journals should be independent (different currencies, different entries)
-        assert results1.journal.account_registry is not results2.journal.account_registry
-        assert len(results1.journal.entries) != len(results2.journal.entries)
+        assert journal1.account_registry is not journal2.account_registry
+        assert len(journal1.entries) != len(journal2.entries)
