@@ -247,6 +247,116 @@ def cmd_run(args) -> int:
         return 1
 
 
+def cmd_journal_diagnostics(args) -> int:
+    """Show journal diagnostics for a scenario."""
+    try:
+        cfg = _load_json(args.input)
+
+        # Create scenario using from_dict method
+        scn = Scenario.from_dict(cfg)
+
+        # Run simulation
+        start_date = date.fromisoformat(args.start)
+        selection = args.select if args.select else None
+        res = scn.run(start=start_date, months=args.months, selection=selection)
+
+        journal = res.get("journal")
+        if journal is None:
+            print("Error: Journal not available in results", file=sys.stderr)
+            return 1
+
+        # Get scenario results
+        views = res.get("views")
+        if views is None:
+            print("Error: ScenarioResults not available", file=sys.stderr)
+            return 1
+
+        # Calculate diagnostics
+        total_entries = len(journal.entries)
+        boundary_entries = 0
+        internal_entries = 0
+        transfer_entries = 0
+        boundary_total = 0.0
+        transfer_total = 0.0
+
+        for entry in journal.entries:
+            # Check if entry touches boundary
+            touches_boundary = False
+            for posting in entry.postings:
+                node_id = posting.metadata.get("node_id")
+                if node_id == "b:boundary":
+                    touches_boundary = True
+                    boundary_total += abs(float(posting.amount.value))
+                    break
+
+            if touches_boundary:
+                boundary_entries += 1
+            else:
+                internal_entries += 1
+                transfer_entries += 1
+                # Sum transfer amounts
+                for posting in entry.postings:
+                    transfer_total += abs(float(posting.amount.value))
+
+        # Get cancellation stats if selection is provided
+        cancelled_count = 0
+        if selection and views:
+            # This would require running aggregation with selection
+            # For now, just show basic stats
+            pass
+
+        if args.json:
+            # JSON output
+            output = {
+                "total_entries": total_entries,
+                "boundary_entries": boundary_entries,
+                "internal_entries": internal_entries,
+                "transfer_entries": transfer_entries,
+                "boundary_total": boundary_total,
+                "transfer_total": transfer_total,
+                "cancelled_entries": cancelled_count,
+            }
+            json.dump(output, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+        else:
+            # Human-readable output
+            print("Journal Diagnostics")
+            print("=" * 50)
+            print(f"Total entries: {total_entries}")
+            print(f"  Boundary entries: {boundary_entries} (Σ={boundary_total:,.2f})")
+            print(f"  Internal entries: {internal_entries} (Σ={transfer_total:,.2f})")
+            print(f"  Transfer entries: {transfer_entries}")
+            if cancelled_count > 0:
+                print(f"  Cancelled entries: {cancelled_count}")
+            print()
+
+            # Show boundary totals by category
+            boundary_by_category = {}
+            for entry in journal.entries:
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    if node_id == "b:boundary":
+                        category = posting.metadata.get("category", "unknown")
+                        amount = abs(float(posting.amount.value))
+                        boundary_by_category[category] = (
+                            boundary_by_category.get(category, 0.0) + amount
+                        )
+
+            if boundary_by_category:
+                print("Boundary totals by category:")
+                for category, total in sorted(boundary_by_category.items()):
+                    print(f"  {category}: {total:,.2f}")
+
+        return 0
+
+    except Exception as e:
+        print(f"Error running journal diagnostics: {e}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+
 def cmd_validate(args) -> int:
     """Validate a scenario JSON."""
     try:
@@ -334,6 +444,12 @@ def main() -> None:
         nargs="*",
         help="Select specific bricks and/or MacroBricks to execute",
     )
+    run_parser.add_argument(
+        "--transfer-visibility",
+        choices=["OFF", "ONLY", "BOUNDARY_ONLY", "ALL"],
+        default="BOUNDARY_ONLY",
+        help="Transfer visibility setting (default: BOUNDARY_ONLY)",
+    )
     run_parser.epilog = """
 Aggregation Semantics:
   • Per-MacroBrick view: sums all executed member bricks of that MacroBrick
@@ -368,6 +484,29 @@ Aggregation Semantics:
         "--json", action="store_true", help="Output in JSON format"
     )
     list_parser.set_defaults(func=cmd_list_macrobricks)
+
+    # Journal diagnostics command
+    journal_parser = subparsers.add_parser(
+        "journal-diagnostics", help="Show journal diagnostics for a scenario"
+    )
+    journal_parser.add_argument(
+        "-i", "--input", required=True, help="Input scenario JSON file"
+    )
+    journal_parser.add_argument(
+        "--start", default="2026-01-01", help="Start date (YYYY-MM-DD)"
+    )
+    journal_parser.add_argument(
+        "--months", type=int, default=12, help="Number of months to simulate"
+    )
+    journal_parser.add_argument(
+        "--select",
+        nargs="*",
+        help="Select specific bricks and/or MacroBricks to analyze",
+    )
+    journal_parser.add_argument(
+        "--json", action="store_true", help="Output in JSON format"
+    )
+    journal_parser.set_defaults(func=cmd_journal_diagnostics)
 
     # Parse arguments and execute
     args = parser.parse_args()

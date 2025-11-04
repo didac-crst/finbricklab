@@ -34,9 +34,48 @@ class MacroBrick:
     members: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
+    def validate_membership(self, registry: Registry) -> None:
+        """
+        Validate that MacroBrick members are A/L or MacroGroups only (reject F/T/Shell/Boundary).
+
+        Args:
+            registry: Registry providing lookup for bricks and MacroBricks
+
+        Raises:
+            ConfigError: If F/T/Shell/Boundary found as members
+        """
+        from .errors import ConfigError
+
+        for member_id in self.members:
+            if registry.is_macrobrick(member_id):
+                # MacroGroups are valid members (nested groups)
+                continue
+            elif registry.is_brick(member_id):
+                # Check brick family - only A/L allowed
+                brick = registry.get_brick(member_id)
+                if hasattr(brick, "family"):
+                    if brick.family == "f" or brick.family == "t":
+                        raise ConfigError(
+                            f"MacroBrick '{self.id}' contains invalid member '{member_id}': "
+                            f"F/T bricks (FlowShell/TransferShell) are not allowed. "
+                            f"Only A/L bricks and other MacroGroups are valid members."
+                        )
+                    elif brick.family != "a" and brick.family != "l":
+                        raise ConfigError(
+                            f"MacroBrick '{self.id}' contains invalid member '{member_id}': "
+                            f"Unknown brick family '{brick.family}'. "
+                            f"Only A/L bricks and MacroGroups are valid members."
+                        )
+            else:
+                raise ConfigError(
+                    f"MacroBrick '{self.id}' contains unknown member id '{member_id}'."
+                )
+
     def expand_member_bricks(self, registry: Registry) -> list[str]:
         """
         Resolve to a flat list of brick IDs (transitive), ensuring a DAG (no cycles).
+
+        Validates that members are A/L or MacroGroups only (rejects F/T/Shell/Boundary).
 
         Args:
             registry: Registry providing lookup for bricks and MacroBricks
@@ -45,9 +84,12 @@ class MacroBrick:
             Flat list of unique brick IDs that this MacroBrick contains
 
         Raises:
-            ConfigError: If cycle detected or unknown member ID found
+            ConfigError: If cycle detected, unknown member ID found, or invalid member type
         """
         from .errors import ConfigError
+
+        # Validate membership first (fail fast)
+        self.validate_membership(registry)
 
         flat: list[str] = []
         macros_seen: set[
@@ -72,6 +114,8 @@ class MacroBrick:
 
             try:
                 macro = registry.get_macrobrick(macro_id)
+                # Validate nested macro membership
+                macro.validate_membership(registry)
                 for member_id in macro.members:
                     if registry.is_macrobrick(member_id):
                         dfs_macro(member_id, stack)

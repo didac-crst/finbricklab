@@ -83,7 +83,15 @@ class JournalEntry:
 
     def __post_init__(self):
         """Validate entry after initialization."""
+        self._validate_two_posting()
         self._validate_zero_sum()
+
+    def _validate_two_posting(self) -> None:
+        """Validate that entry has exactly 2 postings (two-posting invariant)."""
+        if len(self.postings) != 2:
+            raise ValueError(
+                f"Entry {self.id} must have exactly 2 postings, got {len(self.postings)}"
+            )
 
     def _validate_zero_sum(self) -> None:
         """Validate that entry is zero-sum by currency."""
@@ -396,3 +404,163 @@ def generate_transaction_id(
         f"{brick_id}:{timestamp_str}:{str(sorted(spec.items()))}:{links_str}:{sequence}"
     )
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def create_operation_id(
+    parent_id: str, timestamp: datetime, hash_suffix: str = ""
+) -> str:
+    """
+    Create operation ID in format: op:<parent_id>:<YYYY-MM>[:hash].
+
+    Args:
+        parent_id: Creator node ID (a:/l:/fs:/ts:)
+        timestamp: Operation timestamp
+        hash_suffix: Optional hash suffix for disambiguation
+
+    Returns:
+        Operation ID string
+    """
+    # Normalize timestamp to month precision
+    try:
+        ts_norm = _norm_ts(timestamp)
+        timestamp_str = str(ts_norm)
+        # Extract YYYY-MM from datetime64[M]
+        year_month = timestamp_str.split("-")[:2]
+        year_month_str = "-".join(year_month)
+    except Exception:
+        # Fallback to datetime formatting
+        year_month_str = (
+            timestamp.strftime("%Y-%m")
+            if hasattr(timestamp, "strftime")
+            else str(timestamp)[:7]
+        )
+
+    op_id = f"op:{parent_id}:{year_month_str}"
+    if hash_suffix:
+        op_id = f"{op_id}:{hash_suffix}"
+    return op_id
+
+
+def create_entry_id(operation_id: str, sequence: int) -> str:
+    """
+    Create entry ID (CDPair ID) in format: cp:<operation_id>:<sequence>.
+
+    Args:
+        operation_id: Operation ID
+        sequence: Sequence number within operation (1, 2, ...)
+
+    Returns:
+        Entry ID string
+    """
+    return f"cp:{operation_id}:{sequence}"
+
+
+def stamp_entry_metadata(
+    entry: JournalEntry,
+    parent_id: str,
+    timestamp: datetime,
+    tags: dict[str, Any],
+    sequence: int,
+    origin_id: str | None = None,
+) -> None:
+    """
+    Stamp required metadata on journal entry.
+
+    Args:
+        entry: Journal entry to stamp
+        parent_id: Creator node ID (a:/l:/fs:/ts:)
+        timestamp: Entry timestamp
+        tags: Shared tags dict (e.g., {'type': 'principal'})
+        sequence: Sequence number within operation
+        origin_id: Optional origin ID (if None, will be generated)
+    """
+    # Create operation_id and entry_id
+    operation_id = create_operation_id(parent_id, timestamp)
+    entry_id = create_entry_id(operation_id, sequence)
+
+    # Generate origin_id if not provided
+    if origin_id is None:
+        # Use a simplified hash based on operation_id and sequence
+        content = f"{operation_id}:{sequence}"
+        origin_id = hashlib.sha256(content.encode()).hexdigest()[:16]
+
+    # Stamp metadata
+    entry.metadata["operation_id"] = operation_id
+    entry.metadata["parent_id"] = parent_id
+    entry.metadata["sequence"] = sequence
+    entry.metadata["origin_id"] = origin_id
+    entry.metadata["tags"] = tags.copy()
+
+    # Update entry ID if it doesn't match
+    if entry.id != entry_id:
+        entry.id = entry_id
+
+
+def stamp_posting_metadata(
+    posting: Posting,
+    node_id: str,
+    category: str | None = None,
+    type_tag: str | None = None,
+) -> None:
+    """
+    Stamp required metadata on posting.
+
+    Args:
+        posting: Posting to stamp
+        node_id: Logical node ID (a:/l:/b:boundary)
+        category: Category for boundary postings (e.g., 'income.salary', 'expense.interest')
+        type_tag: Optional type tag (e.g., 'principal', 'interest', 'fee')
+    """
+    posting.metadata["node_id"] = node_id
+    if category:
+        posting.metadata["category"] = category
+    if type_tag:
+        posting.metadata["type"] = type_tag
+
+
+def validate_entry_metadata(entry: JournalEntry) -> None:
+    """
+    Validate that entry has all required metadata keys.
+
+    Args:
+        entry: Journal entry to validate
+
+    Raises:
+        ValueError: If required metadata is missing
+    """
+    required_keys = ["operation_id", "parent_id", "sequence", "origin_id", "tags"]
+    missing_keys = [key for key in required_keys if key not in entry.metadata]
+    if missing_keys:
+        raise ValueError(
+            f"Entry {entry.id} missing required metadata keys: {missing_keys}"
+        )
+
+    # Validate types
+    if not isinstance(entry.metadata["sequence"], int):
+        raise ValueError(f"Entry {entry.id} metadata 'sequence' must be int")
+    if not isinstance(entry.metadata["tags"], dict):
+        raise ValueError(f"Entry {entry.id} metadata 'tags' must be dict")
+
+
+def validate_posting_metadata(posting: Posting) -> None:
+    """
+    Validate that posting has required metadata.
+
+    Args:
+        posting: Posting to validate
+
+    Raises:
+        ValueError: If required metadata is missing
+    """
+    if "node_id" not in posting.metadata:
+        raise ValueError(
+            f"Posting to account {posting.account_id} missing required 'node_id' in metadata"
+        )
+
+    # Check if this is a boundary posting (node_id == 'b:boundary')
+    node_id = posting.metadata.get("node_id")
+    if node_id == "b:boundary":
+        if "category" not in posting.metadata:
+            raise ValueError(
+                f"Boundary posting to account {posting.account_id} missing required 'category' in metadata"
+            )

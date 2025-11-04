@@ -10,10 +10,21 @@ from datetime import date
 
 import numpy as np
 
+from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IScheduleStrategy
+from finbricklab.core.journal import (
+    JournalEntry,
+    Posting,
+    create_entry_id,
+    create_operation_id,
+    generate_transaction_id,
+    stamp_entry_metadata,
+    stamp_posting_metadata,
+)
 from finbricklab.core.links import PrincipalLink
 from finbricklab.core.results import BrickOutput
 from finbricklab.core.specs import term_from_amort
@@ -308,12 +319,37 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
 
         Returns:
             BrickOutput with loan drawdown, payment schedule, debt balance, and events
+            (V2: cash_in/cash_out are zero; journal entries created instead)
         """
         T = len(ctx.t_index)
+        # V2: Don't emit cash arrays - use journal entries instead
         cash_in = np.zeros(T)
         cash_out = np.zeros(T)
         debt = np.zeros(T)
         interest_paid = np.zeros(T)
+
+        # Get journal from context (V2)
+        if ctx.journal is None:
+            raise ValueError(
+                "Journal must be provided in ScenarioContext for V2 postings model"
+            )
+        journal = ctx.journal
+
+        # Get node IDs
+        liability_node_id = get_node_id(brick.id, "l")
+        # Find cash account node ID (use settlement_default_cash_id or find from registry)
+        cash_node_id = None
+        if ctx.settlement_default_cash_id:
+            cash_node_id = get_node_id(ctx.settlement_default_cash_id, "a")
+        else:
+            # Find first cash account from registry
+            for other_brick in ctx.registry.values():
+                if hasattr(other_brick, "kind") and other_brick.kind == "a.cash":
+                    cash_node_id = get_node_id(other_brick.id, "a")
+                    break
+        if cash_node_id is None:
+            # Fallback: use default
+            cash_node_id = "a:cash"  # Default fallback
 
         # Extract parameters
         principal = float(_get_spec_value(brick.spec, "principal", 0))
@@ -335,8 +371,75 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         )
 
         # Initial loan drawdown at t=0
-        cash_in[0] += principal
+        # V2: Create journal entry for drawdown (INTERNAL↔INTERNAL: DR liability, CR cash)
+        # Note: In V2, drawdown is typically handled by opening balance or external entry
+        # For now, we'll create it as a journal entry if needed
         debt[0] = principal
+
+        # Create drawdown entry (if principal > 0)
+        if principal > 0:
+            drawdown_timestamp = ctx.t_index[0]
+            if hasattr(drawdown_timestamp, "astype"):
+                drawdown_timestamp = drawdown_timestamp.astype("datetime64[D]").astype(
+                    "datetime"
+                )
+            else:
+                from datetime import datetime
+
+                drawdown_timestamp = datetime.fromisoformat(str(drawdown_timestamp))
+
+            operation_id = create_operation_id(f"l:{brick.id}", drawdown_timestamp)
+            entry_id = create_entry_id(operation_id, 1)
+            origin_id = generate_transaction_id(
+                brick.id,
+                drawdown_timestamp,
+                brick.spec or {},
+                brick.links or {},
+                sequence=0,
+            )
+
+            # DR liability (increase debt), CR cash (cash inflow)
+            drawdown_entry = JournalEntry(
+                id=entry_id,
+                timestamp=drawdown_timestamp,
+                postings=[
+                    Posting(
+                        account_id=cash_node_id,  # Keep for backward compat
+                        amount=create_amount(principal, ctx.currency),
+                        metadata={},
+                    ),
+                    Posting(
+                        account_id=liability_node_id,  # Keep for backward compat
+                        amount=create_amount(-principal, ctx.currency),
+                        metadata={},
+                    ),
+                ],
+                metadata={},
+            )
+
+            # Stamp metadata
+            stamp_entry_metadata(
+                drawdown_entry,
+                parent_id=f"l:{brick.id}",
+                timestamp=drawdown_timestamp,
+                tags={"type": "drawdown"},
+                sequence=1,
+                origin_id=origin_id,
+            )
+
+            # Stamp posting metadata
+            stamp_posting_metadata(
+                drawdown_entry.postings[0],
+                node_id=cash_node_id,
+                type_tag="drawdown",
+            )
+            stamp_posting_metadata(
+                drawdown_entry.postings[1],
+                node_id=liability_node_id,
+                type_tag="drawdown",
+            )
+
+            journal.post(drawdown_entry)
 
         # Calculate monthly payment using annuity formula
         r_m = rate_pa / 12.0
@@ -380,11 +483,187 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 # Apply prepayment
                 if prepay_amt > 0:
                     prepay_fee = prepay_amt * prepay_fee_pct
-                    cash_out[t] += interest + principal_pay + prepay_amt + prepay_fee
+                    total_payment = interest + principal_pay + prepay_amt + prepay_fee
                     debt[t] = max(bal_after_sched - prepay_amt, 0.0)
                 else:
-                    cash_out[t] += interest + principal_pay
+                    total_payment = interest + principal_pay
                     debt[t] = bal_after_sched
+
+                # V2: Create journal entries for payment
+                payment_timestamp = ctx.t_index[t]
+                if hasattr(payment_timestamp, "astype"):
+                    payment_timestamp = payment_timestamp.astype(
+                        "datetime64[D]"
+                    ).astype("datetime")
+                else:
+                    from datetime import datetime
+
+                    payment_timestamp = datetime.fromisoformat(str(payment_timestamp))
+
+                sequence = 1
+
+                # Principal payment (INTERNAL↔INTERNAL: DR liability, CR cash)
+                if principal_pay > 0:
+                    principal_total = principal_pay + prepay_amt
+                    operation_id = create_operation_id(
+                        f"l:{brick.id}", payment_timestamp
+                    )
+                    entry_id = create_entry_id(operation_id, sequence)
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        payment_timestamp,
+                        brick.spec or {},
+                        brick.links or {},
+                        sequence=t,
+                    )
+
+                    principal_entry = JournalEntry(
+                        id=entry_id,
+                        timestamp=payment_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=liability_node_id,
+                                amount=create_amount(principal_total, ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(-principal_total, ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        principal_entry,
+                        parent_id=f"l:{brick.id}",
+                        timestamp=payment_timestamp,
+                        tags={"type": "principal"},
+                        sequence=sequence,
+                        origin_id=origin_id,
+                    )
+                    stamp_posting_metadata(
+                        principal_entry.postings[0],
+                        node_id=liability_node_id,
+                        type_tag="principal",
+                    )
+                    stamp_posting_metadata(
+                        principal_entry.postings[1],
+                        node_id=cash_node_id,
+                        type_tag="principal",
+                    )
+
+                    journal.post(principal_entry)
+                    sequence += 1
+
+                # Interest payment (BOUNDARY↔INTERNAL: DR expense, CR cash)
+                if interest > 0:
+                    operation_id = create_operation_id(
+                        f"l:{brick.id}", payment_timestamp
+                    )
+                    entry_id = create_entry_id(operation_id, sequence)
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        payment_timestamp,
+                        brick.spec or {},
+                        brick.links or {},
+                        sequence=t,
+                    )
+
+                    interest_entry = JournalEntry(
+                        id=entry_id,
+                        timestamp=payment_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(interest, ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(-interest, ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        interest_entry,
+                        parent_id=f"l:{brick.id}",
+                        timestamp=payment_timestamp,
+                        tags={"type": "interest"},
+                        sequence=sequence,
+                        origin_id=origin_id,
+                    )
+                    stamp_posting_metadata(
+                        interest_entry.postings[0],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.interest",
+                        type_tag="interest",
+                    )
+                    stamp_posting_metadata(
+                        interest_entry.postings[1],
+                        node_id=cash_node_id,
+                        type_tag="interest",
+                    )
+
+                    journal.post(interest_entry)
+
+                # Fee payment (if any) - BOUNDARY↔INTERNAL: DR expense, CR cash
+                if prepay_amt > 0 and prepay_fee > 0:
+                    operation_id = create_operation_id(
+                        f"l:{brick.id}", payment_timestamp
+                    )
+                    entry_id = create_entry_id(operation_id, sequence + 1)
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        payment_timestamp,
+                        brick.spec or {},
+                        brick.links or {},
+                        sequence=t,
+                    )
+
+                    fee_entry = JournalEntry(
+                        id=entry_id,
+                        timestamp=payment_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(prepay_fee, ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(-prepay_fee, ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        fee_entry,
+                        parent_id=f"l:{brick.id}",
+                        timestamp=payment_timestamp,
+                        tags={"type": "fee"},
+                        sequence=sequence + 1,
+                        origin_id=origin_id,
+                    )
+                    stamp_posting_metadata(
+                        fee_entry.postings[0],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.fee",
+                        type_tag="fee",
+                    )
+                    stamp_posting_metadata(
+                        fee_entry.postings[1],
+                        node_id=cash_node_id,
+                        type_tag="fee",
+                    )
+
+                    journal.post(fee_entry)
             else:
                 debt[t] = 0.0
 
@@ -410,7 +689,66 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             )  # DEFAULT
 
             if policy == "payoff":
-                cash_out[t_stop] += residual
+                # V2: Create journal entry for balloon payment (INTERNAL↔INTERNAL: DR liability, CR cash)
+                balloon_timestamp = ctx.t_index[t_stop]
+                if hasattr(balloon_timestamp, "astype"):
+                    balloon_timestamp = balloon_timestamp.astype(
+                        "datetime64[D]"
+                    ).astype("datetime")
+                else:
+                    from datetime import datetime
+
+                    balloon_timestamp = datetime.fromisoformat(str(balloon_timestamp))
+
+                operation_id = create_operation_id(f"l:{brick.id}", balloon_timestamp)
+                entry_id = create_entry_id(operation_id, 1)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    balloon_timestamp,
+                    brick.spec or {},
+                    brick.links or {},
+                    sequence=t_stop,
+                )
+
+                balloon_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=balloon_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=liability_node_id,
+                            amount=create_amount(residual, ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=cash_node_id,
+                            amount=create_amount(-residual, ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    balloon_entry,
+                    parent_id=f"l:{brick.id}",
+                    timestamp=balloon_timestamp,
+                    tags={"type": "balloon"},
+                    sequence=1,
+                    origin_id=origin_id,
+                )
+                stamp_posting_metadata(
+                    balloon_entry.postings[0],
+                    node_id=liability_node_id,
+                    type_tag="balloon",
+                )
+                stamp_posting_metadata(
+                    balloon_entry.postings[1],
+                    node_id=cash_node_id,
+                    type_tag="balloon",
+                )
+
+                journal.post(balloon_entry)
+
                 debt[t_stop] = 0.0
                 # Set all future debt to 0 (mortgage is paid off)
                 debt[t_stop + 1 :] = 0.0

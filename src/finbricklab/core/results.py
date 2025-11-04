@@ -4,14 +4,20 @@ Results and output structures for FinBrickLab.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
 
-from .accounts import AccountScope
+from .accounts import (
+    BOUNDARY_NODE_ID,
+    AccountScope,
+    AccountType,
+    get_node_scope,
+    get_node_type,
+)
 from .events import Event
-from .journal import JournalEntry
+from .journal import Journal, JournalEntry
 from .registry import Registry
 from .transfer_visibility import TransferVisibility
 
@@ -51,8 +57,8 @@ class BrickOutput(TypedDict):
     interest tracking, and event tracking across all types of financial instruments.
 
     Attributes:
-        cash_in: Monthly cash inflows (always >= 0)
-        cash_out: Monthly cash outflows (always >= 0)
+        cash_in: Monthly cash inflows (always >= 0) - DEPRECATED: use journal entries instead
+        cash_out: Monthly cash outflows (always >= 0) - DEPRECATED: use journal entries instead
         assets: Monthly asset valuation (0 for non-assets)
         liabilities: Monthly debt balance (0 for non-liabilities)
         interest: Monthly interest income (+) / expense (-) (0 if not applicable)
@@ -60,13 +66,14 @@ class BrickOutput(TypedDict):
 
     Note:
         All numpy arrays have the same length corresponding to the simulation period.
-        Cash flows are always positive values - the direction is implicit in the field name.
+        Cash flows (cash_in/cash_out) are deprecated in V2 - use journal entries instead.
+        Aggregators will ignore cash_in/cash_out and compute cashflow from journal.
         Interest is signed: positive for income (cash accounts, securities), negative for expense (loans, credit).
         Events are time-stamped and can be used to build a simulation ledger.
     """
 
-    cash_in: np.ndarray  # Monthly cash inflows (>=0)
-    cash_out: np.ndarray  # Monthly cash outflows (>=0)
+    cash_in: NotRequired[np.ndarray]  # Monthly cash inflows (>=0) - DEPRECATED
+    cash_out: NotRequired[np.ndarray]  # Monthly cash outflows (>=0) - DEPRECATED
     assets: np.ndarray  # Monthly asset value (0 if not an asset)
     liabilities: np.ndarray  # Monthly debt balance (0 if not a liability)
     interest: np.ndarray  # Monthly interest income (+) / expense (-) (0 if not applicable)
@@ -117,16 +124,18 @@ class ScenarioResults:
         self,
         transfer_visibility: TransferVisibility | None = None,
         include_transparent: bool | None = None,
+        selection: set[str] | None = None,
     ) -> pd.DataFrame:
         """
-        Return monthly data with optional transfer visibility filtering.
+        Return monthly data with journal-first aggregation (V2 postings model).
 
         Args:
-            transfer_visibility: How to handle transfer visibility (default: OFF)
+            transfer_visibility: How to handle transfer visibility (default: BOUNDARY_ONLY)
             include_transparent: Backward compatibility flag (deprecated)
+            selection: Optional set of brick/node IDs to filter (for MacroGroups)
 
         Returns:
-            Monthly data DataFrame with optional transfer filtering applied
+            Monthly data DataFrame with journal-first aggregation
         """
         # Handle backward compatibility
         if include_transparent is not None:
@@ -143,15 +152,33 @@ class ScenarioResults:
             else:
                 transfer_visibility = TransferVisibility.OFF
 
-        # If no transfer visibility specified, return data as-is
+        # Default to BOUNDARY_ONLY for V2
         if transfer_visibility is None:
-            return self._monthly_data
+            transfer_visibility = TransferVisibility.BOUNDARY_ONLY
 
-        # If no filtering needed, return data as-is
+        # Use journal-first aggregation if journal is available (V2)
+        if self._journal is not None and self._registry is not None:
+            # Get time index from monthly data
+            time_index = self._monthly_data.index
+
+            # Aggregate from journal
+            df = _aggregate_journal_monthly(
+                journal=self._journal,
+                registry=self._registry,
+                time_index=time_index,
+                selection=selection,
+                transfer_visibility=transfer_visibility,
+                outputs=self._outputs,
+            )
+
+            # Apply transfer visibility if needed (already handled in aggregation)
+            return df
+
+        # Fallback to pre-aggregated data (legacy path)
         if transfer_visibility == TransferVisibility.ALL:
             return self._monthly_data
 
-        # Apply transfer visibility filtering
+        # Apply transfer visibility filtering on legacy data
         return self._apply_transfer_visibility_filter(transfer_visibility)
 
     def _apply_transfer_visibility_filter(
@@ -218,15 +245,20 @@ class ScenarioResults:
             is_transfer = self._is_transfer_brick(brick_id)
             if is_transfer:
                 transfer_count += 1
-                # Calculate transfer sum (cash_in + cash_out)
-                transfer_sum += output["cash_in"].sum() + output["cash_out"].sum()
+                # Calculate transfer sum (cash_in + cash_out) - handle optional fields
+                cash_in = output.get("cash_in")
+                cash_out = output.get("cash_out")
+                if cash_in is not None and cash_out is not None:
+                    transfer_sum += cash_in.sum() + cash_out.sum()
 
                 # Apply visibility rules
                 if visibility == TransferVisibility.OFF:
                     # Hide internal transfers - zero out the cash flows
                     filtered_output = output.copy()
-                    filtered_output["cash_in"] = np.zeros_like(output["cash_in"])
-                    filtered_output["cash_out"] = np.zeros_like(output["cash_out"])
+                    if "cash_in" in output:
+                        filtered_output["cash_in"] = np.zeros_like(output["cash_in"])
+                    if "cash_out" in output:
+                        filtered_output["cash_out"] = np.zeros_like(output["cash_out"])
                     filtered_outputs[brick_id] = filtered_output
                 elif visibility == TransferVisibility.ONLY:
                     # Show only transfers
@@ -319,8 +351,9 @@ class ScenarioResults:
 
         # Aggregate the filtered outputs
         for output in filtered_outputs.values():
-            cash_in += output["cash_in"]
-            cash_out += output["cash_out"]
+            # Handle optional cash arrays (deprecated in V2)
+            cash_in += output.get("cash_in", np.zeros(len(time_index)))
+            cash_out += output.get("cash_out", np.zeros(len(time_index)))
             assets += output["assets"]
             liabilities += output["liabilities"]
             interest += output["interest"]
@@ -853,8 +886,13 @@ def _compute_filtered_totals(
         return empty_df
 
     # Calculate totals for selected bricks only
-    cash_in_tot = sum(o["cash_in"] for o in filtered_outputs.values())
-    cash_out_tot = sum(o["cash_out"] for o in filtered_outputs.values())
+    # Handle optional cash arrays (deprecated in V2)
+    cash_in_tot = sum(
+        o.get("cash_in", np.zeros(len(t_index))) for o in filtered_outputs.values()
+    )
+    cash_out_tot = sum(
+        o.get("cash_out", np.zeros(len(t_index))) for o in filtered_outputs.values()
+    )
     assets_tot = sum(o["assets"] for o in filtered_outputs.values())
     liabilities_tot = sum(o["liabilities"] for o in filtered_outputs.values())
     interest_tot = sum(o["interest"] for o in filtered_outputs.values())
@@ -951,6 +989,206 @@ def aggregate_totals(
     if return_period_index:
         return out
     return out.to_timestamp(how="end")  # Convert to period-end timestamps
+
+
+def _aggregate_journal_monthly(
+    journal: Journal,
+    registry: Registry,
+    time_index: pd.PeriodIndex,
+    selection: set[str] | None = None,
+    transfer_visibility: TransferVisibility = TransferVisibility.BOUNDARY_ONLY,
+    outputs: dict[str, BrickOutput] | None = None,
+) -> pd.DataFrame:
+    """
+    Aggregate journal entries monthly with internal cancellation logic.
+
+    This implements journal-first aggregation for V2 postings model:
+    - Time bucket by entry timestamp (month precision)
+    - For selection S (A/L set from MacroGroup or single A/L):
+      - Iterate entries (two postings each)
+      - Check if any posting hits `b:boundary`
+      - If both postings INTERNAL and both `node_id ∈ S` → cancel for cashflow
+      - Else, find ASSET posting:
+        - If `node_id ∈ S`: include (DR=inflow, CR=outflow)
+        - Ignore LIABILITY postings for cashflow totals
+      - Attribute boundary postings by `category` for P&L
+
+    Args:
+        journal: Journal with entries
+        registry: Registry for account/node lookup
+        time_index: Time index for output DataFrame
+        selection: Set of A/L node IDs to include (None = all)
+        transfer_visibility: Transfer visibility setting
+        outputs: Optional brick outputs for balance aggregation
+
+    Returns:
+        DataFrame with monthly totals (cash_in, cash_out, assets, liabilities, interest, equity)
+    """
+    from datetime import datetime
+
+    import numpy as np
+
+    # Initialize arrays
+    length = len(time_index)
+    cash_in = np.zeros(length)
+    cash_out = np.zeros(length)
+    assets = np.zeros(length)
+    liabilities = np.zeros(length)
+    interest = np.zeros(length)
+
+    # Get account registry from journal
+    account_registry = journal.account_registry
+    if account_registry is None:
+        raise ValueError("Journal must have account_registry for aggregation")
+
+    # Expand selection if needed (for MacroGroups)
+    selection_set: set[str] = set()
+    if selection:
+        for node_id in selection:
+            # Check if it's a MacroGroup
+            if registry and registry.is_macrobrick(node_id):
+                # Expand MacroGroup to A/L nodes
+                macrobrick = registry.get_macrobrick(node_id)
+                members = macrobrick.expand_member_bricks(registry)
+                # Convert brick IDs to node IDs
+                for brick_id in members:
+                    brick = registry.get_brick(brick_id)
+                    if hasattr(brick, "family"):
+                        if brick.family == "a":
+                            selection_set.add(f"a:{brick_id}")
+                        elif brick.family == "l":
+                            selection_set.add(f"l:{brick_id}")
+            else:
+                # Direct node ID
+                selection_set.add(node_id)
+
+    # Group entries by month
+    entries_by_month: dict[str, list[JournalEntry]] = {}
+    for entry in journal.entries:
+        # Normalize timestamp to month
+        if isinstance(entry.timestamp, datetime):
+            month_str = entry.timestamp.strftime("%Y-%m")
+        else:
+            # Handle numpy datetime64
+            month_str = str(entry.timestamp)[:7]  # YYYY-MM
+
+        if month_str not in entries_by_month:
+            entries_by_month[month_str] = []
+        entries_by_month[month_str].append(entry)
+
+    # Process each month
+    for month_idx, period in enumerate(time_index):
+        month_str = period.strftime("%Y-%m")
+
+        # Get entries for this month
+        month_entries = entries_by_month.get(month_str, [])
+
+        # Process each entry
+        for entry in month_entries:
+            # Check if entry touches boundary
+            touches_boundary = False
+            for posting in entry.postings:
+                node_id = posting.metadata.get("node_id")
+                if node_id == BOUNDARY_NODE_ID:
+                    touches_boundary = True
+                    break
+
+            # Check if this is a transfer entry
+            is_transfer_entry = entry.metadata.get("transaction_type") in {
+                "transfer",
+                "tbrick",
+                "maturity_transfer",
+            }
+
+            # Check if both postings are INTERNAL and in selection
+            both_internal_in_selection = False
+            if not touches_boundary and selection_set:
+                both_internal = True
+                both_in_selection = True
+                for posting in entry.postings:
+                    node_id = posting.metadata.get("node_id")
+                    scope = get_node_scope(node_id, account_registry)
+                    if scope != AccountScope.INTERNAL:
+                        both_internal = False
+                        break
+                    if node_id not in selection_set:
+                        both_in_selection = False
+                if both_internal and both_in_selection:
+                    both_internal_in_selection = True
+
+            # Apply TransferVisibility filtering
+            if transfer_visibility != TransferVisibility.ALL:
+                if transfer_visibility == TransferVisibility.OFF:
+                    # Hide internal transfers only (already handled by cancellation logic)
+                    # But also check if this is a transfer entry that should be hidden
+                    if is_transfer_entry and both_internal_in_selection:
+                        continue  # Skip internal transfers
+                elif transfer_visibility == TransferVisibility.ONLY:
+                    # Show only transfer entries
+                    if not is_transfer_entry:
+                        continue  # Skip non-transfer entries
+                elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
+                    # Show only boundary-crossing transfers (not internal transfers)
+                    if is_transfer_entry and not touches_boundary:
+                        continue  # Skip internal transfers
+                    if not is_transfer_entry and not touches_boundary:
+                        continue  # Skip non-boundary entries
+
+            # Apply cancellation: if both INTERNAL and in selection, cancel
+            if both_internal_in_selection:
+                # Skip this entry for cashflow (internal transfer cancels)
+                continue
+
+            # Find ASSET posting
+            asset_posting = None
+            for posting in entry.postings:
+                node_id = posting.metadata.get("node_id")
+                node_type = get_node_type(node_id, account_registry)
+                if node_type == AccountType.ASSET:
+                    asset_posting = posting
+                    break
+
+            # Include ASSET posting if in selection
+            if asset_posting:
+                node_id = asset_posting.metadata.get("node_id")
+                if not selection_set or node_id in selection_set:
+                    amount = float(asset_posting.amount.value)
+                    if asset_posting.is_debit():
+                        cash_in[month_idx] += abs(amount)
+                    else:  # credit
+                        cash_out[month_idx] += abs(amount)
+
+        # Aggregate balances from outputs if provided
+        if outputs:
+            for brick_id, output in outputs.items():
+                # Check if this brick is in selection
+                brick = registry.get_brick(brick_id) if registry else None
+                if brick and hasattr(brick, "family"):
+                    node_id = f"{brick.family}:{brick_id}"
+                    if not selection_set or node_id in selection_set:
+                        assets[month_idx] += output["assets"][month_idx]
+                        liabilities[month_idx] += output["liabilities"][month_idx]
+                        interest[month_idx] += output["interest"][month_idx]
+
+    # Calculate derived fields
+    net_cf = cash_in - cash_out
+    equity = assets - liabilities
+
+    # Create DataFrame
+    df = pd.DataFrame(
+        {
+            "cash_in": cash_in,
+            "cash_out": cash_out,
+            "net_cf": net_cf,
+            "assets": assets,
+            "liabilities": liabilities,
+            "interest": interest,
+            "equity": equity,
+        },
+        index=time_index,
+    )
+
+    return df
 
 
 def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:
