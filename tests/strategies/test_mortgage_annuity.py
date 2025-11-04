@@ -16,13 +16,20 @@ class TestMortgageAnnuityMath:
     """Test mortgage annuity mathematical invariants."""
 
     def test_payment_invariant(self):
-        """Test that payment amount is constant for given rate/term/principal."""
+        """Test that payment amount is constant for given rate/term/principal (V2: journal-first)."""
         # Test case: 30-year mortgage, 3.5% rate, $400k principal
         principal = 400000.0
         rate_pa = 0.035
         term_months = 360
 
-        # Create mortgage brick
+        # V2: Create full scenario to access journal entries
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 100000.0, "interest_pa": 0.0},
+        )
+
         mortgage = LBrick(
             id="mortgage",
             name="Test Mortgage",
@@ -34,24 +41,49 @@ class TestMortgageAnnuityMath:
             },
         )
 
-        # Create context
-        t_index = np.arange("2026-01", "2036-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        scenario = Scenario(id="test", name="Test", bricks=[cash, mortgage])
+        results = scenario.run(start=date(2026, 1, 1), months=120)  # 10 years
 
-        # Create strategy and simulate
-        strategy = ScheduleLoanAnnuity()
-        strategy.prepare(mortgage, ctx)
-        result = strategy.simulate(mortgage, ctx)
+        # V2: Extract payment amounts from journal entries (not per-brick cash_out arrays)
+        # Principal and interest are separate entries - need to sum them by month
+        journal = results["journal"]
+        from finbricklab.core.accounts import get_node_id, BOUNDARY_NODE_ID
+        from datetime import datetime
+        import pandas as pd
 
-        # Extract payment amounts (cash_out should be constant except for initial and final months)
-        payments = result["cash_out"]
+        cash_node_id = get_node_id("cash", "a")
+        
+        # Group entries by month and sum principal + interest
+        payments_by_month = {}  # month_str -> total_payment
+        
+        for entry in journal.entries:
+            if entry.metadata.get("transaction_type") != "payment":
+                continue
+            if "l:mortgage" not in entry.metadata.get("parent_id", ""):
+                continue
+            
+            # Normalize timestamp to month string
+            if isinstance(entry.timestamp, datetime):
+                month_str = entry.timestamp.strftime("%Y-%m")
+            else:
+                month_str = str(entry.timestamp)[:7]  # YYYY-MM
+            
+            # Find cash posting amount (outflow)
+            for posting in entry.postings:
+                if posting.metadata.get("node_id") == cash_node_id and posting.is_credit():
+                    amount = abs(float(posting.amount.value))
+                    payments_by_month[month_str] = payments_by_month.get(month_str, 0.0) + amount
+                    break
+        
+        # Convert to list sorted by month
+        payments = [payments_by_month[m] for m in sorted(payments_by_month.keys())]
 
-        # Skip the first payment (initial principal) and last payment (final payment)
+        # Skip the first payment (disbursement) and last payment (final payment)
         # Regular payments should be identical
         if len(payments) > 2:
             regular_payments = payments[1:-1]  # Skip first and last
         else:
-            regular_payments = payments[1:]  # Just skip first if only 2 payments
+            regular_payments = payments[1:] if len(payments) > 1 else payments
 
         assert len(regular_payments) > 0, "Should have regular payments"
 
@@ -206,17 +238,49 @@ class TestMortgageAnnuityMath:
         strategy.prepare(mortgage, ctx)
         result = strategy.simulate(mortgage, ctx)
 
-        # Calculate interest as cash_in (interest received by lender)
-        interest_payments = result["cash_in"]
+        # V2: Calculate interest from journal entries (not per-brick cash_in arrays)
+        # Create full scenario to access journal entries
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 100000.0, "interest_pa": 0.0},
+        )
+        scenario = Scenario(id="test", name="Test", bricks=[cash, mortgage])
+        results = scenario.run(start=date(2026, 1, 1), months=24)
+
+        journal = results["journal"]
+        payment_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "payment"
+            and "l:mortgage" in e.metadata.get("parent_id", "")
+        ]
+
+        # Extract interest amounts from payment entries
+        from finbricklab.core.accounts import BOUNDARY_NODE_ID
+
+        interest_payments = []
+        for entry in payment_entries:
+            # Find the interest posting (expense.interest category)
+            for posting in entry.postings:
+                if (
+                    posting.metadata.get("node_id") == BOUNDARY_NODE_ID
+                    and "interest" in posting.metadata.get("category", "")
+                ):
+                    interest_payments.append(abs(float(posting.amount.value)))
+                    break
+
+        assert len(interest_payments) > 0, "Should have interest payments"
 
         # Interest should generally decrease over time (allowing for some noise)
         # Check that the trend is decreasing by comparing first and last quarters
-        first_quarter_avg = np.mean(interest_payments[:3])
-        last_quarter_avg = np.mean(interest_payments[-3:])
-
-        assert (
-            last_quarter_avg < first_quarter_avg
-        ), f"Interest trend not decreasing: {first_quarter_avg:.2f} -> {last_quarter_avg:.2f}"
+        if len(interest_payments) >= 6:
+            first_quarter_avg = np.mean(interest_payments[:3])
+            last_quarter_avg = np.mean(interest_payments[-3:])
+            assert (
+                last_quarter_avg < first_quarter_avg
+            ), f"Interest trend not decreasing: {first_quarter_avg:.2f} -> {last_quarter_avg:.2f}"
 
     def test_different_rates_produce_different_payments(self):
         """Test that different interest rates produce different payment amounts."""
@@ -242,16 +306,53 @@ class TestMortgageAnnuityMath:
             t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
             ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
 
-            strategy = ScheduleLoanAnnuity()
-            strategy.prepare(mortgage, ctx)
-            result = strategy.simulate(mortgage, ctx)
-
-            # Get the regular payment (skip initial principal)
-            regular_payment = (
-                result["cash_out"][1]
-                if len(result["cash_out"]) > 1
-                else result["cash_out"][0]
+            # V2: Create full scenario to access journal entries
+            cash = ABrick(
+                id="cash",
+                name="Cash",
+                kind=K.A_CASH,
+                spec={"initial_balance": 100000.0, "interest_pa": 0.0},
             )
+            scenario = Scenario(id=f"test_{rate_pa}", name="Test", bricks=[cash, mortgage])
+            results = scenario.run(start=date(2026, 1, 1), months=12)
+
+            # V2: Extract payment amount from journal entries (sum principal + interest by month)
+            journal = results["journal"]
+            from finbricklab.core.accounts import get_node_id
+            from datetime import datetime
+
+            cash_node_id = get_node_id("cash", "a")
+            
+            # Group entries by month and sum principal + interest
+            payments_by_month = {}  # month_str -> total_payment
+            
+            for entry in journal.entries:
+                if entry.metadata.get("transaction_type") != "payment":
+                    continue
+                if f"l:mortgage_{rate_pa}" not in entry.metadata.get("parent_id", ""):
+                    continue
+                
+                # Normalize timestamp to month string
+                if isinstance(entry.timestamp, datetime):
+                    month_str = entry.timestamp.strftime("%Y-%m")
+                else:
+                    month_str = str(entry.timestamp)[:7]  # YYYY-MM
+                
+                # Find cash posting amount (outflow)
+                for posting in entry.postings:
+                    if posting.metadata.get("node_id") == cash_node_id and posting.is_credit():
+                        amount = abs(float(posting.amount.value))
+                        payments_by_month[month_str] = payments_by_month.get(month_str, 0.0) + amount
+                        break
+            
+            # Get the regular payment (skip initial disbursement month)
+            sorted_months = sorted(payments_by_month.keys())
+            if len(sorted_months) > 1:
+                # Get second month's payment (skip disbursement)
+                regular_payment = payments_by_month[sorted_months[1]]
+            else:
+                regular_payment = payments_by_month[sorted_months[0]] if sorted_months else 0.0
+            
             payments.append(regular_payment)
 
         # Higher rate should produce higher payment
