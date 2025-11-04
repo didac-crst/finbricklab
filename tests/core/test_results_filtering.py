@@ -7,11 +7,11 @@ from datetime import date
 import numpy as np
 import pandas as pd
 import pytest
+from finbricklab.core.accounts import BOUNDARY_NODE_ID
 from finbricklab.core.entity import Entity
 from finbricklab.core.kinds import K
 from finbricklab.core.results import ScenarioResults, _compute_filtered_totals
 from finbricklab.core.transfer_visibility import TransferVisibility
-from finbricklab.core.accounts import BOUNDARY_NODE_ID
 
 
 def _create_test_scenario():
@@ -759,8 +759,18 @@ def test_parent_id_exact_matching():
 
     # Create two bricks with similar IDs (loan1 and loan10)
     e.new_ABrick("cash", "Cash", K.A_CASH, {"initial_balance": 10000.0})
-    e.new_LBrick("loan1", "Loan 1", K.L_LOAN_ANNUITY, {"principal": 100000.0, "rate_pa": 0.04, "term_months": 60})
-    e.new_LBrick("loan10", "Loan 10", K.L_LOAN_ANNUITY, {"principal": 200000.0, "rate_pa": 0.05, "term_months": 120})
+    e.new_LBrick(
+        "loan1",
+        "Loan 1",
+        K.L_LOAN_ANNUITY,
+        {"principal": 100000.0, "rate_pa": 0.04, "term_months": 60},
+    )
+    e.new_LBrick(
+        "loan10",
+        "Loan 10",
+        K.L_LOAN_ANNUITY,
+        {"principal": 200000.0, "rate_pa": 0.05, "term_months": 120},
+    )
 
     scenario = e.create_scenario(
         id="test",
@@ -789,22 +799,22 @@ def test_parent_id_exact_matching():
     # Verify exact matching: loan1 entries should NOT match loan10's parent_id
     for entry in loan1_entries:
         parent_id = entry.metadata.get("parent_id", "")
-        assert parent_id == "l:loan1" or parent_id.startswith("l:loan1:"), (
-            f"loan1 entry should have parent_id='l:loan1' or 'l:loan1:...', got {parent_id}"
-        )
-        assert not parent_id.startswith("l:loan10"), (
-            f"loan1 entry should not match loan10: {parent_id}"
-        )
+        assert parent_id == "l:loan1" or parent_id.startswith(
+            "l:loan1:"
+        ), f"loan1 entry should have parent_id='l:loan1' or 'l:loan1:...', got {parent_id}"
+        assert not parent_id.startswith(
+            "l:loan10"
+        ), f"loan1 entry should not match loan10: {parent_id}"
 
     for entry in loan10_entries:
         parent_id = entry.metadata.get("parent_id", "")
-        assert parent_id == "l:loan10" or parent_id.startswith("l:loan10:"), (
-            f"loan10 entry should have parent_id='l:loan10' or 'l:loan10:...', got {parent_id}"
-        )
+        assert parent_id == "l:loan10" or parent_id.startswith(
+            "l:loan10:"
+        ), f"loan10 entry should have parent_id='l:loan10' or 'l:loan10:...', got {parent_id}"
         # loan10 should not be confused with loan1 (but "l:loan10" starts with "l:loan1", so we check for exact match or "l:loan10:")
-        assert parent_id == "l:loan10" or parent_id.startswith("l:loan10:"), (
-            f"loan10 entry should not be confused with loan1: {parent_id}"
-        )
+        assert parent_id == "l:loan10" or parent_id.startswith(
+            "l:loan10:"
+        ), f"loan10 entry should not be confused with loan1: {parent_id}"
 
     # Test legacy visibility path uses exact matching
     # Filter to loan1 only - should only see loan1 entries (not loan10)
@@ -896,14 +906,14 @@ def test_negative_interest_emits_expense_entry():
 
     # Verify expense entries for negative interest
     expense_interest_entries = [
-        e
-        for e in interest_entries
-        if e.metadata.get("transaction_type") == "expense"
+        e for e in interest_entries if e.metadata.get("transaction_type") == "expense"
     ]
 
     # With negative balance and positive interest rate, interest is negative (expense)
     # interest = balance * rate = -1000 * 0.10/12 ≈ -8.33 (expense)
-    assert len(expense_interest_entries) > 0, "Should have expense interest entries for negative balance"
+    assert (
+        len(expense_interest_entries) > 0
+    ), "Should have expense interest entries for negative balance"
 
     # Verify entry structure
     for entry in expense_interest_entries:
@@ -916,7 +926,11 @@ def test_negative_interest_emits_expense_entry():
 
         # Should have correct category
         boundary_posting = next(
-            (p for p in entry.postings if p.metadata.get("node_id") == BOUNDARY_NODE_ID),
+            (
+                p
+                for p in entry.postings
+                if p.metadata.get("node_id") == BOUNDARY_NODE_ID
+            ),
             None,
         )
         assert boundary_posting is not None, "Should have boundary posting"
@@ -927,9 +941,7 @@ def test_negative_interest_emits_expense_entry():
     # Verify positive interest (if balance becomes positive) uses income category
     # Check if there are any income interest entries
     income_interest_entries = [
-        e
-        for e in interest_entries
-        if e.metadata.get("transaction_type") == "income"
+        e for e in interest_entries if e.metadata.get("transaction_type") == "income"
     ]
 
     # If balance becomes positive, interest should be income
