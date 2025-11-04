@@ -2,6 +2,8 @@
 Tests for cash flow routing and cash account behavior.
 """
 
+import pytest
+
 from datetime import date
 
 import numpy as np
@@ -10,11 +12,14 @@ from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
 
 
+pytestmark = pytest.mark.legacy  # Mark as legacy until fully migrated
+
+
 class TestCashFlowRouting:
     """Test cash flow routing between bricks."""
 
     def test_all_cash_flows_route_to_cash_account(self):
-        """Test that all cash flows from other bricks route to the cash account."""
+        """Test that all cash flows from other bricks route to the cash account (V2: journal-first)."""
         # Create bricks that generate cash flows
         cash = ABrick(
             id="cash",
@@ -45,32 +50,44 @@ class TestCashFlowRouting:
 
         results = scenario.run(start=date(2026, 1, 1), months=6)
 
-        # Check that income generates proper journal entries
-        income_output = results["outputs"]["income"]
-
-        # Income should generate cash_in
+        # V2: Use journal-first aggregation instead of per-brick cash arrays
+        monthly = results["views"].monthly()
+        
+        # Income should generate cash_in (from journal entries)
         assert (
-            np.sum(income_output["cash_in"]) > 0
-        ), "Income should generate cash inflows"
+            monthly["cash_in"].sum() > 0
+        ), "Income should generate cash inflows (from journal entries)"
 
         # Check that journal has income entries
-        # Note: We need to access the journal from the scenario
-        # For now, verify the cash account balance increased
+        journal = results["journal"]
+        income_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "income"
+        ]
+        assert len(income_entries) > 0, "Journal should have income entries"
+
+        # Verify the cash account balance increased
         cash_output = results["outputs"]["cash"]
         assert (
             np.sum(cash_output["assets"]) > 0
         ), "Cash account should have positive asset value from income"
 
-        # Expense should generate cash_out
-        expense_output = results["outputs"]["expense"]
+        # Expense should generate cash_out (from journal entries)
         assert (
-            np.sum(expense_output["cash_out"]) > 0
-        ), "Expense should generate cash outflows"
+            monthly["cash_out"].sum() > 0
+        ), "Expense should generate cash outflows (from journal entries)"
+
+        # Check that journal has expense entries
+        expense_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "expense"
+        ]
+        assert len(expense_entries) > 0, "Journal should have expense entries"
 
         # Check that the net effect is positive (income > expenses)
-        net_income = np.sum(income_output["cash_in"]) - np.sum(
-            expense_output["cash_out"]
-        )
+        net_income = monthly["cash_in"].sum() - monthly["cash_out"].sum()
         assert net_income > 0, "Net income should be positive"
 
     def test_cash_balance_calculation(self):

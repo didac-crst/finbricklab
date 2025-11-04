@@ -1,5 +1,21 @@
 # Repository Guidelines
 
+## At a Glance
+
+**V2 Postings Model (Current Development)**
+- **Branch**: `feat/postings-model-v2`
+- **Issue**: #15 (V2 Postings Model Implementation)
+- **Specs**: 
+  - Logic spec: `docs/POSTINGS_MODEL_AND_BRICK_TYPES.md`
+  - Technical spec: `docs/TECHNICAL_SPEC_POSTINGS_MODEL.md`
+- **Status**: ✅ Core implementation complete (24 V2 smoke tests passing)
+  - ✅ All strategies converted to journal-first pattern
+  - ✅ Selection-aware aggregation and normalized opening entries
+  - ✅ Transfer visibility and cancellation semantics
+  - ✅ CLI diagnostics with full filtering and JSON output
+  - 🔄 Legacy test migration in progress (incremental)
+- **Key Policy**: Cancellation applies regardless of visibility mode - internal transfers cancel when both nodes are in selection, even with `ONLY` visibility. Visibility filters which entries are eligible, but does not override cancellation.
+
 ## Project Structure & Module Organization
 - `src/finbricklab/`: library code
   - `core/`: engine (entities, journal, scenarios, validation)
@@ -40,6 +56,7 @@
 - Journal entries must be two-posting and zero-sum per currency; include required metadata (see technical spec).
 - MacroGroups must be DAGs; members are A/L or other MacroGroups only (no Shell, no Boundary).
 - Transfer visibility defaults to boundary-only for end-user views; expose toggles in CLI.
+- **Cancellation policy**: Internal transfers cancel when both nodes are in selection, regardless of visibility mode. Use `--transfer-visibility ALL` to see all transfers, but cancellation still applies for aggregated views.
 
 ## Docs Pointers
 - Guides live under `docs/` and are surfaced via `mkdocs.yml`:
