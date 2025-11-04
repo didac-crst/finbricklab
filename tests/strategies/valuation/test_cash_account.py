@@ -7,6 +7,14 @@ from datetime import date
 import numpy as np
 import pytest
 from finbricklab import ABrick, ScenarioContext, month_range
+from finbricklab.core.accounts import (
+    Account,
+    AccountRegistry,
+    AccountScope,
+    AccountType,
+    get_node_id,
+)
+from finbricklab.core.journal import Journal
 from finbricklab.strategies.valuation.cash import ValuationCash
 
 
@@ -57,28 +65,44 @@ class TestValuationCash:
             },
         )
 
+        # V2: Create journal and account registry
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        cash_node_id = get_node_id("cash", "a")
+        account_registry.register_account(
+            Account(cash_node_id, "Cash", AccountScope.INTERNAL, AccountType.ASSET)
+        )
         ctx = ScenarioContext(
-            t_index=month_range(date(2026, 1, 1), 12), currency="EUR", registry={}
+            t_index=month_range(date(2026, 1, 1), 12),
+            currency="EUR",
+            registry={},
+            journal=journal,
         )
 
         strategy = ValuationCash()
         result = strategy.simulate(brick, ctx)
 
         # Check output structure
-        assert "cash_in" in result
-        assert "cash_out" in result
         assert "assets" in result
         assert "liabilities" in result
         assert "events" in result
+
+        # V2: Check that interest entries are created in journal
+        interest_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "income"
+            and any(p.metadata.get("node_id") == cash_node_id for p in e.postings)
+        ]
+        assert len(interest_entries) > 0, "Expected interest entries in journal"
 
         # Check that balance grows with interest
         balance = result["assets"]
         assert balance[0] > 1000.0  # Initial balance plus interest
         assert balance[-1] > balance[0]  # Balance grows over time
 
-        # Check that cash flows are zero (cash account doesn't generate flows)
-        assert np.all(result["cash_in"] == 0)
-        assert np.all(result["cash_out"] == 0)
+        # V2: Cash flows are zero (strategies return zero arrays, journal entries handle flows)
+        # This is expected behavior - cash_in/cash_out are deprecated in V2
 
         # Check that debt balance is zero
         assert np.all(result["liabilities"] == 0)
@@ -103,8 +127,18 @@ class TestValuationCash:
             },
         )
 
+        # V2: Create journal and account registry
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+        cash_node_id = get_node_id("cash", "a")
+        account_registry.register_account(
+            Account(cash_node_id, "Cash", AccountScope.INTERNAL, AccountType.ASSET)
+        )
         ctx = ScenarioContext(
-            t_index=month_range(date(2026, 1, 1), 12), currency="EUR", registry={}
+            t_index=month_range(date(2026, 1, 1), 12),
+            currency="EUR",
+            registry={},
+            journal=journal,
         )
 
         strategy = ValuationCash()
