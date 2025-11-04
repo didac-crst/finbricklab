@@ -82,9 +82,13 @@ finbricklab/
 │   ├── fx.py                # Foreign exchange utilities
 │   └── __init__.py          # Package exports
 ├── tests/                     # Test suite
-│   ├── core/                 # Core functionality tests
-│   ├── strategies/           # Strategy tests
-│   └── ...
+│   ├── core/                 # Core functionality tests (engine, journal, scenario, etc.)
+│   ├── strategies/           # Strategy tests (organized by family: flow, schedule, valuation)
+│   │   ├── flow/            # Flow strategies (income, expense, transfer)
+│   │   ├── schedule/        # Schedule strategies (loans, mortgages)
+│   │   └── valuation/       # Valuation strategies (cash, securities)
+│   ├── integration/         # Integration tests (Entity, smoke, system-level)
+│   └── data/                # Test data (golden datasets)
 ├── docs/                      # Documentation
 ├── examples/                  # Example scripts
 └── scripts/                   # Utility scripts
@@ -342,6 +346,41 @@ Add to API reference and examples.
 ## Testing Guidelines
 
 ### Test Structure
+
+Tests are organized by area under `tests/`:
+
+- **`tests/core/`** — Engine, journal, scenario, macrobrick, diagnostics, validation
+  - Examples: `test_journal_v2_invariants.py`, `test_results_filtering.py`, `test_macrobrick_aggregation.py`
+- **`tests/strategies/`** — Per-strategy behavior tests, organized by family:
+  - `tests/strategies/flow/` — Flow strategies (income, expense, transfer)
+  - `tests/strategies/schedule/` — Schedule strategies (loans, mortgages)
+  - `tests/strategies/transfer/` — Transfer strategies (future)
+  - `tests/strategies/valuation/` — Valuation strategies (cash, securities)
+- **`tests/integration/`** — Entity, smoke, and system-level tests
+  - Examples: `test_entity_basic.py`, `test_smoke_scenario.py`, `test_strategies_comprehensive.py`
+
+### Naming Conventions
+
+- **Files**: `test_<area>_<subject>[_qualifier].py` (e.g., `test_journal_v2_invariants.py`)
+- **Classes**: `Test<Subject><Qualifier>` (e.g., `TestJournalInvariantsV2`)
+- **Functions**: `test_<behavior>_<expected>()` (e.g., `test_internal_transfers_cancel_in_selection()`)
+
+### Pytest Markers
+
+- **`@pytest.mark.v2`** — V2 postings model tests (temporary; remove after migration)
+- **`@pytest.mark.slow`** — Slow-running tests (excluded from default runs)
+- **`@pytest.mark.integration`** — Integration tests (full scenario/system tests)
+
+Example:
+```python
+@pytest.mark.v2
+@pytest.mark.integration
+def test_journal_first_aggregation():
+    """Test journal-first aggregation with V2 model."""
+    pass
+```
+
+### Test Patterns
 
 Follow the existing test patterns:
 
