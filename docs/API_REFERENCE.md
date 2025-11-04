@@ -91,12 +91,49 @@ def journal(self) -> pd.DataFrame:
     def transactions(self, account_id: str) -> pd.DataFrame:
         """Get all transactions for a specific account."""
 
-    def filter(self, brick_ids: List[str]) -> ScenarioResults:
-        """Filter results to specific bricks or MacroBricks (legacy, non-journal-first behavior).
+    def filter(self, brick_ids: List[str] | None = None, include_cash: bool = True, transfer_visibility: TransferVisibility | None = None) -> ScenarioResults:
+        """Filter results to specific bricks or MacroBricks (V2: journal-first).
 
-        Notes:
-            This method uses legacy aggregation logic and may not reflect journal-first semantics.
-            For V2 journal-first aggregation, use `monthly(selection=...)` instead.
+        This method uses journal-first aggregation via `monthly(selection=...)` for V2 compatibility.
+
+        **Selection Rules:**
+        - Only Asset (A) and Liability (L) bricks produce selection node IDs
+        - Flow (F) and Transfer (T) bricks are ignored in selection (they generate journal entries but don't filter aggregation)
+        - MacroBricks are expanded recursively to their A/L member bricks using cached expansion
+        - Unknown brick IDs are skipped with a warning and return zeros
+        - Empty selection returns all zeros
+
+        **Filtered View Behavior (Sticky Defaults):**
+        - Selection, visibility, and `include_cash` settings are **persisted** in filtered views
+        - Calling `monthly()` on a filtered view **automatically uses** the preserved selection/visibility by default
+        - These defaults remain "sticky" for subsequent `monthly()` calls unless explicitly overridden
+        - `include_cash=False` persists across visibility changes (sticky on filtered views)
+        - Empty selection persists across all visibility modes (returns zeros)
+        - To override: pass explicit `selection` or `transfer_visibility` to `monthly()` to temporarily override the stored defaults
+
+        Args:
+            brick_ids: List of brick IDs and/or MacroBrick IDs to include (None = no filtering)
+            include_cash: Whether to include cash column in the result (default: True)
+            transfer_visibility: Optional transfer visibility setting (default: BOUNDARY_ONLY)
+
+        Returns:
+            New ScenarioResults with filtered aggregated data and preserved selection/visibility
+
+        Example:
+            ```python
+            # Filter to cash account only
+            cash_view = results["views"].filter(brick_ids=["cash"])
+
+            # Selection is preserved - changing visibility still respects cash selection
+            cash_all = cash_view.monthly(transfer_visibility=TransferVisibility.ALL)
+
+            # Filter to MacroBrick (expanded to A/L nodes)
+            investments_view = results["views"].filter(brick_ids=["investments"])
+
+            # include_cash=False persists
+            no_cash_view = results["views"].filter(brick_ids=["cash"], include_cash=False)
+            assert "cash" not in no_cash_view.monthly().columns
+            ```
         """
 ```
 

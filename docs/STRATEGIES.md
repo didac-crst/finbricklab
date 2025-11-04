@@ -6,7 +6,14 @@ Note (V2): FinBrickLab uses a journal‑first model for cash flows. Strategies e
 - transaction_type (e.g., opening, disbursement, payment, income, expense, transfer)
 - posting metadata: node_id (a:/l:/b:boundary) and boundary category (e.g., income.salary, expense.interest)
 
-Per‑brick `cash_in/cash_out` arrays are deprecated and ignored by aggregation; strategies still provide balances and signed `interest` arrays for KPIs. Use `ScenarioResults.monthly(transfer_visibility=..., selection=...)` for cash flow aggregation.
+Per‑brick `cash_in/cash_out` arrays are deprecated and ignored by aggregation; strategies still provide balances and signed `interest` arrays for KPIs. Use `ScenarioResults.monthly(transfer_visibility=..., selection=...)` or `ScenarioResults.filter(brick_ids=...)` for cash flow aggregation.
+
+**Filter Semantics:**
+- `filter(brick_ids=...)` uses journal-first aggregation and preserves selection/visibility in filtered views
+- Only Asset (A) and Liability (L) bricks produce selection node IDs; Flow (F) and Transfer (T) bricks are ignored for selection
+- MacroBricks are expanded recursively to their A/L member bricks using cached expansion
+- Unknown brick IDs warn and return zeros; empty selection returns zeros across all visibility modes
+- `include_cash=False` persists across visibility changes in filtered views
 
 ## Table of Contents
 

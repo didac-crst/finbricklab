@@ -474,7 +474,7 @@ class TransferLumpSum(ITransferStrategy):
             )
 
             # Guard: Skip posting if entry with same ID already exists
-            if not any(e.id == fx_entry_1.id for e in journal.entries):
+            if not journal.has_id(fx_entry_1.id):
                 journal.post(fx_entry_1)
 
             # Entry 2: Destination leg (destination currency)
@@ -529,7 +529,7 @@ class TransferLumpSum(ITransferStrategy):
             )
 
             # Guard: Skip posting if entry with same ID already exists
-            if not any(e.id == fx_entry_2.id for e in journal.entries):
+            if not journal.has_id(fx_entry_2.id):
                 journal.post(fx_entry_2)
 
             # Entry 3: P&L entry (if non-zero)
@@ -609,7 +609,7 @@ class TransferLumpSum(ITransferStrategy):
                 )
 
                 # Guard: Skip posting if entry with same ID already exists
-                if not any(e.id == fx_entry_3.id for e in journal.entries):
+                if not journal.has_id(fx_entry_3.id):
                     journal.post(fx_entry_3)
 
             # Create FX event

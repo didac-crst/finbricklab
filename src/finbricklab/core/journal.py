@@ -155,6 +155,7 @@ class Journal:
         self._balances: dict[
             str, dict[str, Decimal]
         ] = {}  # account_id -> currency -> balance
+        self._id_index: set[str] = set()  # Fast O(1) duplicate check for entry IDs
 
     def post(self, entry: JournalEntry) -> None:
         """
@@ -164,20 +165,43 @@ class Journal:
             entry: Journal entry to post
 
         Raises:
-            ValueError: If entry is not zero-sum or has validation errors
+            ValueError: If entry is not zero-sum or has validation errors, or if entry ID already exists
         """
         # Validate entry
         entry._validate_zero_sum()
 
-        # Check for duplicate transaction ID
-        if any(e.id == entry.id for e in self.entries):
+        # Check for duplicate transaction ID using O(1) index lookup
+        if entry.id in self._id_index:
             raise ValueError(f"Duplicate transaction ID: {entry.id}")
 
-        # Add entry
+        # Add entry to index and list
+        self._id_index.add(entry.id)
         self.entries.append(entry)
 
         # Update balances
         self._update_balances(entry)
+
+    def has_id(self, entry_id: str) -> bool:
+        """
+        Check if an entry with the given ID already exists (O(1) lookup).
+
+        Args:
+            entry_id: Entry ID to check
+
+        Returns:
+            True if entry ID exists, False otherwise
+        """
+        return entry_id in self._id_index
+
+    def clear(self) -> None:
+        """
+        Clear all entries and reset the journal (useful for testing or re-simulation).
+
+        This resets the entries list, ID index, and balances.
+        """
+        self.entries.clear()
+        self._id_index.clear()
+        self._balances.clear()
 
     def _update_balances(self, entry: JournalEntry) -> None:
         """Update account balances from journal entry."""

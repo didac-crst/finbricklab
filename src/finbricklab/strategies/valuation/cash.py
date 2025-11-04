@@ -271,7 +271,7 @@ class ValuationCash(IValuationStrategy):
                 )
 
                 # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                if not any(e.id == interest_entry.id for e in journal.entries):
+                if not journal.has_id(interest_entry.id):
                     journal.post(interest_entry)
 
             # Apply interest to balance
@@ -387,7 +387,7 @@ class ValuationCash(IValuationStrategy):
                     )
 
                     # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                    if not any(e.id == interest_entry.id for e in journal.entries):
+                    if not journal.has_id(interest_entry.id):
                         journal.post(interest_entry)
 
                 # Apply interest to balance

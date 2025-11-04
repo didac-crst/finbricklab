@@ -621,7 +621,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             )
 
                             # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                            if not any(e.id == dca_entry.id for e in journal.entries):
+                            if not journal.has_id(dca_entry.id):
                                 journal.post(dca_entry)
 
                             if ev_lvl == "all":
@@ -698,7 +698,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             )
 
                             # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                            if not any(e.id == dca_entry.id for e in journal.entries):
+                            if not journal.has_id(dca_entry.id):
                                 journal.post(dca_entry)
 
                             if ev_lvl == "all":
@@ -799,7 +799,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == sell_entry.id for e in journal.entries):
+                        if not journal.has_id(sell_entry.id):
                             journal.post(sell_entry)
 
                         if ev_lvl in ("major", "all"):

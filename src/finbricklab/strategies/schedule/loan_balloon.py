@@ -216,7 +216,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
             )
 
             # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-            if not any(e.id == drawdown_entry.id for e in journal.entries):
+            if not journal.has_id(drawdown_entry.id):
                 journal.post(drawdown_entry)
 
             events.append(
@@ -341,7 +341,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == principal_entry.id for e in journal.entries):
+                        if not journal.has_id(principal_entry.id):
                             journal.post(principal_entry)
                         sequence += 1
 
@@ -402,7 +402,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == interest_entry.id for e in journal.entries):
+                        if not journal.has_id(interest_entry.id):
                             journal.post(interest_entry)
 
                     # Pay off the loan
@@ -494,7 +494,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == principal_entry.id for e in journal.entries):
+                        if not journal.has_id(principal_entry.id):
                             journal.post(principal_entry)
                         sequence += 1
 
@@ -555,7 +555,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == interest_entry.id for e in journal.entries):
+                        if not journal.has_id(interest_entry.id):
                             journal.post(interest_entry)
 
                     current_balance -= principal_payment
@@ -643,7 +643,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
 
                         # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                        if not any(e.id == interest_entry.id for e in journal.entries):
+                        if not journal.has_id(interest_entry.id):
                             journal.post(interest_entry)
 
                     # Record interest-only payment event

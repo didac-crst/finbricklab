@@ -67,6 +67,9 @@ class ScenarioResults:
         registry: Registry | None = None,
         outputs: dict[str, BrickOutput] | None = None,
         journal=None,
+        default_selection: set[str] | None = None,
+        default_visibility: TransferVisibility | None = None,
+        include_cash: bool | None = None,
     ):
         """
         Initialize with monthly totals DataFrame (PeriodIndex).
@@ -76,11 +79,17 @@ class ScenarioResults:
             registry: Optional registry for MacroBrick expansion
             outputs: Optional outputs dict for filtered views
             journal: Optional journal object for transaction analysis
+            default_selection: Optional default selection set for filtered views
+            default_visibility: Optional default transfer visibility for filtered views
+            include_cash: Whether cash column should be included (None = default behavior)
         """
         self._monthly_data = totals  # PeriodIndex 'M'
         self._registry = registry
         self._outputs = outputs
         self._journal = journal
+        self._default_selection = default_selection
+        self._default_visibility = default_visibility
+        self._include_cash = include_cash
 
     def to_freq(self, freq: str = "Q") -> pd.DataFrame:
         """
@@ -126,12 +135,30 @@ class ScenarioResults:
             else:
                 transfer_visibility = TransferVisibility.OFF
 
-        # Default to BOUNDARY_ONLY for V2
+        # Use default selection/visibility if not explicitly provided
+        if selection is None:
+            selection = self._default_selection
         if transfer_visibility is None:
-            transfer_visibility = TransferVisibility.BOUNDARY_ONLY
+            transfer_visibility = (
+                self._default_visibility or TransferVisibility.BOUNDARY_ONLY
+            )
 
-        # Use journal-first aggregation if journal is available (V2)
-        if self._journal is not None and self._registry is not None:
+        # Validate and filter selection to only A/L node IDs (defensive check)
+        if selection is not None:
+            selection = self._validate_node_selection(selection)
+
+        # Use journal-first aggregation if journal is available AND selection/visibility is explicitly provided
+        # Empty set selection is treated as explicit (will return zeros via aggregation)
+        # If no selection/visibility, use pre-aggregated data (for filtered views or legacy compatibility)
+        has_explicit_selection = selection is not None  # Empty set is explicit
+        has_explicit_visibility = (
+            transfer_visibility != TransferVisibility.BOUNDARY_ONLY
+        )
+        if (
+            (has_explicit_selection or has_explicit_visibility)
+            and self._journal is not None
+            and self._registry is not None
+        ):
             # Get time index from monthly data
             time_index = self._monthly_data.index
 
@@ -146,14 +173,27 @@ class ScenarioResults:
             )
 
             # Apply transfer visibility if needed (already handled in aggregation)
+            # Handle include_cash=False if set during filtering
+            if self._include_cash is False and "cash" in df.columns:
+                df = df.drop(columns=["cash"])
             return df
 
-        # Fallback to pre-aggregated data (legacy path)
-        if transfer_visibility == TransferVisibility.ALL:
-            return self._monthly_data
+        # Use pre-aggregated data (for filtered views or when no explicit selection/visibility)
+        # This allows filtered ScenarioResults to return their already-filtered _monthly_data
+        result_df = self._monthly_data
+        if (
+            transfer_visibility == TransferVisibility.BOUNDARY_ONLY
+            or transfer_visibility is None
+        ):
+            result_df = self._monthly_data
+        else:
+            # Apply transfer visibility filtering on legacy data
+            result_df = self._apply_transfer_visibility_filter(transfer_visibility)
 
-        # Apply transfer visibility filtering on legacy data
-        return self._apply_transfer_visibility_filter(transfer_visibility)
+        # Handle include_cash=False if set during filtering
+        if self._include_cash is False and "cash" in result_df.columns:
+            result_df = result_df.drop(columns=["cash"])
+        return result_df
 
     def _apply_transfer_visibility_filter(
         self, visibility: TransferVisibility
@@ -199,7 +239,12 @@ class ScenarioResults:
         self, visibility: TransferVisibility
     ) -> dict:
         """
-        Filter brick outputs based on transfer visibility settings.
+        Filter brick outputs based on transfer visibility settings (legacy path).
+
+        **Note:** This method uses the legacy per-brick cash array approach and is only
+        used as a fallback when journal-first aggregation is not available. For V2 scenarios,
+        journal-first aggregation via `monthly(selection=..., transfer_visibility=...)` is
+        authoritative and preferred.
 
         Args:
             visibility: The transfer visibility setting to apply
@@ -207,6 +252,16 @@ class ScenarioResults:
         Returns:
             Dictionary of filtered brick outputs
         """
+        import warnings
+
+        warnings.warn(
+            "Using legacy transfer visibility path (per-brick cash arrays). "
+            "Journal-first aggregation is authoritative. "
+            "Ensure journal is available for V2 behavior.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
         filtered_outputs: dict[str, BrickOutput] = {}
         transfer_count = 0
         transfer_sum = 0.0
@@ -238,9 +293,44 @@ class ScenarioResults:
                     # Show only transfers
                     filtered_outputs[brick_id] = output
                 elif visibility == TransferVisibility.BOUNDARY_ONLY:
-                    # Show only boundary-crossing transfers (for now, show all transfers)
-                    # TODO: Implement boundary detection
-                    filtered_outputs[brick_id] = output
+                    # Show only boundary-crossing transfers (use scope-aware boundary detection)
+                    # Check if this transfer has any boundary-touching entries in journal
+                    if (
+                        self._journal is not None
+                        and self._journal.account_registry is not None
+                    ):
+                        # Check journal entries for this brick to see if any touch boundary
+                        touches_boundary = False
+                        for entry in self._journal.entries:
+                            # Check if entry belongs to this brick
+                            brick_id_from_entry = entry.metadata.get("parent_id", "")
+                            if brick_id not in brick_id_from_entry:
+                                continue
+                            # Check if entry touches boundary
+                            for posting in entry.postings:
+                                node_id = posting.metadata.get("node_id")
+                                if node_id is None or not isinstance(node_id, str):
+                                    continue
+                                try:
+                                    scope = get_node_scope(
+                                        node_id, self._journal.account_registry
+                                    )
+                                    if scope == AccountScope.BOUNDARY:
+                                        touches_boundary = True
+                                        break
+                                except ValueError:
+                                    # Fallback to direct comparison for known boundary nodes
+                                    if node_id == BOUNDARY_NODE_ID:
+                                        touches_boundary = True
+                                        break
+                            if touches_boundary:
+                                break
+                        if touches_boundary:
+                            filtered_outputs[brick_id] = output
+                        # If no boundary-touching entries, skip this transfer
+                    else:
+                        # Fallback: if no journal, include all transfers (legacy behavior)
+                        filtered_outputs[brick_id] = output
                 else:
                     # Show all transfers
                     filtered_outputs[brick_id] = output
@@ -429,31 +519,199 @@ class ScenarioResults:
             "hidden_transfer_sum": 0.0,
         }
 
+    def _resolve_selection(
+        self, brick_ids: list[str] | None
+    ) -> tuple[set[str], list[str], list[str]]:
+        """
+        Resolve brick IDs and MacroBricks to A/L node IDs for selection.
+
+        This helper extracts the common logic for expanding MacroBricks and converting
+        brick IDs to node IDs, used by both filter() and monthly().
+
+        Args:
+            brick_ids: List of brick IDs and/or MacroBrick IDs
+
+        Returns:
+            Tuple of (selection_set, unknown_ids, non_al_ids) where:
+            - selection_set: Set of A/L node IDs for selection
+            - unknown_ids: List of unknown brick IDs (warned)
+            - non_al_ids: List of non-A/L brick IDs (warned, ignored in selection)
+        """
+        if self._registry is None:
+            return set(), [], []
+
+        selection_set: set[str] = set()
+        unknown_ids: list[str] = []
+        non_al_ids: list[str] = []
+
+        if brick_ids is not None and len(brick_ids) > 0:
+            for item_id in brick_ids:
+                if self._registry.is_macrobrick(item_id):
+                    # Expand MacroBrick using cached expansion (get_struct_flat_members)
+                    members = self._registry.get_struct_flat_members(item_id)
+                    # Convert brick IDs to node IDs
+                    for brick_id in members:
+                        brick = self._registry.get_brick(brick_id)
+                        if hasattr(brick, "family"):
+                            if brick.family == "a":
+                                selection_set.add(f"a:{brick_id}")
+                            elif brick.family == "l":
+                                selection_set.add(f"l:{brick_id}")
+                            else:
+                                # F/T bricks are ignored (don't add to selection, but don't warn)
+                                non_al_ids.append(brick_id)
+                elif self._registry.is_brick(item_id):
+                    # Direct brick selection - convert to node ID
+                    brick = self._registry.get_brick(item_id)
+                    if hasattr(brick, "family"):
+                        if brick.family == "a":
+                            selection_set.add(f"a:{item_id}")
+                        elif brick.family == "l":
+                            selection_set.add(f"l:{item_id}")
+                        else:
+                            # F/T bricks are ignored in selection
+                            non_al_ids.append(item_id)
+                else:
+                    # Unknown ID - skip with warning
+                    unknown_ids.append(item_id)
+
+        return selection_set, unknown_ids, non_al_ids
+
+    def _validate_node_selection(self, selection: set[str]) -> set[str]:
+        """
+        Validate and filter selection to only A/L node IDs.
+
+        This defensive helper ensures that only Asset (a:) and Liability (l:) node IDs
+        are included in selection. Flow (fs:) and Transfer (ts:) node IDs are ignored,
+        and boundary (b:) node IDs are removed.
+
+        Args:
+            selection: Set of node IDs to validate
+
+        Returns:
+            Filtered set containing only A/L node IDs
+        """
+        if not selection:
+            return selection
+
+        validated: set[str] = set()
+        invalid_ids: list[str] = []
+
+        for node_id in selection:
+            if node_id.startswith("a:") or node_id.startswith("l:"):
+                validated.add(node_id)
+            else:
+                invalid_ids.append(node_id)
+
+        # Warn if non-A/L node IDs were provided
+        if invalid_ids:
+            import warnings
+
+            warnings.warn(
+                f"Non-A/L node IDs in selection ignored (only a: and l: node IDs are valid): {invalid_ids}",
+                stacklevel=3,
+            )
+
+        return validated
+
     def filter(
         self,
         brick_ids: list[str] | None = None,
         include_cash: bool = True,
+        transfer_visibility: TransferVisibility | None = None,
     ) -> ScenarioResults:
         """
-        Filter results to show only selected bricks and/or MacroBricks.
+        Filter results to show only selected bricks and/or MacroBricks (V2: journal-first).
+
+        This method now uses journal-first aggregation via monthly(selection=...) for V2
+        compatibility. It replaces the legacy _compute_filtered_totals() approach.
+
+        **Selection Rules:**
+        - Only Asset (A) and Liability (L) bricks produce selection node IDs
+        - Flow (F) and Transfer (T) bricks are ignored in selection (they generate entries but don't filter aggregation)
+        - MacroBricks are expanded recursively to their A/L member bricks
+        - Unknown brick IDs are skipped with a warning
 
         Args:
             brick_ids: List of brick IDs and/or MacroBrick IDs to include (None = no filtering)
-            include_cash: Whether to include cash in the aggregation
+            include_cash: Whether to include cash column in the result (default: True)
+            transfer_visibility: Optional transfer visibility setting (default: BOUNDARY_ONLY)
 
         Returns:
-            New ScenarioResults with filtered aggregated data
+            New ScenarioResults with filtered aggregated data and preserved selection/visibility
 
         Raises:
-            RuntimeError: If registry or outputs are not available
+            RuntimeError: If registry or journal is not available
         """
         # Validation
-        if not self._registry or not self._outputs:
-            raise RuntimeError("Cannot filter: missing registry or outputs")
+        if not self._registry:
+            raise RuntimeError("Cannot filter: missing registry")
 
-        # Resolve selection to brick IDs (expand MacroBricks automatically)
+        # Default transfer visibility
+        if transfer_visibility is None:
+            transfer_visibility = TransferVisibility.BOUNDARY_ONLY
+
+        # V2: Use journal-first aggregation if journal is available
+        if self._journal is not None:
+            # Build selection set of node IDs from brick_ids + MacroBrick expansion
+            selection_set, unknown_ids, non_al_ids = self._resolve_selection(brick_ids)
+
+            # Warn for unknown IDs and non-A/L bricks (consolidated warning)
+            if unknown_ids or non_al_ids:
+                import warnings
+
+                warning_parts = []
+                if unknown_ids:
+                    warning_parts.append(f"unknown IDs: {unknown_ids}")
+                if non_al_ids:
+                    warning_parts.append(
+                        f"non-A/L brick IDs (ignored for selection): {non_al_ids}"
+                    )
+                warnings.warn(
+                    f"Filter selection issues, skipping: {'; '.join(warning_parts)}",
+                    stacklevel=2,
+                )
+
+            # V2: Use journal-first aggregation via monthly(selection=...)
+            # If selection is empty (empty brick_ids or all unknown), return zeros
+            if not selection_set:
+                # Return zeroed DataFrame with same index/columns as monthly data
+                filtered_df = self._monthly_data.copy()
+                for col in filtered_df.columns:
+                    filtered_df[col] = 0.0
+                # Use empty set as sentinel to preserve "empty selection = zeros" semantics
+                # This ensures monthly() treats empty selection as explicit (returns zeros)
+                default_selection = set()
+            else:
+                # Get filtered monthly data using journal-first aggregation
+                filtered_df = self.monthly(
+                    selection=selection_set,
+                    transfer_visibility=transfer_visibility,
+                )
+                default_selection = selection_set
+
+            # Handle include_cash=False
+            if not include_cash and "cash" in filtered_df.columns:
+                filtered_df = filtered_df.drop(columns=["cash"])
+
+            # Return new ScenarioResults with filtered data and preserved selection/visibility
+            return ScenarioResults(
+                filtered_df,
+                self._registry,
+                self._outputs,
+                self._journal,
+                default_selection=default_selection,
+                default_visibility=transfer_visibility,
+                include_cash=include_cash,
+            )
+
+        # Fallback to legacy path if journal not available
+        if not self._outputs:
+            raise RuntimeError("Cannot filter: missing outputs (legacy path)")
+
+        # Legacy: Resolve selection to brick IDs (expand MacroBricks automatically)
         selected_bricks: set[str] = set()
-        if brick_ids:
+        if brick_ids is not None and len(brick_ids) > 0:
             for item_id in brick_ids:
                 if self._registry.is_macrobrick(item_id):
                     # Expand MacroBrick to its constituent bricks
@@ -471,6 +729,18 @@ class ScenarioResults:
                         stacklevel=2,
                     )
 
+        # Legacy: If selection is empty, return zeros
+        if not selected_bricks:
+            filtered_df = self._monthly_data.copy()
+            for col in filtered_df.columns:
+                filtered_df[col] = 0.0
+            # Handle include_cash=False
+            if not include_cash and "cash" in filtered_df.columns:
+                filtered_df = filtered_df.drop(columns=["cash"])
+            return ScenarioResults(
+                filtered_df, self._registry, self._outputs, self._journal
+            )
+
         # Identify cash bricks (for cash column calculation)
         cash_bricks = set()
         for bid in selected_bricks:
@@ -479,7 +749,7 @@ class ScenarioResults:
                 if hasattr(brick, "kind") and brick.kind == "a.cash":
                     cash_bricks.add(bid)
 
-        # Compute filtered totals
+        # Legacy: Compute filtered totals
         filtered_df = _compute_filtered_totals(
             self._outputs,
             selected_bricks,
@@ -488,9 +758,18 @@ class ScenarioResults:
             cash_bricks,
         )
 
-        # Return new ScenarioResults with filtered data
+        # Handle include_cash=False
+        if not include_cash and "cash" in filtered_df.columns:
+            filtered_df = filtered_df.drop(columns=["cash"])
+
+        # Return new ScenarioResults with filtered data (preserve empty selection for legacy path)
         return ScenarioResults(
-            filtered_df, self._registry, self._outputs, self._journal
+            filtered_df,
+            self._registry,
+            self._outputs,
+            self._journal,
+            default_selection=set() if not selected_bricks else None,
+            default_visibility=None,
         )
 
     def journal(
@@ -1017,24 +1296,42 @@ def _aggregate_journal_monthly(
 
     # Expand selection if needed (for MacroGroups)
     selection_set: set[str] = set()
-    if selection:
-        for node_id in selection:
-            # Check if it's a MacroGroup
-            if registry and registry.is_macrobrick(node_id):
-                # Expand MacroGroup to A/L nodes
-                macrobrick = registry.get_macrobrick(node_id)
-                members = macrobrick.expand_member_bricks(registry)
-                # Convert brick IDs to node IDs
-                for brick_id in members:
-                    brick = registry.get_brick(brick_id)
-                    if hasattr(brick, "family"):
-                        if brick.family == "a":
-                            selection_set.add(f"a:{brick_id}")
-                        elif brick.family == "l":
-                            selection_set.add(f"l:{brick_id}")
-            else:
-                # Direct node ID
-                selection_set.add(node_id)
+    if selection is not None:
+        # Empty selection (len=0) means return zeros - return early
+        if len(selection) == 0:
+            # Return all zeros DataFrame
+            df = pd.DataFrame(
+                {
+                    "cash_in": cash_in,
+                    "cash_out": cash_out,
+                    "net_cf": cash_in - cash_out,
+                    "assets": assets,
+                    "liabilities": liabilities,
+                    "interest": interest,
+                    "equity": assets - liabilities,
+                    "cash": np.zeros(length),
+                    "non_cash": assets,
+                },
+                index=time_index,
+            )
+            return df
+        else:
+            for node_id in selection:
+                # Check if it's a MacroGroup
+                if registry and registry.is_macrobrick(node_id):
+                    # Expand MacroGroup using cached expansion (get_struct_flat_members)
+                    members = registry.get_struct_flat_members(node_id)
+                    # Convert brick IDs to node IDs
+                    for brick_id in members:
+                        brick = registry.get_brick(brick_id)
+                        if hasattr(brick, "family"):
+                            if brick.family == "a":
+                                selection_set.add(f"a:{brick_id}")
+                            elif brick.family == "l":
+                                selection_set.add(f"l:{brick_id}")
+                else:
+                    # Direct node ID
+                    selection_set.add(node_id)
 
     # Group entries by month
     entries_by_month: dict[str, list[JournalEntry]] = {}

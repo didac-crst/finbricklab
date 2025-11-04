@@ -506,10 +506,39 @@ print(final_results)
 - `liabilities` instead of `debt_balance`
 - Consistent naming across all output formats
 
-### 5. **Filtered Results**
-- Filter by specific bricks or MacroBricks
+### 5. **Filtered Results (V2)**
+- Filter by specific bricks or MacroBricks using journal-first aggregation
+- **Sticky defaults**: Selection, visibility, and `include_cash` settings persist in filtered views
+- Filtered views remember their selection/visibility for subsequent `monthly()` calls unless explicitly overridden
+- Only A/L bricks produce selection node IDs; F/T bricks are ignored for selection
+- MacroBricks are expanded recursively using cached expansion
+- Unknown brick IDs warn and return zeros
+- `include_cash=False` persists across visibility changes (sticky on filtered views)
 - Support for all time aggregation methods (monthly, quarterly, yearly)
 - Maintains same structure as full results
+
+**Example:**
+```python
+# Filter to cash account only
+cash_view = results["views"].filter(brick_ids=["cash"])
+
+# Selection is preserved (sticky) - changing visibility still respects cash selection
+cash_all = cash_view.monthly(transfer_visibility=TransferVisibility.ALL)
+cash_boundary = cash_view.monthly(transfer_visibility=TransferVisibility.BOUNDARY_ONLY)
+# Default call uses the stored selection + visibility
+cash_default = cash_view.monthly()  # Uses stored selection and visibility
+
+# Filter to MacroBrick (automatically expanded)
+investments_view = results["views"].filter(brick_ids=["investments"])
+
+# include_cash=False persists across visibility changes (sticky)
+no_cash_view = results["views"].filter(brick_ids=["cash"], include_cash=False)
+assert "cash" not in no_cash_view.monthly(transfer_visibility=TransferVisibility.ALL).columns
+assert "cash" not in no_cash_view.monthly().columns  # Sticky default applies
+
+# Override defaults by passing explicit parameters
+override_view = no_cash_view.monthly(selection={"a:other_account"})  # Temporarily overrides stored selection
+```
 
 ### 6. **MacroBrick Aggregation**
 - Automatic calculation of MacroBrick totals

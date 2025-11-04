@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Journal-first filter refactor**: `ScenarioResults.filter()` now uses journal-first aggregation via `monthly(selection=...)` for V2 compatibility
+- **Sticky filter defaults**: Filtered views persist selection, visibility, and `include_cash` settings for subsequent `monthly()` calls
+- **MacroBrick cache usage**: Filter and aggregation now use `registry.get_struct_flat_members()` for cached expansion instead of recomputing
+- **Empty selection sentinel**: Empty selection returns zeros across all visibility modes by design
+- **Defensive selection validation**: `_validate_node_selection()` ensures only A/L node IDs are used in selection
+- **O(1) journal ID checks**: Journal duplicate detection now uses `_id_index` set for O(1) lookups instead of O(n) scans
+- **Scope-aware legacy visibility**: Legacy transfer visibility path now uses `get_node_scope()` for consistent boundary detection
+
+### Fixed
+- **Balloon payoff sequencing**: Loan annuity balloon payments now use distinct sequence numbers (90) to avoid ID conflicts with regular payments
+- **Filter persistence**: Selection and visibility settings now correctly persist across visibility changes in filtered views
+- **Include cash persistence**: `include_cash=False` now correctly persists across visibility changes in filtered views
+- **Legacy filter return path**: Fixed missing return statement in legacy filter path
+
+### Changed
+- **Consolidated warnings**: Filter selection warnings now consolidated into a single message to reduce noise
+- **Legacy visibility path**: Marked as fallback-only; journal-first aggregation is authoritative
+
+### Documentation
+- Updated `docs/API_REFERENCE.md` with sticky filter defaults and selection rules
+- Updated `docs/EXAMPLES.md` with filter persistence examples
+- Updated `docs/STRATEGIES.md` with filter semantics section
+- Updated `README.md` with sticky defaults and A/L-only selection rules
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 

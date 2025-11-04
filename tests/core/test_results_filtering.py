@@ -10,6 +10,7 @@ import pytest
 from finbricklab.core.entity import Entity
 from finbricklab.core.kinds import K
 from finbricklab.core.results import ScenarioResults, _compute_filtered_totals
+from finbricklab.core.transfer_visibility import TransferVisibility
 
 
 def _create_test_scenario():
@@ -190,14 +191,15 @@ def test_filter_empty_selection():
     assert len(monthly) == 4
 
     # V2: With empty selection, all values should be zero
-    # Note: There's a known bug where filter() with empty brick_ids=[] doesn't properly filter
-    # It appears to return the original data instead of zeros. This is a limitation in the
-    # legacy _compute_filtered_totals() function that needs to be fixed.
-    # For now, we verify that the filter() method doesn't crash and returns a valid DataFrame.
-    # TODO: Fix filter() to properly handle empty selection
+    # The filter() method now uses journal-first aggregation and returns zeros for empty selection
     assert isinstance(monthly, pd.DataFrame), "Should return a DataFrame"
     assert len(monthly) == 4, "Should have 4 months"
-    # Note: The filter() method should return zeros but currently doesn't due to a bug
+
+    # All values should be zero for empty selection
+    for col in monthly.columns:
+        assert (
+            monthly[col] == 0
+        ).all(), f"Column {col} should be all zeros for empty selection"
 
 
 def test_filter_validation_errors():
@@ -220,9 +222,7 @@ def test_filter_validation_errors():
     views = ScenarioResults(empty_df)  # No registry or outputs
 
     # Should raise RuntimeError when trying to filter
-    with pytest.raises(
-        RuntimeError, match="Cannot filter: missing registry or outputs"
-    ):
+    with pytest.raises(RuntimeError, match="Cannot filter: missing registry"):
         views.filter(brick_ids=["cash"])
 
 
@@ -294,8 +294,7 @@ def test_filter_with_include_cash_false():
     assert isinstance(monthly, pd.DataFrame)
 
     # V2: The include_cash parameter should control whether cash column is included
-    # However, _compute_filtered_totals() may always add it if cash bricks are selected
-    # For now, verify that other columns are present
+    # The filter() method now properly respects include_cash=False
     expected_cols = [
         "cash_in",
         "cash_out",
@@ -308,8 +307,10 @@ def test_filter_with_include_cash_false():
     for col in expected_cols:
         assert col in monthly.columns, f"Column {col} should be present"
 
-    # Note: In V2, the cash column may still be present due to legacy implementation
-    # This is a known limitation that will be addressed in a future update
+    # Cash column should be excluded when include_cash=False
+    assert (
+        "cash" not in monthly.columns
+    ), "Cash column should be excluded when include_cash=False"
 
 
 def test_filter_preserves_time_aggregation_methods():
@@ -448,11 +449,304 @@ def test_filter_with_nonexistent_brick_ids():
     assert len(monthly) == 4
 
     # V2: With no valid bricks selected, all values should be zero
-    # Note: There's a known bug where filter() with no valid brick IDs doesn't properly filter
-    # It appears to return the original data instead of zeros. This is a limitation in the
-    # legacy _compute_filtered_totals() function that needs to be fixed.
-    # For now, we verify that the filter() method doesn't crash and returns a valid DataFrame.
-    # TODO: Fix filter() to properly handle nonexistent brick IDs
+    # The filter() method now uses journal-first aggregation and returns zeros for empty selection
     assert isinstance(monthly, pd.DataFrame), "Should return a DataFrame"
     assert len(monthly) == 4, "Should have 4 months"
-    # Note: The filter() method should return zeros but currently doesn't due to a bug
+
+    # All values should be zero when no valid bricks are selected
+    for col in monthly.columns:
+        assert (
+            monthly[col] == 0
+        ).all(), f"Column {col} should be all zeros for nonexistent selection"
+
+
+def test_filter_preserves_selection_across_visibility():
+    """Test that filtered views preserve selection when changing transfer visibility."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter to cash brick only
+    filtered_view = results["views"].filter(brick_ids=["cash"])
+
+    # Call monthly() with different visibility - should still respect cash selection
+    monthly_all = filtered_view.monthly(transfer_visibility=TransferVisibility.ALL)
+    monthly_boundary = filtered_view.monthly(
+        transfer_visibility=TransferVisibility.BOUNDARY_ONLY
+    )
+    monthly_default = filtered_view.monthly()  # Should use default (BOUNDARY_ONLY)
+
+    # All should have same shape
+    assert len(monthly_all) == 4
+    assert len(monthly_boundary) == 4
+    assert len(monthly_default) == 4
+
+    # With cash selection, cash_in should be positive (income routes to cash)
+    # This verifies that selection is preserved even when visibility changes
+    assert monthly_all["cash_in"].sum() > 0, "Filtered view should show cash inflows"
+    assert (
+        monthly_boundary["cash_in"].sum() > 0
+    ), "Filtered view should show cash inflows"
+    assert (
+        monthly_default["cash_in"].sum() > 0
+    ), "Filtered view should show cash inflows"
+
+
+def test_filter_warns_on_unknown_ids():
+    """Test that filter() warns on unknown brick IDs and returns zeros."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter with unknown IDs - should warn and return zeros
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        filtered_view = results["views"].filter(brick_ids=["unknown1", "unknown2"])
+
+        # Should have warning (consolidated warning)
+        assert len(w) > 0, "Should emit warning for unknown IDs"
+        assert any(
+            "Filter selection issues" in str(warning.message) for warning in w
+        ), "Warning should mention filter selection issues"
+        assert any(
+            "unknown IDs" in str(warning.message) for warning in w
+        ), "Warning should mention unknown IDs"
+
+    # Should return zeros
+    monthly = filtered_view.monthly()
+    for col in monthly.columns:
+        assert (
+            monthly[col] == 0
+        ).all(), f"Column {col} should be all zeros for unknown selection"
+
+
+def test_filter_warns_on_non_al_bricks():
+    """Test that filter() warns on non-A/L bricks (F/T) but still works."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter with F/T brick (should warn but still work with A/L bricks)
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        # Filter with both cash (A) and salary (F) - F should be ignored
+        filtered_view = results["views"].filter(brick_ids=["cash", "salary"])
+
+        # Should have warning for non-A/L brick (consolidated warning)
+        assert len(w) > 0, "Should emit warning for non-A/L brick"
+        assert any(
+            "Filter selection issues" in str(warning.message) for warning in w
+        ), "Warning should mention filter selection issues"
+        assert any(
+            "non-A/L brick IDs" in str(warning.message) for warning in w
+        ), "Warning should mention non-A/L brick IDs"
+
+    # Should still work - cash selection should be applied
+    monthly = filtered_view.monthly()
+    assert len(monthly) == 4
+    # Cash inflows should be present (from income entries)
+    assert (
+        monthly["cash_in"].sum() > 0
+    ), "Filtered view should show cash inflows despite F brick"
+
+
+def test_nested_macrobrick_selection():
+    """Test that nested MacroBricks use cached expansion and produce correct selection."""
+    e = Entity(id="test_entity", name="Test Entity")
+
+    # Create bricks
+    e.new_ABrick("cash", "Cash Account", K.A_CASH, {"initial_balance": 10000.0})
+    e.new_ABrick(
+        "etf1",
+        "ETF 1",
+        K.A_SECURITY_UNITIZED,
+        {"initial_units": 100.0, "price_series": [100.0] * 5},
+    )
+    e.new_ABrick(
+        "etf2",
+        "ETF 2",
+        K.A_SECURITY_UNITIZED,
+        {"initial_units": 50.0, "price_series": [50.0] * 5},
+    )
+    e.new_LBrick(
+        "mortgage",
+        "Mortgage",
+        K.L_LOAN_ANNUITY,
+        {"rate_pa": 0.034, "term_months": 300, "principal": 300000.0},
+    )
+
+    # Create nested MacroBricks
+    e.new_MacroBrick("portfolio", "Portfolio", ["etf1", "etf2"])
+    e.new_MacroBrick("investments", "Investments", ["portfolio", "cash"])
+
+    scenario = e.create_scenario(
+        id="test",
+        name="Test",
+        brick_ids=["investments", "mortgage"],
+    )
+
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter using nested MacroBrick
+    filtered_view = results["views"].filter(brick_ids=["investments"])
+
+    # Verify selection matches cached expansion
+    registry = results["views"]._registry
+    expected_members = registry.get_struct_flat_members("investments")
+    expected_node_ids = set()
+    for brick_id in expected_members:
+        brick = registry.get_brick(brick_id)
+        if hasattr(brick, "family") and brick.family in ("a", "l"):
+            expected_node_ids.add(f"{brick.family}:{brick_id}")
+
+    # The filtered view should have the correct selection stored
+    assert (
+        filtered_view._default_selection == expected_node_ids
+    ), f"Selection should match cached expansion: {filtered_view._default_selection} != {expected_node_ids}"
+
+    # Monthly data should reflect the selection
+    monthly = filtered_view.monthly()
+    assert len(monthly) == 4
+
+
+def test_empty_selection_persists_across_visibility():
+    """Test that empty selection returns zeros regardless of visibility changes."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter with unknown IDs to get empty selection
+    filtered_view = results["views"].filter(brick_ids=["unknown1", "unknown2"])
+
+    # Verify empty selection is stored as empty set (sentinel)
+    assert (
+        filtered_view._default_selection == set()
+    ), "Empty selection should be stored as empty set"
+
+    # All visibility modes should return zeros
+    monthly_default = filtered_view.monthly()
+    monthly_all = filtered_view.monthly(transfer_visibility=TransferVisibility.ALL)
+    monthly_boundary = filtered_view.monthly(
+        transfer_visibility=TransferVisibility.BOUNDARY_ONLY
+    )
+    monthly_off = filtered_view.monthly(transfer_visibility=TransferVisibility.OFF)
+
+    # All should return zeros
+    for name, df in [
+        ("default", monthly_default),
+        ("ALL", monthly_all),
+        ("BOUNDARY_ONLY", monthly_boundary),
+        ("OFF", monthly_off),
+    ]:
+        for col in df.columns:
+            assert (
+                df[col] == 0
+            ).all(), f"Column {col} should be all zeros for {name} visibility with empty selection"
+
+
+def test_include_cash_persistence_across_visibility():
+    """Test that include_cash=False persists across visibility changes."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter with include_cash=False
+    filtered_view = results["views"].filter(brick_ids=["cash"], include_cash=False)
+
+    # Verify include_cash is stored
+    assert filtered_view._include_cash is False, "include_cash=False should be stored"
+
+    # All visibility modes should exclude cash column
+    monthly_default = filtered_view.monthly()
+    monthly_all = filtered_view.monthly(transfer_visibility=TransferVisibility.ALL)
+    monthly_boundary = filtered_view.monthly(
+        transfer_visibility=TransferVisibility.BOUNDARY_ONLY
+    )
+
+    # All should exclude cash column
+    for name, df in [
+        ("default", monthly_default),
+        ("ALL", monthly_all),
+        ("BOUNDARY_ONLY", monthly_boundary),
+    ]:
+        assert (
+            "cash" not in df.columns
+        ), f"Cash column should be excluded for {name} visibility"
+
+
+def test_filter_sticky_defaults_can_be_overridden():
+    """Test that sticky defaults in filtered views can be overridden by explicit parameters."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Filter to cash account only (sticky default selection)
+    cash_view = results["views"].filter(brick_ids=["cash"])
+
+    # Verify sticky default is stored
+    assert cash_view._default_selection == {
+        "a:cash"
+    }, "Sticky default selection should be stored"
+
+    # Override with explicit selection (different account)
+    # This should temporarily override the sticky default
+    override_monthly = cash_view.monthly(selection={"a:etf"})
+
+    # Should show data for the override selection (ETF), not the sticky default (cash)
+    # If ETF has no entries, values should be zero
+    assert len(override_monthly) == 4
+
+    # Override with explicit transfer_visibility
+    all_visibility = cash_view.monthly(transfer_visibility=TransferVisibility.ALL)
+
+    # Should use ALL visibility (override), but still respect cash selection (sticky default)
+    assert len(all_visibility) == 4
+    # Cash selection should still apply (sticky default)
+    assert all_visibility["cash_in"].sum() > 0, "Cash selection should still apply"
+
+    # Override both selection and visibility
+    override_both = cash_view.monthly(
+        selection={"a:etf"}, transfer_visibility=TransferVisibility.ALL
+    )
+
+    # Should use both overrides
+    assert len(override_both) == 4
+
+
+def test_monthly_validates_selection_node_ids():
+    """Test that monthly() validates and filters selection to only A/L node IDs."""
+    e, scenario = _create_test_scenario()
+
+    # Run scenario
+    results = scenario.run(start=date(2026, 1, 1), months=4)
+
+    # Call monthly() with mixed selection (a: + fs:)
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        # Pass selection with both A/L and F/T node IDs
+        monthly = results["views"].monthly(
+            selection={"a:cash", "fs:salary"}  # fs: should be ignored
+        )
+
+        # Should have warning for non-A/L node IDs
+        assert len(w) > 0, "Should emit warning for non-A/L node IDs"
+        assert any(
+            "Non-A/L node IDs" in str(warning.message) for warning in w
+        ), "Warning should mention non-A/L node IDs"
+
+    # Should only respect a:cash selection (fs:salary is ignored)
+    assert len(monthly) == 4
+    # Cash inflows should be present (from income entries)
+    assert monthly["cash_in"].sum() > 0, "Should show cash inflows for a:cash selection"

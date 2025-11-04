@@ -741,13 +741,17 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     balloon_timestamp = datetime.fromisoformat(str(balloon_timestamp))
 
                 operation_id = create_operation_id(f"l:{brick.id}", balloon_timestamp)
-                entry_id = create_entry_id(operation_id, 1)
+                # Use distinct sequence for balloon payment (90) to avoid conflicts with regular payments
+                # Regular payments use t * 100 + 1..n, so balloon uses t_stop * 100 + 90
+                balloon_sequence = 90  # Distinct sequence for balloon entries
+                entry_id = create_entry_id(operation_id, balloon_sequence)
                 origin_id = generate_transaction_id(
                     brick.id,
                     balloon_timestamp,
                     brick.spec or {},
                     brick.links or {},
-                    sequence=t_stop,
+                    sequence=t_stop * 100
+                    + balloon_sequence,  # Unique per balloon entry
                 )
 
                 balloon_entry = JournalEntry(
@@ -773,7 +777,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     parent_id=f"l:{brick.id}",
                     timestamp=balloon_timestamp,
                     tags={"type": "balloon"},
-                    sequence=1,
+                    sequence=balloon_sequence,
                     origin_id=origin_id,
                 )
 
@@ -792,7 +796,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 )
 
                 # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                if not any(e.id == balloon_entry.id for e in journal.entries):
+                if not journal.has_id(balloon_entry.id):
                     journal.post(balloon_entry)
 
                 debt[t_stop] = 0.0

@@ -743,12 +743,14 @@ V2 uses a journal‑first model for cash flows and keeps per‑brick balances/KP
 
 - Scenario results:
   - `results["views"].monthly(transfer_visibility=..., selection=...)` — journal‑first aggregation of cash flows with selection and visibility filters
+  - `results["views"].filter(brick_ids=...)` — creates filtered views with **sticky defaults** (selection, visibility, and `include_cash` persist across subsequent `monthly()` calls unless explicitly overridden)
   - `results["views"].to_freq("Q"|"Y")` — time aggregation helpers
   - `results["views"].journal()` — journal entries as a DataFrame with metadata (transaction_type, categories, node_ids)
   - `totals` — a **DataFrame** with time index; common columns include `cash`, `non_cash`, `assets`, `liabilities`, `interest`, `equity`
 
 Notes
 - Cash flow aggregation comes from the Journal (not per‑brick arrays)
+- **Selection rules**: Only Asset (A) and Liability (L) bricks produce selection node IDs. Flow (F) and Transfer (T) bricks generate journal entries but don't affect selection aggregation.
 - Selection accepts A/L node IDs (e.g., `a:cash`, `l:mortgage`) and MacroBrick IDs (expanded to A/L)
 - Transfer visibility: `BOUNDARY_ONLY` (default), `ALL`, `ONLY`, `OFF`
 

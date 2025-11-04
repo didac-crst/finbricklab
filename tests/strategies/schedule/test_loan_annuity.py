@@ -217,10 +217,7 @@ class TestMortgageAnnuityMath:
                 "principal": principal,
                 "rate_pa": rate_pa,
                 "term_months": term_months,
-                # Note: Not using balloon_policy="payoff" to avoid balloon payment entry ID conflict
-                # (strategy bug: balloon payment uses sequence=1 which conflicts with regular payments).
-                # Instead, we verify the balance decreases over time and reaches near-zero at term end.
-                # TODO: Fix balloon payment sequence in loan_annuity strategy to avoid ID conflicts.
+                # V2: Balloon payment uses distinct sequence (90) to avoid conflicts with regular payments
             },
         )
 
@@ -240,6 +237,58 @@ class TestMortgageAnnuityMath:
             f"Final balance {final_balance:.2f} should be within one payment "
             f"({expected_payment:.2f}) of zero"
         )
+
+    def test_balloon_payment_no_id_conflicts(self):
+        """Test that balloon payment entries don't conflict with regular payment entry IDs."""
+        principal = 200000.0
+        rate_pa = 0.025
+        term_months = 60
+
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 100000.0, "interest_pa": 0.0},
+        )
+
+        mortgage = LBrick(
+            id="mortgage",
+            name="Test Mortgage",
+            kind=K.L_LOAN_ANNUITY,
+            spec={
+                "principal": principal,
+                "rate_pa": rate_pa,
+                "term_months": term_months,
+                "balloon_policy": "payoff",  # Use payoff to trigger balloon payment
+            },
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),  # End after 12 months to trigger balloon
+        )
+
+        scenario = Scenario(id="test", name="Test", bricks=[cash, mortgage])
+        results = scenario.run(start=date(2026, 1, 1), months=12)
+
+        journal = results["journal"]
+
+        # Check for duplicate entry IDs
+        entry_ids = [e.id for e in journal.entries]
+        duplicates = [eid for eid in entry_ids if entry_ids.count(eid) > 1]
+        assert len(duplicates) == 0, f"Found duplicate entry IDs: {set(duplicates)}"
+
+        # Verify balloon entry uses sequence 90
+        balloon_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("tags", {}).get("type") == "balloon"
+        ]
+        if balloon_entries:
+            for e in balloon_entries:
+                assert (
+                    e.metadata.get("sequence") == 90
+                ), f"Balloon entry should use sequence 90, got {e.metadata.get('sequence')}"
+                assert (
+                    ":90" in e.id
+                ), f"Balloon entry ID should include sequence 90, got {e.id}"
 
     def test_interest_decreases_over_time(self):
         """Test that interest portion decreases as principal is paid down."""
