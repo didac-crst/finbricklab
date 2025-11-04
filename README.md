@@ -594,6 +594,82 @@ finbrick run -i demo.json -o results.json --start 2026-01-01 --months 12
 finbrick validate -i demo.json
 ```
 
+### Using Diagnostics
+
+The `journal-diagnostics` command provides detailed insights into journal entries, cash flows, and internal transfers:
+
+```bash
+# Basic diagnostics (default: BOUNDARY_ONLY visibility)
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12
+
+# Show all transfers (including internal)
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --transfer-visibility ALL
+
+# Show only transfer entries
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --transfer-visibility ONLY
+
+# Filter by month and show sample entries
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --month 2026-03 --sample 10
+
+# Select specific bricks or MacroGroups
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --select cash savings investments
+
+# JSON output for programmatic checks
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 --json
+```
+
+**Diagnostics Output**
+
+The diagnostics command reports:
+- **Total entries**: Total number of journal entries in the scenario
+- **Internal-only entries cancelled**: Count and sum of internal transfers that cancel out in aggregated views
+- **Boundary entries**: Count and sum by category (income, expense, etc.)
+- **Transfer entries**: Count and sum of transfer transactions
+- **Sample entries**: Top N entries with entry_id, timestamp, transaction_type, node_ids, categories, and amounts
+
+**Transfer Visibility Modes**
+
+- `BOUNDARY_ONLY` (default): Show only boundary-crossing entries (income/expense). Internal transfers are hidden.
+- `ALL`: Show all entries including internal transfers.
+- `ONLY`: Show only transfer entries (internal and boundary-crossing).
+- `OFF`: Hide all transfer entries (only show income/expense).
+
+**Important**: Internal transfers cancel out in aggregated views when both nodes are in the selection, regardless of visibility mode. Visibility controls which entries are eligible for aggregation, but does not override cancellation. Use `--transfer-visibility ALL` to see all transfers, but cancellation still applies for aggregated views.
+
+**JSON Output Example**
+
+```json
+{
+  "total_entries": 45,
+  "internal_only_cancelled": {
+    "count": 12,
+    "sum": 24000.0
+  },
+  "boundary_entries": {
+    "income.recurring": {"count": 12, "sum": 60000.0},
+    "expense.recurring": {"count": 12, "sum": 36000.0}
+  },
+  "transfer_entries": {
+    "count": 12,
+    "sum": 24000.0
+  },
+  "sample_entries": [
+    {
+      "entry_id": "cp:op:fs:salary:2026-01:1",
+      "timestamp": "2026-01-31",
+      "transaction_type": "income",
+      "node_ids": ["b:boundary", "a:cash"],
+      "categories": ["income.recurring", null],
+      "amounts": {"EUR": 5000.0}
+    }
+  ]
+}
+```
+
 ---
 
 ## Scenario JSON (minimal spec)
