@@ -127,7 +127,15 @@ class TestETFUnitizedMath:
         assert np.all(result["cash_out"] == 0), "Should have no cash outflows"
 
     def test_sell_on_window_end_generates_cash_flow(self):
-        """Test that sell_on_window_end generates cash outflow equal to final value."""
+        """Test that liquidate_on_window_end generates transfer entry (V2: journal-first)."""
+        # V2: Create full scenario to access journal entries
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 10000.0, "interest_pa": 0.0},
+        )
+
         etf = ABrick(
             id="etf",
             name="ETF with Auto-Sell",
@@ -141,22 +149,52 @@ class TestETFUnitizedMath:
             },
         )
 
-        t_index = np.arange("2026-01", "2027-01", dtype="datetime64[M]")
-        ctx = ScenarioContext(t_index=t_index, currency="EUR", registry={})
+        scenario = Scenario(id="test", name="Test", bricks=[cash, etf])
+        results = scenario.run(start=date(2026, 1, 1), months=12)
 
-        strategy = ValuationSecurityUnitized()
-        strategy.prepare(etf, ctx)
-        result = strategy.simulate(etf, ctx)
+        # V2: Check journal entries for liquidation transfer (not per-brick cash_in arrays)
+        journal = results["journal"]
+        transfer_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "transfer"
+            and "a:etf" in e.metadata.get("parent_id", "")
+        ]
 
-        # Should have cash inflow in final month from liquidation
-        final_cash_in = result["cash_in"][-1]
+        # Should have transfer entries (liquidation at end)
+        assert len(transfer_entries) > 0, "Should have transfer entries from liquidation"
 
-        assert (
-            final_cash_in > 0
-        ), "Should have cash inflow from liquidation in final month"
+        # Find liquidation entry (final month)
+        from finbricklab.core.accounts import get_node_id
+        from datetime import datetime
 
-        # Asset value should be zero after sale
-        assert result["assets"][-1] == 0, "Asset value should be zero after sale"
+        cash_node_id = get_node_id("cash", "a")
+        etf_node_id = get_node_id("etf", "a")
+        final_month_str = "2026-12"
+
+        liquidation_entries = [
+            e
+            for e in transfer_entries
+            if isinstance(e.timestamp, datetime)
+            and e.timestamp.strftime("%Y-%m") == final_month_str
+        ]
+
+        # Should have liquidation entry in final month
+        assert len(liquidation_entries) > 0, "Should have liquidation entry in final month"
+
+        # Extract cash inflow from liquidation entry
+        liquidation_entry = liquidation_entries[0]
+        cash_inflow = 0.0
+        for posting in liquidation_entry.postings:
+            if posting.metadata.get("node_id") == cash_node_id and posting.is_debit():
+                cash_inflow = abs(float(posting.amount.value))
+                break
+
+        assert cash_inflow > 0, "Should have cash inflow from liquidation"
+
+        # Asset value should be zero after sale (KPI test - still valid)
+        etf_output = results["outputs"]["etf"]
+        assert etf_output["assets"][-1] == 0, "Asset value should be zero after sale"
 
     def test_different_initial_units_produce_proportional_values(self):
         """Test that different initial units produce proportionally different values."""
@@ -327,13 +365,26 @@ class TestETFScenarioIntegration:
 
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
-        # Verify auto-sell behavior
-        final_month_data = results["totals"].iloc[-1]
+        # V2: Verify auto-sell behavior via journal entries (not totals["cash_in"])
+        journal = results["journal"]
+        transfer_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") == "transfer"
+            and "a:etf" in e.metadata.get("parent_id", "")
+        ]
+
+        # Should have transfer entries (liquidation at end)
+        assert len(transfer_entries) > 0, "Should have transfer entries from auto-sell"
+
+        # V2: Check cash flows from journal-first aggregation
+        monthly = results["views"].monthly()
+        final_month_data = monthly.iloc[-1]
 
         # Should have cash inflow in final month (from ETF sale)
         assert final_month_data["cash_in"] > 0, "Should have cash inflow from ETF sale"
 
-        # ETF asset value should be zero in final month
+        # ETF asset value should be zero in final month (KPI test - still valid)
         etf_final_value = results["outputs"]["etf"]["assets"][-1]
         assert etf_final_value == 0, "ETF value should be zero after auto-sell"
 

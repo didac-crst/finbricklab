@@ -729,6 +729,25 @@ class Scenario:
                 )
             )
 
+        # Register asset accounts with node IDs (for non-cash asset bricks like ETF, property)
+        asset_ids = [
+            b.id
+            for b in self.bricks
+            if isinstance(b, ABrick)
+            and b.id in execution_order
+            and b.kind != K.A_CASH  # Exclude cash (already registered)
+        ]
+        for asset_id in asset_ids:
+            asset_node_id = get_node_id(asset_id, "a")
+            account_registry.register_account(
+                Account(
+                    asset_node_id,  # Use node ID format
+                    f"Asset {asset_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.ASSET,
+                )
+            )
+
         # Simulate all bricks and compile to journal entries
 
         # First pass: process all non-cash bricks and compile to journal
