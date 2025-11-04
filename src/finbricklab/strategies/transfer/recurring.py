@@ -207,10 +207,16 @@ class TransferRecurring(ITransferStrategy):
             transfer_timestamp = ctx.t_index[month_idx]
 
             # Convert timestamp to datetime
-            if hasattr(transfer_timestamp, "astype"):
-                transfer_timestamp = transfer_timestamp.astype("datetime64[D]").astype(
-                    "datetime"
-                )
+            if isinstance(transfer_timestamp, np.datetime64):
+                import pandas as pd
+
+                transfer_timestamp = pd.Timestamp(transfer_timestamp).to_pydatetime()
+            elif hasattr(transfer_timestamp, "astype"):
+                import pandas as pd
+
+                transfer_timestamp = pd.Timestamp(
+                    transfer_timestamp.astype("datetime64[D]")
+                ).to_pydatetime()
             else:
                 from datetime import datetime
 
