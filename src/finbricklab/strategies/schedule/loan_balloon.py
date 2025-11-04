@@ -284,12 +284,13 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
                     if balloon_payment > 0:
                         entry_id = create_entry_id(operation_id, sequence)
+                        # Use month_idx * 100 + sequence to ensure unique origin_id per entry
                         origin_id = generate_transaction_id(
                             brick.id,
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx,
+                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
                         )
 
                         principal_entry = JournalEntry(
@@ -338,12 +339,13 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Interest payment (BOUNDARY↔INTERNAL: DR expense, CR cash)
                     if interest > 0:
                         entry_id = create_entry_id(operation_id, sequence)
+                        # Use month_idx * 100 + sequence to ensure unique origin_id per entry
                         origin_id = generate_transaction_id(
                             brick.id,
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx,
+                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(
@@ -423,12 +425,13 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Principal payment (INTERNAL↔INTERNAL: DR liability, CR cash)
                     if principal_payment > 0:
                         entry_id = create_entry_id(operation_id, sequence)
+                        # Use month_idx * 100 + sequence to ensure unique origin_id per entry
                         origin_id = generate_transaction_id(
                             brick.id,
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx,
+                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
                         )
 
                         principal_entry = JournalEntry(
@@ -477,12 +480,13 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     # Interest payment (BOUNDARY↔INTERNAL: DR expense, CR cash)
                     if interest > 0:
                         entry_id = create_entry_id(operation_id, sequence)
+                        # Use month_idx * 100 + sequence to ensure unique origin_id per entry
                         origin_id = generate_transaction_id(
                             brick.id,
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx,
+                            sequence=month_idx * 100 + sequence,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(
@@ -559,12 +563,13 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                             f"l:{brick.id}", payment_timestamp
                         )
                         entry_id = create_entry_id(operation_id, 1)
+                        # Use month_idx * 100 + 1 to ensure unique origin_id per entry
                         origin_id = generate_transaction_id(
                             brick.id,
                             payment_timestamp,
                             brick.spec or {},
                             brick.links or {},
-                            sequence=month_idx,
+                            sequence=month_idx * 100 + 1,  # Unique per entry in same month
                         )
 
                         interest_entry = JournalEntry(

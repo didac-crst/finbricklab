@@ -526,12 +526,13 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         f"l:{brick.id}", payment_timestamp
                     )
                     entry_id = create_entry_id(operation_id, sequence)
+                    # Use t * 100 + sequence to ensure unique origin_id per entry
                     origin_id = generate_transaction_id(
                         brick.id,
                         payment_timestamp,
                         brick.spec or {},
                         brick.links or {},
-                        sequence=t,
+                        sequence=t * 100 + sequence,  # Unique per entry in same month
                     )
 
                     principal_entry = JournalEntry(
@@ -584,12 +585,13 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         f"l:{brick.id}", payment_timestamp
                     )
                     entry_id = create_entry_id(operation_id, sequence)
+                    # Use t * 100 + sequence to ensure unique origin_id per entry
                     origin_id = generate_transaction_id(
                         brick.id,
                         payment_timestamp,
                         brick.spec or {},
                         brick.links or {},
-                        sequence=t,
+                        sequence=t * 100 + sequence,  # Unique per entry in same month
                     )
 
                     interest_entry = JournalEntry(
@@ -642,12 +644,13 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                         f"l:{brick.id}", payment_timestamp
                     )
                     entry_id = create_entry_id(operation_id, sequence + 1)
+                    # Use t * 100 + (sequence + 1) to ensure unique origin_id per entry
                     origin_id = generate_transaction_id(
                         brick.id,
                         payment_timestamp,
                         brick.spec or {},
                         brick.links or {},
-                        sequence=t,
+                        sequence=t * 100 + (sequence + 1),  # Unique per entry in same month
                     )
 
                     fee_entry = JournalEntry(

@@ -2083,3 +2083,114 @@ class TestJournalDiagnosticsJSON:
         )
         assert df["cash_in"].sum() > 0, "Aggregated cash_in should be positive"
         assert df["cash_out"].sum() > 0, "Aggregated cash_out should be positive"
+
+
+class TestLoanStrategyOriginIdUniqueness:
+    """Test that loan strategies don't create duplicate origin_id."""
+
+    def test_loan_annuity_no_duplicate_origin_id(self):
+        """Test that loan_annuity creates unique origin_id for all entries."""
+        from datetime import date
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick, LBrick
+
+        # Create a loan with cash account
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind="a.cash",
+            spec={"initial_balance": 100000.0, "interest_pa": 0.0},
+        )
+        mortgage = LBrick(
+            id="mortgage",
+            name="Mortgage",
+            kind="l.loan.annuity",
+            spec={
+                "principal": 300000.0,
+                "rate_pa": 0.034,
+                "term_months": 12,
+            },
+        )
+
+        scenario = Scenario(
+            id="test",
+            name="Test",
+            bricks=[cash, mortgage],
+            currency="EUR",
+        )
+
+        # Run scenario - should not raise duplicate origin_id error
+        results = scenario.run(start=date(2026, 1, 1), months=12)
+        journal = results["journal"]
+
+        # Verify all origin_id are unique per currency
+        from finbricklab.core.validation import validate_origin_id_uniqueness
+
+        try:
+            validate_origin_id_uniqueness(journal)
+        except ValueError as e:
+            pytest.fail(f"Loan strategy created duplicate origin_id: {e}")
+
+        # Verify we have loan entries
+        loan_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") in ["disbursement", "payment"]
+            and "l:" in e.metadata.get("parent_id", "")
+        ]
+        assert len(loan_entries) > 0, "Should have loan entries"
+
+    def test_loan_balloon_no_duplicate_origin_id(self):
+        """Test that loan_balloon creates unique origin_id for all entries."""
+        from datetime import date
+
+        from finbricklab.core.scenario import Scenario
+        from finbricklab.core.bricks import ABrick, LBrick
+
+        # Create a balloon loan with cash account
+        cash = ABrick(
+            id="cash",
+            name="Cash",
+            kind="a.cash",
+            spec={"initial_balance": 100000.0, "interest_pa": 0.0},
+        )
+        balloon_loan = LBrick(
+            id="balloon",
+            name="Balloon Loan",
+            kind="l.loan.balloon",
+            spec={
+                "principal": 200000.0,
+                "rate_pa": 0.04,
+                "balloon_after_months": 6,
+                "balloon_type": "residual",
+            },
+        )
+
+        scenario = Scenario(
+            id="test",
+            name="Test",
+            bricks=[cash, balloon_loan],
+            currency="EUR",
+        )
+
+        # Run scenario - should not raise duplicate origin_id error
+        results = scenario.run(start=date(2026, 1, 1), months=12)
+        journal = results["journal"]
+
+        # Verify all origin_id are unique per currency
+        from finbricklab.core.validation import validate_origin_id_uniqueness
+
+        try:
+            validate_origin_id_uniqueness(journal)
+        except ValueError as e:
+            pytest.fail(f"Balloon loan strategy created duplicate origin_id: {e}")
+
+        # Verify we have loan entries
+        loan_entries = [
+            e
+            for e in journal.entries
+            if e.metadata.get("transaction_type") in ["disbursement", "payment"]
+            and "l:" in e.metadata.get("parent_id", "")
+        ]
+        assert len(loan_entries) > 0, "Should have loan entries"
