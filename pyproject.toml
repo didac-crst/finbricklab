@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "finbricklab"
-version = "0.1.2"
+version = "0.2.0"
 description = "Strategy-Driven Brick Architecture for Financial Scenarios"
 authors = ["FinBrickLab Team"]
 license = "Apache-2.0"

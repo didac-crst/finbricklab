@@ -626,7 +626,7 @@ finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 --json
 
 The diagnostics command reports:
 - **Total entries**: Total number of journal entries in the scenario
-- **Internal-only entries cancelled**: Count and sum of internal transfers that cancel out in aggregated views
+- **Internal-only entries canceled**: Count and sum of internal transfers that cancel in aggregated views
 - **Boundary entries**: Count and sum by category (income, expense, etc.)
 - **Transfer entries**: Count and sum of transfer transactions
 - **Sample entries**: Top N entries with entry_id, timestamp, transaction_type, node_ids, categories, and amounts
@@ -638,7 +638,7 @@ The diagnostics command reports:
 - `ONLY`: Show only transfer entries (internal and boundary-crossing).
 - `OFF`: Hide all transfer entries (only show income/expense).
 
-**Important**: Internal transfers cancel out in aggregated views when both nodes are in the selection, regardless of visibility mode. Visibility controls which entries are eligible for aggregation, but does not override cancellation. Use `--transfer-visibility ALL` to see all transfers, but cancellation still applies for aggregated views.
+**Important**: Internal transfers cancel in aggregated views when both nodes are in the selection, regardless of visibility mode. Visibility controls which entries are eligible for aggregation, but does not override cancellation. Use `--transfer-visibility ALL` to see all transfers, but cancellation still applies for aggregated views.
 
 **JSON Output Example**
 

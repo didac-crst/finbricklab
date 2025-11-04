@@ -305,7 +305,8 @@ def cmd_journal_diagnostics(args) -> int:
                     # Try to convert brick ID to node ID
                     brick = registry.get_brick(node_id) if registry else None
                     if brick and hasattr(brick, "family"):
-                        selection_set.add(f"{brick.family}:{brick_id}")
+                        # Use the loop variable node_id, not brick_id
+                        selection_set.add(f"{brick.family}:{node_id}")
                     else:
                         # Assume it's already a node ID
                         selection_set.add(node_id)

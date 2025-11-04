@@ -2,7 +2,7 @@
 
 ## At a Glance
 
-**V2 Postings Model (Current Development)**
+### V2 Postings Model (Current Development)
 - **Branch**: `feat/postings-model-v2`
 - **Issue**: #15 (V2 Postings Model Implementation)
 - **Specs**:

@@ -34,7 +34,7 @@
 ## 📋 PR Information
 
 ### PR Title
-```
+```text
 fix(core): FX transfers - V2 journal-first implementation with boundary detection
 ```
 

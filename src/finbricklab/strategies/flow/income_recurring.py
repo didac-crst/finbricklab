@@ -147,6 +147,9 @@ class FlowIncomeRecurring(IFlowStrategy):
         events = []
 
         # Calculate escalated amounts for each month
+        prev_amount = (
+            None  # Track previous month's computed amount for escalation detection
+        )
         for t in range(T):
             current_date = ctx.t_index[t].astype("datetime64[D]").astype(date)
 
@@ -248,7 +251,8 @@ class FlowIncomeRecurring(IFlowStrategy):
                 journal.post(income_entry)
 
             # Add escalation event for the first month of each new amount
-            if t == 0 or (t > 0 and amount != (cash_in[t - 1] if t > 0 else 0)):
+            # V2: cash_in is a shell array (zeros); compare against previously computed amount
+            if t == 0 or (t > 0 and prev_amount is not None and amount != prev_amount):
                 if annual_step_pct > 0 or step_every_m is not None:
                     events.append(
                         Event(
@@ -258,6 +262,7 @@ class FlowIncomeRecurring(IFlowStrategy):
                             {"amount": amount, "annual_step_pct": annual_step_pct},
                         )
                     )
+            prev_amount = amount
 
         # V2: Shell behavior - return zero arrays (no balances)
         return BrickOutput(
