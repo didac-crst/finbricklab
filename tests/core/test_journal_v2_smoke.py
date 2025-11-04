@@ -2162,6 +2162,7 @@ class TestLoanStrategyOriginIdUniqueness:
             spec={
                 "principal": 200000.0,
                 "rate_pa": 0.04,
+                "amortization_rate_pa": 0.02,  # Small amortization rate
                 "balloon_after_months": 6,
                 "balloon_type": "residual",
             },
