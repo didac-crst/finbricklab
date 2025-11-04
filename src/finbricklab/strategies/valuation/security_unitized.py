@@ -86,9 +86,15 @@ class ValuationSecurityUnitized(IValuationStrategy):
 
         # Handle user-friendly initial_amount parameter
         if "initial_amount" in s and "initial_units" not in s:
-            # Convert initial_amount to initial_units
-            price0 = s.get("price0", 100.0)
-            s["initial_units"] = s["initial_amount"] / price0
+            # Convert initial_amount to initial_units with validation
+            from finbricklab.core.errors import ConfigError
+
+            price0 = float(s.get("price0", 100.0))
+            if price0 <= 0:
+                raise ConfigError(
+                    "ValuationSecurityUnitized: price0 must be > 0 to convert initial_amount"
+                )
+            s["initial_units"] = float(s["initial_amount"]) / price0
             # Remove the user-friendly parameter to avoid confusion
             del s["initial_amount"]
         else:

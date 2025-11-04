@@ -13,6 +13,7 @@ from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import FBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.journal import (
     JournalEntry,
@@ -43,6 +44,39 @@ class FlowExpenseOneTime(IFlowStrategy):
         - tax_rate: Tax rate for deduction (default: 0.0)
     """
 
+    def prepare(self, brick: FBrick, ctx: ScenarioContext) -> None:
+        """Validate configuration before simulation."""
+        if brick.spec is None:
+            raise ConfigError("ExpenseOneTime: spec is required")
+
+        # Required fields
+        if "amount" not in brick.spec:
+            raise ConfigError("ExpenseOneTime: 'amount' is required")
+        if "date" not in brick.spec:
+            raise ConfigError("ExpenseOneTime: 'date' (YYYY-MM-DD) is required")
+
+        # Coerce and validate
+        try:
+            amount = float(brick.spec["amount"])  # arrays are float downstream
+        except Exception as e:
+            raise ConfigError(f"ExpenseOneTime: invalid amount: {e}") from e
+        if amount < 0:
+            raise ConfigError("ExpenseOneTime: amount must be >= 0")
+
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
+        if not (0.0 <= tax_rate <= 1.0):
+            raise ConfigError("ExpenseOneTime: tax_rate must be in [0,1]")
+
+        # Validate date format
+        from datetime import datetime
+
+        try:
+            datetime.strptime(str(brick.spec["date"]), "%Y-%m-%d")
+        except Exception as e:
+            raise ConfigError(
+                "ExpenseOneTime: date must be in YYYY-MM-DD format"
+            ) from e
+
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Simulate one-time expense flow (V2: journal-first pattern).
@@ -58,10 +92,10 @@ class FlowExpenseOneTime(IFlowStrategy):
             Journal entry created for the expense event
         """
         # Extract parameters
-        amount = brick.spec["amount"]
+        amount = float(brick.spec["amount"])  # ensure float
         date_str = brick.spec["date"]
         tax_deductible = brick.spec.get("tax_deductible", False)
-        tax_rate = brick.spec.get("tax_rate", 0.0)
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
         category = brick.spec.get("category", "expense.onetime")
 
         # Parse the date

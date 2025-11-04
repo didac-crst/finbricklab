@@ -21,6 +21,7 @@ from finbricklab.core.accounts import (
 from finbricklab.core.bricks import TBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import ITransferStrategy
 from finbricklab.core.journal import (
@@ -71,39 +72,48 @@ class TransferLumpSum(ITransferStrategy):
             ctx: The simulation context
 
         Raises:
-            AssertionError: If required parameters are missing
+            ConfigError: If required parameters are missing or invalid
         """
         # Validate required parameters
-        assert "amount" in brick.spec, "Missing required parameter: amount"
+        if brick.spec is None or "amount" not in brick.spec:
+            raise ConfigError("TransferLumpSum: 'amount' is required")
 
         # Validate required links
-        assert brick.links is not None, "Missing required links"
-        assert "from" in brick.links, "Missing required link: from"
-        assert "to" in brick.links, "Missing required link: to"
+        if not brick.links or "from" not in brick.links or "to" not in brick.links:
+            raise ConfigError("TransferLumpSum: links 'from' and 'to' are required")
 
         # Validate amount is positive
-        amount = brick.spec["amount"]
-        if isinstance(amount, int | float):
-            amount = Decimal(str(amount))
-        assert amount > 0, "Transfer amount must be positive"
+        raw_amount = brick.spec["amount"]
+        if isinstance(raw_amount, (int, float, Decimal)):
+            amount = Decimal(str(raw_amount))
+        else:
+            try:
+                amount = Decimal(str(raw_amount))
+            except Exception as e:
+                raise ConfigError(f"TransferLumpSum: invalid amount: {e}") from e
+        if amount <= 0:
+            raise ConfigError("TransferLumpSum: amount must be > 0")
 
         # Validate accounts are different
         from_account = brick.links["from"]
         to_account = brick.links["to"]
-        assert (
-            from_account != to_account
-        ), "Source and destination accounts must be different"
+        if from_account == to_account:
+            raise ConfigError(
+                "TransferLumpSum: source and destination accounts must be different"
+            )
 
         # Validate optional parameters
         if "fees" in brick.spec:
             fees = brick.spec["fees"]
-            assert "amount" in fees, "Fee amount is required"
-            assert "account" in fees, "Fee account is required"
+            if "amount" not in fees or "account" not in fees:
+                raise ConfigError(
+                    "TransferLumpSum: fees require 'amount' and 'account'"
+                )
 
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
-            assert "rate" in fx, "FX rate is required"
-            assert "pair" in fx, "FX pair is required"
+            if "rate" not in fx or "pair" not in fx:
+                raise ConfigError("TransferLumpSum: fx requires 'rate' and 'pair'")
 
     def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
         """
@@ -151,9 +161,10 @@ class TransferLumpSum(ITransferStrategy):
         # Find transfer time
         transfer_time = None
         if brick.start_date is not None:
-            # Find the index for the start date
+            # Normalize start_date to numpy month for comparison
+            start_m = np.datetime64(str(brick.start_date), "M")
             for t in ctx.t_index:
-                if t >= brick.start_date:
+                if t >= start_m:
                     transfer_time = t
                     break
 

@@ -59,6 +59,8 @@ nav:
       - Examples: EXAMPLES.md
       - Strategies: STRATEGIES.md
       - Entity & Canonical Schema: ENTITY_AND_CANONICAL_SCHEMA.md
+      - Postings Model & Brick Types: POSTINGS_MODEL_AND_BRICK_TYPES.md
+      - Technical Spec: TECHNICAL_SPEC_POSTINGS_MODEL.md
       - Contributing: CONTRIBUTING.md
   - V2 Architecture:
       - Postings Model & Brick Types: POSTINGS_MODEL_AND_BRICK_TYPES.md

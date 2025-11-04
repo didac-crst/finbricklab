@@ -13,6 +13,7 @@ from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import FBrick
 from finbricklab.core.context import ScenarioContext
 from finbricklab.core.currency import create_amount
+from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IFlowStrategy
 from finbricklab.core.journal import (
     JournalEntry,
@@ -42,6 +43,25 @@ class FlowIncomeOneTime(IFlowStrategy):
         - tax_rate: Tax rate on this income (default: 0.0)
     """
 
+    def prepare(self, brick: FBrick, ctx: ScenarioContext) -> None:
+        """Validate configuration before simulation."""
+        if brick.spec is None:
+            raise ConfigError("IncomeOneTime: spec is required")
+        if "amount" not in brick.spec:
+            raise ConfigError("IncomeOneTime: 'amount' is required")
+        try:
+            amt = float(brick.spec["amount"])  # arrays are float downstream
+        except Exception as e:
+            raise ConfigError(f"IncomeOneTime: invalid amount: {e}") from e
+        if amt < 0:
+            raise ConfigError("IncomeOneTime: amount must be >= 0")
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
+        if not (0.0 <= tax_rate <= 1.0):
+            raise ConfigError("IncomeOneTime: tax_rate must be in [0,1]")
+        # Requires start_date on brick; check presence
+        if not brick.start_date:
+            raise ConfigError("IncomeOneTime: start_date must be set on the brick")
+
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
         Simulate one-time income flow (V2: journal-first pattern).
@@ -57,12 +77,12 @@ class FlowIncomeOneTime(IFlowStrategy):
             Journal entry created for the income event
         """
         # Extract parameters
-        amount = brick.spec["amount"]
-        tax_rate = brick.spec.get("tax_rate", 0.0)
+        amount = float(brick.spec["amount"])  # ensure float
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
 
         # Use the brick's start_date for the event date
         if not brick.start_date:
-            raise ValueError(
+            raise ConfigError(
                 f"One-time income brick '{brick.id}' must have a start_date"
             )
 
