@@ -890,6 +890,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Handle maturity transfers for cash accounts with end_date and route links."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .events import Event
         from .journal import JournalEntry, Posting
@@ -1022,12 +1023,16 @@ class Scenario:
                             brick, "maturity_transfer", brick_iteration_counters
                         )
 
+                        # Use node IDs for account_id (consistent with V2 model)
+                        source_node_id = get_node_id(brick.id, "a")
+                        dest_node_id = get_node_id(dest_brick_id, "a")
+
                         transfer_entry = JournalEntry(
                             id=f"maturity_transfer:{brick.id}:{iteration}",
                             timestamp=month_timestamp,
                             postings=[
                                 Posting(
-                                    f"asset:{brick.id}",
+                                    source_node_id,  # Use node ID format
                                     create_amount(-transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
@@ -1039,7 +1044,7 @@ class Scenario:
                                     },
                                 ),
                                 Posting(
-                                    f"asset:{dest_brick_id}",
+                                    dest_node_id,  # Use node ID format
                                     create_amount(transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",

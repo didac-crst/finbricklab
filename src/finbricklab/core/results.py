@@ -1063,6 +1063,8 @@ def _aggregate_journal_monthly(
             touches_boundary = False
             for posting in entry.postings:
                 node_id = posting.metadata.get("node_id")
+                if node_id is None:
+                    continue  # Skip postings without node_id (legacy entries)
                 if node_id == BOUNDARY_NODE_ID:
                     touches_boundary = True
                     break
@@ -1081,6 +1083,9 @@ def _aggregate_journal_monthly(
                 both_in_selection = True
                 for posting in entry.postings:
                     node_id = posting.metadata.get("node_id")
+                    if node_id is None:
+                        both_in_selection = False  # Legacy entries can't be internal transfers
+                        break
                     scope = get_node_scope(node_id, account_registry)
                     if scope != AccountScope.INTERNAL:
                         both_internal = False
@@ -1119,19 +1124,29 @@ def _aggregate_journal_monthly(
                 # If selection_set is present, prefer the ASSET posting whose node_id is in selection
                 for posting in entry.postings:
                     node_id = posting.metadata.get("node_id")
-                    node_type = get_node_type(node_id, account_registry)
-                    if node_type == AccountType.ASSET and node_id in selection_set:
-                        asset_posting = posting
-                        break
+                    if node_id is None:
+                        continue  # Skip postings without node_id (legacy entries)
+                    try:
+                        node_type = get_node_type(node_id, account_registry)
+                        if node_type == AccountType.ASSET and node_id in selection_set:
+                            asset_posting = posting
+                            break
+                    except ValueError:
+                        continue  # Skip if node_id is None or invalid
                 # If none matched, skip this entry's cashflow
             else:
                 # No selection_set: pick the first ASSET posting (status quo)
                 for posting in entry.postings:
                     node_id = posting.metadata.get("node_id")
-                    node_type = get_node_type(node_id, account_registry)
-                    if node_type == AccountType.ASSET:
-                        asset_posting = posting
-                        break
+                    if node_id is None:
+                        continue  # Skip postings without node_id (legacy entries)
+                    try:
+                        node_type = get_node_type(node_id, account_registry)
+                        if node_type == AccountType.ASSET:
+                            asset_posting = posting
+                            break
+                    except ValueError:
+                        continue  # Skip if node_id is None or invalid
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
             if asset_posting:
@@ -1159,6 +1174,23 @@ def _aggregate_journal_monthly(
     net_cf = cash_in - cash_out
     equity = assets - liabilities
 
+    # Calculate cash column (sum of cash account assets)
+    cash_assets = None
+    if outputs:
+        from .kinds import K
+
+        for brick_id, output in outputs.items():
+            brick = registry.get_brick(brick_id) if registry else None
+            if brick and hasattr(brick, "kind") and brick.kind == K.A_CASH:
+                node_id = f"{brick.family}:{brick_id}" if hasattr(brick, "family") else f"a:{brick_id}"
+                if not selection_set or node_id in selection_set:
+                    s = output["assets"]
+                    cash_assets = s if cash_assets is None else (cash_assets + s)
+    cash_assets = cash_assets if cash_assets is not None else np.zeros(len(time_index))
+
+    # Calculate non_cash assets
+    non_cash_assets = assets - cash_assets
+
     # Create DataFrame
     df = pd.DataFrame(
         {
@@ -1169,6 +1201,8 @@ def _aggregate_journal_monthly(
             "liabilities": liabilities,
             "interest": interest,
             "equity": equity,
+            "cash": cash_assets,
+            "non_cash": non_cash_assets,
         },
         index=time_index,
     )

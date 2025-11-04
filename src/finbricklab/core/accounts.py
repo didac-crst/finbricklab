@@ -431,17 +431,23 @@ def get_node_scope(node_id: str, registry: AccountRegistry) -> AccountScope:
     return AccountScope.INTERNAL
 
 
-def get_node_type(node_id: str, registry: AccountRegistry) -> AccountType:
+def get_node_type(node_id: str | None, registry: AccountRegistry) -> AccountType:
     """
     Get account type for a node ID.
 
     Args:
-        node_id: Node ID
+        node_id: Node ID (may be None for legacy entries)
         registry: Account registry
 
     Returns:
         Account type
+
+    Raises:
+        ValueError: If node_id is None (legacy entries not supported)
     """
+    if node_id is None:
+        raise ValueError("node_id is None - legacy entry format not supported in V2")
+
     account = registry.get_account_by_node_id(node_id)
     if account:
         return account.account_type
