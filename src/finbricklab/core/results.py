@@ -301,10 +301,17 @@ class ScenarioResults:
                     ):
                         # Check journal entries for this brick to see if any touch boundary
                         touches_boundary = False
+                        # Create family prefix set for exact parent_id matching (avoid substring false positives)
+                        family_parent_ids = {
+                            f"a:{brick_id}",
+                            f"l:{brick_id}",
+                            f"fs:{brick_id}",
+                            f"ts:{brick_id}",
+                        }
                         for entry in self._journal.entries:
-                            # Check if entry belongs to this brick
-                            brick_id_from_entry = entry.metadata.get("parent_id", "")
-                            if brick_id not in brick_id_from_entry:
+                            # Check if entry belongs to this brick (exact parent_id match)
+                            parent_id = entry.metadata.get("parent_id", "")
+                            if parent_id not in family_parent_ids:
                                 continue
                             # Check if entry touches boundary
                             for posting in entry.postings:
@@ -1383,10 +1390,28 @@ def _aggregate_journal_monthly(
                 "fx_transfer",
             }
 
-            # Check if both postings are INTERNAL and in selection
+            # Check if both postings are INTERNAL (global check, regardless of selection)
+            both_internal_global = not touches_boundary
+            if both_internal_global:
+                # Verify all postings are INTERNAL (not boundary)
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        both_internal_global = False
+                        break
+                    try:
+                        scope = get_node_scope(posting_node_id, account_registry)
+                        if scope != AccountScope.INTERNAL:
+                            both_internal_global = False
+                            break
+                    except ValueError:
+                        # Fallback: if can't determine scope, assume not internal
+                        both_internal_global = False
+                        break
+
+            # Check if both postings are INTERNAL and in selection (for cancellation)
             both_internal_in_selection = False
-            if not touches_boundary and selection_set:
-                both_internal = True
+            if both_internal_global and selection_set:
                 both_in_selection = True
                 for posting in entry.postings:
                     posting_node_id = posting.metadata.get("node_id")
@@ -1395,22 +1420,21 @@ def _aggregate_journal_monthly(
                             False  # Legacy entries can't be internal transfers
                         )
                         break
-                    scope = get_node_scope(posting_node_id, account_registry)
-                    if scope != AccountScope.INTERNAL:
-                        both_internal = False
-                        break
                     if posting_node_id not in selection_set:
                         both_in_selection = False
-                if both_internal and both_in_selection:
+                        break
+                if both_in_selection:
                     both_internal_in_selection = True
 
             # Apply TransferVisibility filtering
             if transfer_visibility != TransferVisibility.ALL:
                 if transfer_visibility == TransferVisibility.OFF:
-                    # Hide internal transfers only (already handled by cancellation logic)
-                    # But also check if this is a transfer entry that should be hidden
-                    if is_transfer_entry and both_internal_in_selection:
+                    # Hide internal transfers (global check, works without selection)
+                    if is_transfer_entry and both_internal_global:
                         continue  # Skip internal transfers
+                    # Also skip if both internal and in selection (cancellation)
+                    if both_internal_in_selection:
+                        continue  # Skip internal transfers in selection
                 elif transfer_visibility == TransferVisibility.ONLY:
                     # Show only transfer entries
                     if not is_transfer_entry:

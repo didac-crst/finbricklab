@@ -196,8 +196,9 @@ class ValuationCash(IValuationStrategy):
             bal[0] = brick.spec["initial_balance"] + external_in[0] - external_out[0]
             # Calculate interest on the balance after cash flows
             interest_earned[0] = bal[0] * r_m
-            # V2: Create journal entry for interest (DR cash, CR income.interest)
-            if interest_earned[0] > 0:
+            # V2: Create journal entry for interest (DR cash, CR income.interest or expense.interest)
+            # Emit entry for any non-zero interest (positive or negative)
+            if interest_earned[0] != 0:
                 interest_timestamp = ctx.t_index[0]
                 # Convert numpy datetime64 to Python datetime
                 from datetime import datetime
@@ -255,8 +256,13 @@ class ValuationCash(IValuationStrategy):
                     origin_id=origin_id,
                 )
 
-                # Set transaction_type for interest earned
-                interest_entry.metadata["transaction_type"] = "income"
+                # Set transaction_type based on interest sign
+                if interest_earned[0] > 0:
+                    interest_entry.metadata["transaction_type"] = "income"
+                    boundary_category = "income.interest"
+                else:
+                    interest_entry.metadata["transaction_type"] = "expense"
+                    boundary_category = "expense.interest"
 
                 stamp_posting_metadata(
                     interest_entry.postings[0],
@@ -266,7 +272,7 @@ class ValuationCash(IValuationStrategy):
                 stamp_posting_metadata(
                     interest_entry.postings[1],
                     node_id=BOUNDARY_NODE_ID,
-                    category="income.interest",
+                    category=boundary_category,
                     type_tag="interest",
                 )
 
@@ -310,8 +316,9 @@ class ValuationCash(IValuationStrategy):
                 bal[t] += external_in[t] - external_out[t]
                 # Calculate interest on the full balance (including this month's flows)
                 interest_earned[t] = bal[t] * r_m
-                # V2: Create journal entry for interest (DR cash, CR income.interest)
-                if interest_earned[t] > 0:
+                # V2: Create journal entry for interest (DR cash, CR income.interest or expense.interest)
+                # Emit entry for any non-zero interest (positive or negative)
+                if interest_earned[t] != 0:
                     interest_timestamp = ctx.t_index[t]
                     # Convert numpy datetime64 to Python datetime
                     from datetime import datetime
@@ -371,8 +378,13 @@ class ValuationCash(IValuationStrategy):
                         origin_id=origin_id,
                     )
 
-                    # Set transaction_type for interest earned
-                    interest_entry.metadata["transaction_type"] = "income"
+                    # Set transaction_type based on interest sign
+                    if interest_earned[t] > 0:
+                        interest_entry.metadata["transaction_type"] = "income"
+                        boundary_category = "income.interest"
+                    else:
+                        interest_entry.metadata["transaction_type"] = "expense"
+                        boundary_category = "expense.interest"
 
                     stamp_posting_metadata(
                         interest_entry.postings[0],
@@ -382,7 +394,7 @@ class ValuationCash(IValuationStrategy):
                     stamp_posting_metadata(
                         interest_entry.postings[1],
                         node_id=BOUNDARY_NODE_ID,
-                        category="income.interest",
+                        category=boundary_category,
                         type_tag="interest",
                     )
 
