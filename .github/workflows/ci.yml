@@ -34,9 +34,10 @@ jobs:
         retry_on: error
         command: |
           curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Load cached venv
       id: cached-poetry-dependencies
@@ -93,9 +94,10 @@ jobs:
         retry_on: error
         command: |
           curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install dependencies
       run: poetry install --no-interaction --no-root
