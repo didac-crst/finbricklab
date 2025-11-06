@@ -177,6 +177,10 @@ class TestETFUnitizedMath:
 
         # V2: Check journal entries for liquidation transfer (not per-brick cash_in arrays)
         journal = results["journal"]
+        entry_ids = [entry.id for entry in journal.entries]
+        assert len(entry_ids) == len(
+            set(entry_ids)
+        ), "Journal entry IDs should be unique"
         transfer_entries = [
             e
             for e in journal.entries
@@ -410,6 +414,10 @@ class TestETFScenarioIntegration:
 
         # V2: Verify auto-sell behavior via journal entries (not totals["cash_in"])
         journal = results["journal"]
+        entry_ids = [entry.id for entry in journal.entries]
+        assert len(entry_ids) == len(
+            set(entry_ids)
+        ), "Journal entry IDs should be unique"
         transfer_entries = [
             e
             for e in journal.entries

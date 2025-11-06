@@ -249,6 +249,13 @@ class ValuationSecurityUnitized(IValuationStrategy):
             # Fallback: use default
             cash_node_id = "a:cash"  # Default fallback
 
+        # Sequence management for entry IDs within a single operation/timestamp
+        sequence_counters: dict[str, int] = {}
+
+        def next_sequence(operation_id: str) -> int:
+            sequence_counters[operation_id] = sequence_counters.get(operation_id, 0) + 1
+            return sequence_counters[operation_id]
+
         # Price path calculation with volatility
         price[0] = float(s["price0"])
         mu = float(s["drift_pa"])
@@ -287,7 +294,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     buy_timestamp = datetime.fromisoformat(str(buy_timestamp))
 
                 operation_id = create_operation_id(f"a:{brick.id}", buy_timestamp)
-                entry_id = create_entry_id(operation_id, 1)
+                sequence = next_sequence(operation_id)
+                entry_id = create_entry_id(operation_id, sequence)
                 origin_id = generate_transaction_id(
                     brick.id,
                     buy_timestamp,
@@ -320,7 +328,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     parent_id=f"a:{brick.id}",
                     timestamp=buy_timestamp,
                     tags={"type": "buy"},
-                    sequence=1,
+                    sequence=sequence,
                     origin_id=origin_id,
                 )
 
@@ -365,7 +373,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     buy_timestamp = datetime.fromisoformat(str(buy_timestamp))
 
                 operation_id = create_operation_id(f"a:{brick.id}", buy_timestamp)
-                entry_id = create_entry_id(operation_id, 1)
+                sequence = next_sequence(operation_id)
+                entry_id = create_entry_id(operation_id, sequence)
                 origin_id = generate_transaction_id(
                     brick.id,
                     buy_timestamp,
@@ -398,7 +407,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     parent_id=f"a:{brick.id}",
                     timestamp=buy_timestamp,
                     tags={"type": "buy"},
-                    sequence=1,
+                    sequence=sequence,
                     origin_id=origin_id,
                 )
 
@@ -477,7 +486,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     operation_id = create_operation_id(
                         f"a:{brick.id}", dividend_timestamp
                     )
-                    entry_id = create_entry_id(operation_id, 1)
+                    sequence = next_sequence(operation_id)
+                    entry_id = create_entry_id(operation_id, sequence)
                     origin_id = generate_transaction_id(
                         brick.id,
                         dividend_timestamp,
@@ -510,7 +520,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         parent_id=f"a:{brick.id}",
                         timestamp=dividend_timestamp,
                         tags={"type": "dividend"},
-                        sequence=1,
+                        sequence=sequence,
                         origin_id=origin_id,
                     )
 
@@ -570,7 +580,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             operation_id = create_operation_id(
                                 f"a:{brick.id}", dca_timestamp
                             )
-                            entry_id = create_entry_id(operation_id, 1)
+                            sequence = next_sequence(operation_id)
+                            entry_id = create_entry_id(operation_id, sequence)
                             origin_id = generate_transaction_id(
                                 brick.id,
                                 dca_timestamp,
@@ -603,7 +614,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 parent_id=f"a:{brick.id}",
                                 timestamp=dca_timestamp,
                                 tags={"type": "buy"},
-                                sequence=1,
+                                sequence=sequence,
                                 origin_id=origin_id,
                             )
 
@@ -647,7 +658,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             operation_id = create_operation_id(
                                 f"a:{brick.id}", dca_timestamp
                             )
-                            entry_id = create_entry_id(operation_id, 1)
+                            sequence = next_sequence(operation_id)
+                            entry_id = create_entry_id(operation_id, sequence)
                             origin_id = generate_transaction_id(
                                 brick.id,
                                 dca_timestamp,
@@ -680,7 +692,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 parent_id=f"a:{brick.id}",
                                 timestamp=dca_timestamp,
                                 tags={"type": "buy"},
-                                sequence=1,
+                                sequence=sequence,
                                 origin_id=origin_id,
                             )
 
@@ -748,7 +760,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         operation_id = create_operation_id(
                             f"a:{brick.id}", sell_timestamp
                         )
-                        entry_id = create_entry_id(operation_id, 1)
+                        sequence = next_sequence(operation_id)
+                        entry_id = create_entry_id(operation_id, sequence)
                         origin_id = generate_transaction_id(
                             brick.id,
                             sell_timestamp,
@@ -781,7 +794,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             parent_id=f"a:{brick.id}",
                             timestamp=sell_timestamp,
                             tags={"type": "sell"},
-                            sequence=1,
+                            sequence=sequence,
                             origin_id=origin_id,
                         )
 
@@ -848,7 +861,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         operation_id = create_operation_id(
                             f"a:{brick.id}", sdca_timestamp
                         )
-                        entry_id = create_entry_id(operation_id, 1)
+                        sequence = next_sequence(operation_id)
+                        entry_id = create_entry_id(operation_id, sequence)
                         origin_id = generate_transaction_id(
                             brick.id,
                             sdca_timestamp,
@@ -881,7 +895,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                             parent_id=f"a:{brick.id}",
                             timestamp=sdca_timestamp,
                             tags={"type": "sell"},
-                            sequence=1,
+                            sequence=sequence,
                             origin_id=origin_id,
                         )
 
@@ -955,10 +969,10 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     )
 
                 operation_id = create_operation_id(f"a:{brick.id}", liquidate_timestamp)
-                sequence = 1
 
                 # Main liquidation entry: DR a:cash (gross), CR a:etf (gross)
                 # Fees handled separately below
+                sequence = next_sequence(operation_id)
                 entry_id = create_entry_id(operation_id, sequence)
                 origin_id = generate_transaction_id(
                     brick.id,
@@ -1010,10 +1024,10 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 )
 
                 journal.post(liquidate_entry)
-                sequence += 1
 
                 # Fee entry (if any): DR expense.fee (BOUNDARY), CR a:cash (INTERNAL)
                 if fees > 0:
+                    sequence = next_sequence(operation_id)
                     fee_entry_id = create_entry_id(operation_id, sequence)
                     fee_origin_id = generate_transaction_id(
                         brick.id,

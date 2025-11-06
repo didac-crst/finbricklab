@@ -90,6 +90,10 @@ def test_user_friendly_sell_date():
     # V2: Check journal entries instead of deprecated cash_in arrays
     journal = results["journal"]
     monthly = results["views"].monthly()
+    entry_ids = [entry.id for entry in journal.entries]
+    assert len(entry_ids) == len(
+        set(entry_ids)
+    ), "Journal entry IDs should be unique for user-friendly sell date scenario"
 
     # Check that ETF was sold in February (month index 1)
     # V2: ETF sales create internal transfer entries (ETF -> cash)
@@ -106,8 +110,8 @@ def test_user_friendly_sell_date():
         and any(p.account_id == etf_node_id for p in e.postings)
     ]
     assert (
-        len(transfer_entries) > 0
-    ), "Journal should have transfer entries from ETF sale"
+        len(transfer_entries) == 1
+    ), "Should create exactly one transfer entry for sale"
 
     # V2: Check monthly aggregation for cash inflows from ETF sale
     # Note: Internal transfers (ETF -> cash) are cancelled in aggregation when both nodes are selected
@@ -159,6 +163,10 @@ def test_user_friendly_sell_percentage():
     journal = results["journal"]
     monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
+    entry_ids = [entry.id for entry in journal.entries]
+    assert len(entry_ids) == len(
+        set(entry_ids)
+    ), "Journal entry IDs should be unique for percentage sale scenario"
 
     # Check that 50% was sold (5 units out of 10, worth €500)
     # V2: ETF sales create internal transfer entries (ETF -> cash)
@@ -172,8 +180,8 @@ def test_user_friendly_sell_percentage():
         and any(p.account_id == etf_node_id for p in e.postings)
     ]
     assert (
-        len(transfer_entries) > 0
-    ), "Journal should have transfer entries from ETF sale"
+        len(transfer_entries) == 1
+    ), "Should create exactly one transfer entry for percentage sale"
 
     # V2: Check monthly aggregation and asset values
     # Note: Internal transfers (ETF -> cash) are cancelled in aggregation when both nodes are selected
@@ -224,6 +232,10 @@ def test_backward_compatibility():
     journal = results["journal"]
     monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
+    entry_ids = [entry.id for entry in journal.entries]
+    assert len(entry_ids) == len(
+        set(entry_ids)
+    ), "Journal entry IDs should be unique for legacy parameters scenario"
 
     # Check that legacy format still works
     assert etf_output["assets"][0] == 1000.0, "Initial ETF value should be €1000"
@@ -240,8 +252,8 @@ def test_backward_compatibility():
         and any(p.account_id == etf_node_id for p in e.postings)
     ]
     assert (
-        len(transfer_entries) > 0
-    ), "Journal should have transfer entries from ETF sale"
+        len(transfer_entries) == 1
+    ), "Should create exactly one transfer entry for legacy sale"
     assert (
         etf_output["assets"][1] == 500.0
     ), "Remaining ETF value after sale should be €500"
@@ -288,6 +300,10 @@ def test_combined_user_friendly_features():
     journal = results["journal"]
     monthly = results["views"].monthly()
     etf_output = results["outputs"]["etf"]
+    entry_ids = [entry.id for entry in journal.entries]
+    assert len(entry_ids) == len(
+        set(entry_ids)
+    ), "Journal entry IDs should be unique when combining user-friendly features"
 
     # V2: ETF sales create internal transfer entries (ETF -> cash)
     from finbricklab.core.accounts import get_node_id
@@ -300,8 +316,8 @@ def test_combined_user_friendly_features():
         and any(p.account_id == etf_node_id for p in e.postings)
     ]
     assert (
-        len(transfer_entries) >= 2
-    ), "Journal should have at least 2 transfer entries from ETF sales"
+        len(transfer_entries) == 2
+    ), "Journal should have exactly 2 transfer entries matching the configured sales"
 
     # March: 25% of €2000 = €500
     # V2: Check asset values (internal transfers are cancelled in aggregation when both nodes are selected)

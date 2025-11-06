@@ -544,39 +544,37 @@ class TransferLumpSum(ITransferStrategy):
                 )
 
                 # P&L: DR/CR between b:fx_clear and P&L:FX
-                # If P&L is positive (gain), it's income: CR P&L account (income), DR fx_clear
-                # If P&L is negative (loss), it's expense: DR P&L account (expense), CR fx_clear
+                # Positive P&L (gain): DR clearing (debit), CR P&L account (credit/income)
+                # Negative P&L (loss): DR P&L account (debit/expense), CR clearing (credit)
                 abs_pnl = abs(pnl_amount)
                 if pnl_amount > 0:
-                    # Positive P&L (gain): income - CR P&L account, DR clearing
                     pnl_postings = [
                         Posting(
-                            account_id=pnl_node_id,
+                            account_id=FX_CLEAR_NODE_ID,
                             amount=create_amount(float(abs_pnl), dest_currency),
                             metadata={},
                         ),
                         Posting(
-                            account_id=FX_CLEAR_NODE_ID,
+                            account_id=pnl_node_id,
                             amount=create_amount(-float(abs_pnl), dest_currency),
                             metadata={},
                         ),
                     ]
-                    pnl_category = "income.fx"
+                    pnl_categories = ["fx.clearing", "income.fx"]
                 else:
-                    # Negative P&L (loss): expense - DR P&L account, CR clearing
                     pnl_postings = [
                         Posting(
                             account_id=pnl_node_id,
-                            amount=create_amount(-float(abs_pnl), dest_currency),
+                            amount=create_amount(float(abs_pnl), dest_currency),
                             metadata={},
                         ),
                         Posting(
                             account_id=FX_CLEAR_NODE_ID,
-                            amount=create_amount(float(abs_pnl), dest_currency),
+                            amount=create_amount(-float(abs_pnl), dest_currency),
                             metadata={},
                         ),
                     ]
-                    pnl_category = "expense.fx"
+                    pnl_categories = ["expense.fx", "fx.clearing"]
 
                 fx_entry_3 = JournalEntry(
                     id=fx_entry_id_3,
@@ -595,18 +593,15 @@ class TransferLumpSum(ITransferStrategy):
                 )
                 fx_entry_3.metadata["transaction_type"] = "fx_transfer"
 
-                stamp_posting_metadata(
-                    fx_entry_3.postings[0],
-                    node_id=FX_CLEAR_NODE_ID if pnl_amount > 0 else pnl_node_id,
-                    type_tag="fx_transfer",
-                    category=pnl_category,
-                )
-                stamp_posting_metadata(
-                    fx_entry_3.postings[1],
-                    node_id=pnl_node_id if pnl_amount > 0 else FX_CLEAR_NODE_ID,
-                    type_tag="fx_transfer",
-                    category=pnl_category,
-                )
+                for posting, category in zip(
+                    fx_entry_3.postings, pnl_categories, strict=True
+                ):
+                    stamp_posting_metadata(
+                        posting,
+                        node_id=posting.account_id,
+                        type_tag="fx_transfer",
+                        category=category,
+                    )
 
                 # Guard: Skip posting if entry with same ID already exists
                 if not journal.has_id(fx_entry_3.id):

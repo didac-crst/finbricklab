@@ -388,27 +388,34 @@ class TestTBrickJournal:
 
         pnl_entry = pnl_entries[0]
 
-        # Check that P&L account posting is credited (positive amount)
+        # Check that P&L account posting is credited (negative amount)
         # Find posting by account_id (P&L:FX), not node_id
         pnl_account_posting = next(
             p for p in pnl_entry.postings if p.account_id == "P&L:FX"
         )
         assert (
-            pnl_account_posting.amount.value > 0
-        ), "P&L account should be credited (positive amount) for gain"
+            pnl_account_posting.amount.value < 0
+        ), "P&L account should be credited (negative amount) for gain"
 
         # Check that category is income.fx
         assert (
             pnl_account_posting.metadata.get("category") == "income.fx"
         ), "P&L entry should have category 'income.fx' for gain"
 
-        # Check that clearing account is debited (negative amount)
+        assert (
+            pnl_account_posting.metadata.get("node_id") == "P&L:FX"
+        ), "P&L posting should stamp node_id with the P&L account"
+
+        # Check that clearing account is debited (positive amount)
         clearing_posting = next(
             p for p in pnl_entry.postings if p.account_id == FX_CLEAR_NODE_ID
         )
         assert (
-            clearing_posting.amount.value < 0
-        ), "Clearing account should be debited (negative amount) for gain"
+            clearing_posting.amount.value > 0
+        ), "Clearing account should be debited (positive amount) for gain"
+        assert (
+            clearing_posting.metadata.get("category") == "fx.clearing"
+        ), "Clearing posting should use 'fx.clearing' category"
 
     def test_fx_pnl_negative_loss_debits_expense(self):
         """Test that negative P&L (loss) debits the P&L account (expense)."""
@@ -467,24 +474,30 @@ class TestTBrickJournal:
 
         pnl_entry = pnl_entries[0]
 
-        # Check that P&L account posting is debited (negative amount)
+        # Check that P&L account posting is debited (positive amount)
         # Find posting by account_id (P&L:FX), not node_id
         pnl_account_posting = next(
             p for p in pnl_entry.postings if p.account_id == "P&L:FX"
         )
         assert (
-            pnl_account_posting.amount.value < 0
-        ), "P&L account should be debited (negative amount) for loss"
+            pnl_account_posting.amount.value > 0
+        ), "P&L account should be debited (positive amount) for loss"
 
         # Check that category is expense.fx
         assert (
             pnl_account_posting.metadata.get("category") == "expense.fx"
         ), "P&L entry should have category 'expense.fx' for loss"
+        assert (
+            pnl_account_posting.metadata.get("node_id") == "P&L:FX"
+        ), "P&L posting should stamp node_id with the P&L account"
 
-        # Check that clearing account is credited (positive amount)
+        # Check that clearing account is credited (negative amount)
         clearing_posting = next(
             p for p in pnl_entry.postings if p.account_id == FX_CLEAR_NODE_ID
         )
         assert (
-            clearing_posting.amount.value > 0
-        ), "Clearing account should be credited (positive amount) for loss"
+            clearing_posting.amount.value < 0
+        ), "Clearing account should be credited (negative amount) for loss"
+        assert (
+            clearing_posting.metadata.get("category") == "fx.clearing"
+        ), "Clearing posting should use 'fx.clearing' category"
