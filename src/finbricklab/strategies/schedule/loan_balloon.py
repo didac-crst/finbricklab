@@ -273,8 +273,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                     if balloon_type == "residual":
                         balloon_payment = current_balance
                     elif balloon_type == "fixed_amount":
-                        requested = Decimal(str(balloon_amount))
-                        balloon_payment = min(requested, current_balance)
+                        balloon_payment = Decimal(str(balloon_amount))
                     else:
                         raise ValueError(f"Unknown balloon type: {balloon_type}")
 
