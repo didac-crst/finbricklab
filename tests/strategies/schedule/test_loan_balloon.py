@@ -3,7 +3,6 @@
 from datetime import date
 
 import pytest
-
 from finbricklab.core.bricks import ABrick, LBrick
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
