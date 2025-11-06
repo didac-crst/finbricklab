@@ -47,4 +47,4 @@ repos:
         entry: poetry run interrogate -c pyproject.toml src/finbricklab
         language: system
         pass_filenames: false
-        stages: [commit]
+        # default stage is pre-commit; 'commit' is deprecated in newer pre-commit
