@@ -7,7 +7,6 @@ from datetime import date
 import numpy as np
 import pandas as pd
 import pytest
-
 from finbricklab.core.accounts import BOUNDARY_NODE_ID
 from finbricklab.core.entity import Entity
 from finbricklab.core.kinds import K
