@@ -37,7 +37,9 @@ def test_balloon_fixed_amount_is_clamped_to_current_balance():
         },
     )
 
-    scenario = Scenario(id="balloon-test", name="Balloon Clamp", bricks=[cash, balloon_loan])
+    scenario = Scenario(
+        id="balloon-test", name="Balloon Clamp", bricks=[cash, balloon_loan]
+    )
 
     months = balloon_after_months + 2
     results = scenario.run(start=date(2026, 1, 1), months=months)
@@ -66,4 +68,3 @@ def test_balloon_fixed_amount_is_clamped_to_current_balance():
 
     assert paid_amount == pytest.approx(pre_balloon_balance, abs=1e-2)
     assert liabilities[balloon_month_index] == pytest.approx(0.0, abs=1e-6)
-
