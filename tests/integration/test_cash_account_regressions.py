@@ -122,6 +122,34 @@ def test_single_cash_account_keeps_initial_balance_without_interest():
     assert monthly["cash"].to_numpy() == pytest.approx(expected)
     assert monthly["net_cf"].to_numpy() == pytest.approx(np.zeros(len(monthly)))
 
+    assert {"cash_delta", "equity_delta", "capitalized_cf", "cash_rebalancing"} <= set(
+        monthly.columns
+    )
+    cash_delta = monthly["cash_delta"].to_numpy()
+    equity_delta = monthly["equity_delta"].to_numpy()
+    capitalized_cf = monthly["capitalized_cf"].to_numpy()
+    cash_rebalancing = monthly["cash_rebalancing"].to_numpy()
+    net_cf = monthly["net_cf"].to_numpy()
+
+    deposit_mask = np.abs(capitalized_cf) > 1e-3
+    assert deposit_mask.any()
+    assert capitalized_cf[deposit_mask] == pytest.approx(
+        cash_delta[deposit_mask] - net_cf[deposit_mask], rel=1e-6
+    )
+    assert equity_delta[deposit_mask] == pytest.approx(
+        capitalized_cf[deposit_mask] + net_cf[deposit_mask], rel=1e-6
+    )
+
+    post_mask = ~deposit_mask
+    assert cash_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert equity_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert capitalized_cf[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+    assert cash_rebalancing[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+
 
 def test_cash_account_compounds_monthly_interest():
     """Ensure monthly compounding at interest_pa=10%."""
@@ -138,6 +166,26 @@ def test_cash_account_compounds_monthly_interest():
     months = np.arange(len(monthly))
     expected_interest = 50_000.0 * np.power(1 + monthly_rate, months) * monthly_rate
     assert monthly["net_cf"].to_numpy() == pytest.approx(expected_interest, rel=1e-6)
+
+    cash_delta = monthly["cash_delta"].to_numpy()
+    capitalized_cf = monthly["capitalized_cf"].to_numpy()
+    cash_rebalancing = monthly["cash_rebalancing"].to_numpy()
+    net_cf = monthly["net_cf"].to_numpy()
+
+    deposit_mask = np.abs(capitalized_cf) > 1e-3
+    assert deposit_mask.any()
+    assert capitalized_cf[deposit_mask] == pytest.approx(
+        cash_delta[deposit_mask] - net_cf[deposit_mask], rel=1e-6
+    )
+
+    post_mask = ~deposit_mask
+    assert cash_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert capitalized_cf[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+    assert cash_rebalancing[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
 
 
 def test_cash_account_respects_delayed_activation():
@@ -216,6 +264,26 @@ def test_salary_and_cash_with_staggered_start_dates():
     assert monthly["net_cf"].loc["2026-05"] == pytest.approx(5_000.0)
     assert monthly["net_cf"].loc["2026-06"] == pytest.approx(5_000.0)
 
+    cash_delta = monthly["cash_delta"].to_numpy()
+    capitalized_cf = monthly["capitalized_cf"].to_numpy()
+    cash_rebalancing = monthly["cash_rebalancing"].to_numpy()
+    net_cf = monthly["net_cf"].to_numpy()
+
+    deposit_mask = np.abs(capitalized_cf) > 1e-3
+    assert deposit_mask.any()
+    assert capitalized_cf[deposit_mask] == pytest.approx(
+        cash_delta[deposit_mask] - net_cf[deposit_mask], rel=1e-6
+    )
+
+    post_mask = ~deposit_mask
+    assert cash_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert capitalized_cf[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+    assert cash_rebalancing[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+
 
 def test_transfer_shell_excluded_has_no_effect_on_savings():
     """Leaving the transfer brick out means savings only accrues interest."""
@@ -238,6 +306,27 @@ def test_transfer_shell_excluded_has_no_effect_on_savings():
     salary_start_idx = 4  # May 2026
     for idx in range(salary_start_idx, salary_start_idx + 4):
         assert checking_assets[idx] - checking_assets[idx - 1] == pytest.approx(5_000.0)
+
+    monthly = results["views"].monthly()
+    cash_delta = monthly["cash_delta"].to_numpy()
+    capitalized_cf = monthly["capitalized_cf"].to_numpy()
+    cash_rebalancing = monthly["cash_rebalancing"].to_numpy()
+    net_cf = monthly["net_cf"].to_numpy()
+
+    deposit_mask = np.abs(capitalized_cf) > 1e-3
+    assert deposit_mask.any()
+    assert capitalized_cf[deposit_mask] == pytest.approx(
+        cash_delta[deposit_mask] - net_cf[deposit_mask], rel=1e-6
+    )
+
+    post_mask = ~deposit_mask
+    assert cash_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert capitalized_cf[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+    assert cash_rebalancing[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
 
 
 def test_transfer_shell_included_moves_cash_between_accounts():
@@ -270,3 +359,87 @@ def test_transfer_shell_included_moves_cash_between_accounts():
         assert checking_assets[idx] - checking_assets[idx - 1] == pytest.approx(
             -5_000.0
         )
+
+    monthly = results["views"].monthly()
+    cash_delta = monthly["cash_delta"].to_numpy()
+    capitalized_cf = monthly["capitalized_cf"].to_numpy()
+    cash_rebalancing = monthly["cash_rebalancing"].to_numpy()
+    net_cf = monthly["net_cf"].to_numpy()
+
+    deposit_mask = np.abs(capitalized_cf) > 1e-3
+    assert deposit_mask.any()
+    assert capitalized_cf[deposit_mask] == pytest.approx(
+        cash_delta[deposit_mask] - net_cf[deposit_mask], rel=1e-6
+    )
+
+    post_mask = ~deposit_mask
+    assert cash_delta[post_mask] == pytest.approx(net_cf[post_mask], rel=1e-6)
+    assert capitalized_cf[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+    assert cash_rebalancing[post_mask] == pytest.approx(
+        np.zeros(post_mask.sum()), abs=1e-9
+    )
+
+
+def test_mortgage_principal_surfaces_in_capitalized_flows():
+    """Principal amortization shows up as capitalized cash flow and cash rebalancing."""
+
+    entity = Entity(name="Home Owner")
+    entity.new_ABrick(
+        name="Checking Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 2, 1),
+        spec={"initial_balance": 100_000.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="House",
+        kind=K.A_PROPERTY,
+        start_date=date(2027, 1, 1),
+        spec={
+            "initial_value": 500_000.0,
+            "appreciation_pa": 0.04,
+            "fees_pct": 0.1,
+        },
+        links={"route": {"from": "checking_account", "to": "checking_account"}},
+    )
+    entity.new_LBrick(
+        name="House Mortgage",
+        kind=K.L_LOAN_BALLOON,
+        start_date=date(2027, 1, 1),
+        spec={
+            "principal": 400_000.0,
+            "rate_pa": 0.02,
+            "balloon_after_months": 10 * 12,
+            "amortization_rate_pa": 0.03,
+            "balloon_type": "residual",
+        },
+        links={"route": {"from": "checking_account", "to": "checking_account"}},
+    )
+
+    entity.create_scenario(
+        name="Home Financing",
+        brick_ids=["checking_account", "house", "house_mortgage"],
+        settlement_default_cash_id="checking_account",
+    )
+
+    results = entity.run_scenario("home_financing", start=date(2026, 1, 1), months=36)
+    monthly = results["views"].monthly()
+
+    # First amortization month: interest-only cashflow plus principal rebalancing
+    first_amortization = monthly.loc["2027-02"]
+    assert first_amortization["net_cf"] < 0.0
+    assert first_amortization["cash_delta"] < 0.0
+
+    principal_component = (
+        first_amortization["cash_delta"] - first_amortization["net_cf"]
+    )
+    assert principal_component < 0.0
+
+    assert first_amortization["cash_rebalancing"] == pytest.approx(
+        principal_component, rel=1e-6
+    )
+    assert first_amortization["capitalized_cf"] > 0.0
+    assert first_amortization["equity_delta"] == pytest.approx(
+        first_amortization["net_cf"] + first_amortization["capitalized_cf"], rel=1e-9
+    )

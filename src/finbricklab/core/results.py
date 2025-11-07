@@ -1223,7 +1223,16 @@ def aggregate_totals(
         return df
 
     # Define aggregation rules based on financial semantics
-    flows = ["cash_in", "cash_out", "net_cf", "interest"]
+    flows = [
+        "cash_in",
+        "cash_out",
+        "net_cf",
+        "interest",
+        "cash_delta",
+        "equity_delta",
+        "capitalized_cf",
+        "cash_rebalancing",
+    ]
     stocks = ["assets", "liabilities", "equity", "cash", "non_cash"]
 
     # Only aggregate columns that exist
@@ -1249,6 +1258,38 @@ def aggregate_totals(
     if return_period_index:
         return out
     return out.to_timestamp(how="end")  # Convert to period-end timestamps
+
+
+def _append_derived_flow_columns(df: pd.DataFrame) -> None:
+    """
+    Append derived cash and equity flow columns in place, preserving accounting identities.
+    """
+
+    if "cash" in df.columns and "cash_delta" not in df.columns:
+        cash_delta = df["cash"].diff()
+        if not cash_delta.empty:
+            cash_delta.iloc[0] = df["cash"].iloc[0]
+        df["cash_delta"] = cash_delta.fillna(0.0)
+
+    if "equity" in df.columns and "equity_delta" not in df.columns:
+        equity_delta = df["equity"].diff()
+        if not equity_delta.empty:
+            equity_delta.iloc[0] = df["equity"].iloc[0]
+        df["equity_delta"] = equity_delta.fillna(0.0)
+
+    if (
+        "net_cf" in df.columns
+        and "equity_delta" in df.columns
+        and "capitalized_cf" not in df.columns
+    ):
+        df["capitalized_cf"] = df["equity_delta"] - df["net_cf"]
+
+    if (
+        "net_cf" in df.columns
+        and "cash_delta" in df.columns
+        and "cash_rebalancing" not in df.columns
+    ):
+        df["cash_rebalancing"] = df["cash_delta"] - df["net_cf"]
 
 
 def _aggregate_journal_monthly(
@@ -1572,6 +1613,8 @@ def _aggregate_journal_monthly(
         index=time_index,
     )
 
+    _append_derived_flow_columns(df)
+
     return df
 
 
@@ -1597,6 +1640,8 @@ def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate non_cash assets (only if both columns exist)
     if "assets" in df.columns and "cash" in df.columns:
         df["non_cash"] = df["assets"] - df["cash"]
+
+    _append_derived_flow_columns(df)
 
     # Assert financial identities with small tolerance for floating point errors
     eps = 1e-6
