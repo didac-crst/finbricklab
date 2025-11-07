@@ -13,15 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .bricks import (
-    ABrick,
-    FBrick,
-    FinBrickABC,
-    LBrick,
-    TBrick,
-    _slugify_brick_name,
-    wire_strategies,
-)
+from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick, wire_strategies
 from .context import ScenarioContext
 from .errors import ConfigError
 from .events import Event
@@ -32,7 +24,12 @@ from .registry import Registry
 from .results import BrickOutput, ScenarioResults, aggregate_totals, finalize_totals
 from .specs import LMortgageSpec
 from .transfer_visibility import TransferVisibility
-from .utils import _apply_window_equity_neutral, active_mask, month_range
+from .utils import (
+    _apply_window_equity_neutral,
+    active_mask,
+    month_range,
+    slugify_name,
+)
 from .validation import DisjointReport
 
 
@@ -91,7 +88,7 @@ class Scenario:
         if not self.id:
             if not self.name:
                 raise ConfigError("Scenario must define either an id or a name")
-            normalized = _slugify_brick_name(self.name)
+            normalized = slugify_name(self.name)
             if not normalized:
                 raise ConfigError(
                     f"Scenario name '{self.name}' cannot be converted into a valid id"

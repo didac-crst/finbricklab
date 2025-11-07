@@ -4,7 +4,6 @@ Brick classes for FinBrickLab financial instruments.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -17,21 +16,7 @@ from .interfaces import (
     IValuationStrategy,
 )
 from .results import BrickOutput
-
-
-def _slugify_brick_name(raw_name: str) -> str:
-    """
-    Convert a brick name into a normalized identifier.
-
-    Lowercase the string, replace whitespace groups with underscores, drop
-    leading/trailing underscores, and remove characters that are not
-    alphanumeric or underscores.
-    """
-
-    name = raw_name.strip().lower()
-    name = re.sub(r"\s+", "_", name)
-    name = re.sub(r"[^a-z0-9_]", "", name)
-    return name.strip("_")
+from .utils import slugify_name
 
 
 @dataclass
@@ -84,7 +69,7 @@ class FinBrickABC:
         if not self.id:
             if not self.name:
                 raise ConfigError("FinBrick must define either an id or a name")
-            normalized = _slugify_brick_name(self.name)
+            normalized = slugify_name(self.name)
             if not normalized:
                 raise ConfigError(
                     f"FinBrick name '{self.name}' cannot be converted into a valid id"

@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick, _slugify_brick_name
+from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick
 from .clone import clone_brick
 from .exceptions import ScenarioValidationError
 from .kinds import K
@@ -26,6 +26,7 @@ from .macrobrick import MacroBrick
 from .registry import Registry
 from .scenario import Scenario
 from .transfer_visibility import TransferVisibility
+from .utils import slugify_name
 
 
 @dataclass
@@ -72,7 +73,7 @@ class Entity:
             if not self.name:
                 raise ValueError("Entity must define either an id or a name")
 
-            normalized = _slugify_brick_name(self.name)
+            normalized = slugify_name(self.name)
             if not normalized:
                 raise ValueError(
                     f"Entity name '{self.name}' cannot be converted into a valid id"
@@ -602,7 +603,7 @@ class Entity:
         if id:
             candidate_id = id
         else:
-            candidate_id = _slugify_brick_name(name)
+            candidate_id = slugify_name(name)
             if not candidate_id:
                 raise ValueError(
                     f"MacroBrick name '{name}' cannot be converted into a valid id"
@@ -669,7 +670,7 @@ class Entity:
         if not scenario_id:
             if not name:
                 raise ValueError("Scenario must define either an id or a name")
-            scenario_id = _slugify_brick_name(name)
+            scenario_id = slugify_name(name)
             if not scenario_id:
                 raise ValueError(
                     f"Scenario name '{name}' cannot be converted into a valid id"
