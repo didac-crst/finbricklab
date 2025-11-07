@@ -363,13 +363,11 @@ class TestCashAccountConstraints:
         ]
         assert len(expense_entries) > 0, "Journal should have expense entries"
 
-        # Note: In V2, external_out is zero, so balance doesn't go negative from expenses
-        # The balance calculation is based on initial_balance + interest only
-        # Future implementation should populate external_in/external_out from journal entries
-        # and ensure balance >= -overdraft_limit
-        assert (
-            cash_balance[0] >= 0
-        ), "Balance should be non-negative (V2 limitation: external_out not populated from journal)"
+        # With journal-derived flows, the balance reflects the routed expense
+        expected_month0 = (1000.0 - 2000.0) * (1 + (0.02 / 12.0))
+        assert cash_balance[0] == pytest.approx(
+            expected_month0, rel=1e-6
+        ), "Month 1 balance should reflect routed expense and interest accrual"
 
     def test_minimum_buffer_constraint(self):
         """Test minimum buffer constraint (when implemented)."""

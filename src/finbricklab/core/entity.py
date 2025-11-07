@@ -20,6 +20,7 @@ import pandas as pd
 from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick, _slugify_brick_name
 from .clone import clone_brick
 from .exceptions import ScenarioValidationError
+from .kinds import K
 from .links import RouteLink
 from .macrobrick import MacroBrick
 from .registry import Registry
@@ -711,6 +712,37 @@ class Entity:
             return out, all_macrobricks
 
         included_ids, all_macrobricks = expand(brick_ids)
+
+        included_id_set = set(included_ids)
+
+        # Validate routing targets for flow bricks to ensure they reference a cash account
+        for brick_id in included_ids:
+            source_brick = self._bricks[brick_id]
+            if not isinstance(source_brick, FBrick):
+                continue
+            links = getattr(source_brick, "links", None)
+            if not isinstance(links, dict):
+                continue
+            route = links.get("route")
+            if not isinstance(route, dict):
+                continue
+            target_id = route.get("to")
+            if not isinstance(target_id, str):
+                continue
+            if target_id not in self._bricks:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' is not defined in entity '{self.id}'."
+                )
+            target_brick = self._bricks[target_id]
+            if not isinstance(target_brick, ABrick) or target_brick.kind != K.A_CASH:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' must be an 'a.cash' brick."
+                )
+            if target_id not in included_id_set:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' is not included in scenario '{scenario_id or name}'. "
+                    "Add the cash brick to brick_ids."
+                )
 
         # Build a **scenario-local** registry of only the included bricks + all macrobricks (for rollups)
         scen_bricks = [clone_brick(self._bricks[bid]) for bid in included_ids]

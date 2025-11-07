@@ -5,6 +5,7 @@ Tests for activation windows and delayed brick activation.
 from datetime import date
 
 import numpy as np
+import pytest
 from finbricklab.core.bricks import ABrick, FBrick
 from finbricklab.core.kinds import K
 from finbricklab.core.scenario import Scenario
@@ -43,23 +44,30 @@ class TestActivationWindows:
         # Use monthly aggregation to check cash flows
         monthly = results["views"].monthly()
         cash_in = monthly["cash_in"].values
+        cash_balance = monthly["cash"].values
 
-        # Month 0: opening balance + cash interest (month 0 includes opening deposit)
-        assert cash_in[0] > 10000.0, "Month 1 should have opening balance + interest"
+        monthly_rate = 0.02 / 12.0
+
+        # Month 0: cash balance should reflect opening balance plus interest accrual
+        assert cash_balance[0] == pytest.approx(
+            10000.0 * (1 + monthly_rate), rel=1e-6
+        ), "Month 1 cash balance should include opening balance and interest"
+
+        # Month 0 net cash flow equals interest only (opening deposit excluded)
+        assert cash_in[0] == pytest.approx(
+            10000.0 * monthly_rate, rel=1e-6
+        ), "Month 1 cash_in should capture interest accrual only"
 
         # Month 1: cash interest only (no income yet)
         # Income starts in month 3, so month 1 (index 1) should have small cash_in
+        expected_interest_m1 = cash_balance[0] * monthly_rate
         cash_in_m1 = cash_in[1]
         assert (
             0 < cash_in_m1 < 100
         ), f"Month 2 should have small cash interest only, got {cash_in_m1}"
-
-        # Month 2: still no income (income starts in month 3 = index 2)
-        # Actually wait - income start_date is date(2026, 3, 1) which is month 3 (index 2)
-        # So month 2 (index 1) should have no income yet
-        assert (
-            0 < cash_in[1] < 100
-        ), "Month 2 should have small cash interest, no income yet"
+        assert cash_in_m1 == pytest.approx(
+            expected_interest_m1, rel=1e-6
+        ), "Month 2 should have compounded interest only before income starts"
 
         # Month 3 onwards should have income (4000) plus cash interest
         assert cash_in[2] >= 4000.0, "Month 3 should have income (4000) plus interest"
@@ -95,9 +103,15 @@ class TestActivationWindows:
         # V2: Check activation window using monthly aggregation
         monthly = results["views"].monthly()
         cash_in = monthly["cash_in"].values
+        cash_balance = monthly["cash"].values
 
-        # Month 0: opening balance (5000) - no income yet
-        assert cash_in[0] >= 5000.0, "Month 1 should have opening balance"
+        # Month 0: cash balance reflects opening balance
+        assert cash_balance[0] == pytest.approx(
+            5000.0, rel=1e-6
+        ), "Month 1 cash balance should equal opening balance"
+
+        # Month 0: no cash inflow recorded (opening excluded)
+        assert cash_in[0] == pytest.approx(0.0, abs=1e-9)
 
         # Months 2-4: should have income (3000) - income starts in month 2 (index 1)
         # Note: end_date date(2026, 4, 30) may include month 5 depending on activation logic
@@ -262,10 +276,13 @@ class TestActivationWindows:
         monthly = results["views"].monthly()
         cash_in = monthly["cash_in"].values
         cash_out = monthly["cash_out"].values
+        cash_balance = monthly["cash"].values
 
         # Check income window (months 2-6)
-        # Month 0: opening balance (20000) - no income yet
-        assert cash_in[0] >= 20000.0, "Month 1: opening balance"
+        # Month 0: opening balance reflected in cash, not cash_in
+        assert cash_balance[0] == pytest.approx(
+            20000.0, rel=1e-6
+        ), "Month 1 cash balance should reflect opening balance"
         # Income starts in month 2 (index 1), end_date is date(2026, 6, 30)
         assert cash_in[1] >= 5000.0, "Month 2: income starts (5000)"
         assert cash_in[2] >= 5000.0, "Month 3: income continues (5000)"

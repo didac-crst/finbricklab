@@ -191,123 +191,129 @@ class ValuationCash(IValuationStrategy):
         overdraft_limit = brick.spec.get("overdraft_limit")
         overdraft_policy = brick.spec.get("overdraft_policy", "ignore")
 
-        # Calculate balance for first month
-        if mask[0]:
-            bal[0] = brick.spec["initial_balance"] + external_in[0] - external_out[0]
-            # Calculate interest on the balance after cash flows
-            interest_earned[0] = bal[0] * r_m
-            # V2: Create journal entry for interest (DR cash, CR income.interest or expense.interest)
-            # Emit entry for any non-zero interest (positive or negative)
-            if interest_earned[0] != 0:
-                interest_timestamp = ctx.t_index[0]
-                # Convert numpy datetime64 to Python datetime
-                from datetime import datetime
+        active_indices = np.flatnonzero(mask)
+        if active_indices.size == 0:
+            return BrickOutput(
+                cash_in=cash_in,
+                cash_out=cash_out,
+                assets=bal,
+                liabilities=np.zeros(T),
+                interest=interest_earned,
+                events=[],
+            )
 
-                import pandas as pd
+        first_active_idx = int(active_indices[0])
 
-                if isinstance(interest_timestamp, np.datetime64):
-                    interest_timestamp = pd.Timestamp(
-                        interest_timestamp
-                    ).to_pydatetime()
-                elif hasattr(interest_timestamp, "astype"):
-                    interest_timestamp = pd.Timestamp(
-                        interest_timestamp.astype("datetime64[D]")
-                    ).to_pydatetime()
-                else:
-                    interest_timestamp = datetime.fromisoformat(str(interest_timestamp))
+        def _normalize_timestamp(ts):
+            from datetime import datetime
 
-                # Use unique parent_id that includes ":interest" to avoid conflict with opening entries
-                parent_id = f"a:{brick.id}:interest"
-                operation_id = create_operation_id(parent_id, interest_timestamp)
-                # Use sequence=1 for first month's interest entry (only one entry per month)
-                entry_id = create_entry_id(operation_id, 1)
-                origin_id = generate_transaction_id(
+            import pandas as pd
+
+            if isinstance(ts, np.datetime64):
+                return pd.Timestamp(ts).to_pydatetime()
+            if hasattr(ts, "astype"):
+                return pd.Timestamp(ts.astype("datetime64[D]")).to_pydatetime()
+            return datetime.fromisoformat(str(ts))
+
+        def _post_interest_entry(month_idx: int) -> None:
+            interest_value = interest_earned[month_idx]
+            if interest_value == 0:
+                return
+
+            interest_timestamp = _normalize_timestamp(ctx.t_index[month_idx])
+            parent_id = f"a:{brick.id}:interest"
+            operation_id = create_operation_id(parent_id, interest_timestamp)
+            entry_id = create_entry_id(operation_id, 1)
+            origin_id = generate_transaction_id(
+                brick.id,
+                interest_timestamp,
+                {"interest": interest_value},
+                brick.links or {},
+                sequence=month_idx,
+            )
+
+            interest_entry = JournalEntry(
+                id=entry_id,
+                timestamp=interest_timestamp,
+                postings=[
+                    Posting(
+                        account_id=cash_node_id,
+                        amount=create_amount(interest_value, ctx.currency),
+                        metadata={},
+                    ),
+                    Posting(
+                        account_id=BOUNDARY_NODE_ID,
+                        amount=create_amount(-interest_value, ctx.currency),
+                        metadata={},
+                    ),
+                ],
+                metadata={},
+            )
+
+            stamp_entry_metadata(
+                interest_entry,
+                parent_id=parent_id,
+                timestamp=interest_timestamp,
+                tags={"type": "interest"},
+                sequence=1,
+                origin_id=origin_id,
+            )
+
+            if interest_value > 0:
+                interest_entry.metadata["transaction_type"] = "income"
+                boundary_category = "income.interest"
+            else:
+                interest_entry.metadata["transaction_type"] = "expense"
+                boundary_category = "expense.interest"
+
+            stamp_posting_metadata(
+                interest_entry.postings[0],
+                node_id=cash_node_id,
+                type_tag="interest",
+            )
+            stamp_posting_metadata(
+                interest_entry.postings[1],
+                node_id=BOUNDARY_NODE_ID,
+                category=boundary_category,
+                type_tag="interest",
+            )
+
+            if not journal.has_id(interest_entry.id):
+                journal.post(interest_entry)
+
+        # Seed the first active month
+        bal[first_active_idx] = (
+            brick.spec["initial_balance"]
+            + external_in[first_active_idx]
+            - external_out[first_active_idx]
+        )
+        interest_earned[first_active_idx] = bal[first_active_idx] * r_m
+        _post_interest_entry(first_active_idx)
+        bal[first_active_idx] *= 1 + r_m
+        bal[first_active_idx] += (
+            post_interest_in[first_active_idx] - post_interest_out[first_active_idx]
+        )
+
+        if overdraft_limit is not None and bal[first_active_idx] < -overdraft_limit:
+            if overdraft_policy == "raise":
+                raise ConfigError(
+                    f"{brick.id}: overdraft_limit exceeded at month {first_active_idx}: "
+                    f"balance {bal[first_active_idx]:.2f} < -{overdraft_limit:.2f}"
+                )
+            elif overdraft_policy == "warn":
+                import logging
+
+                log = logging.getLogger(__name__)
+                log.warning(
+                    "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",
                     brick.id,
-                    interest_timestamp,
-                    {"interest": interest_earned[0]},
-                    brick.links or {},
-                    sequence=0,  # Month index for origin_id uniqueness
+                    first_active_idx,
+                    bal[first_active_idx],
+                    overdraft_limit,
                 )
 
-                interest_entry = JournalEntry(
-                    id=entry_id,
-                    timestamp=interest_timestamp,
-                    postings=[
-                        Posting(
-                            account_id=cash_node_id,
-                            amount=create_amount(interest_earned[0], ctx.currency),
-                            metadata={},
-                        ),
-                        Posting(
-                            account_id=BOUNDARY_NODE_ID,
-                            amount=create_amount(-interest_earned[0], ctx.currency),
-                            metadata={},
-                        ),
-                    ],
-                    metadata={},
-                )
-
-                stamp_entry_metadata(
-                    interest_entry,
-                    parent_id=parent_id,  # Use same parent_id as operation_id
-                    timestamp=interest_timestamp,
-                    tags={"type": "interest"},
-                    sequence=1,  # Sequence within operation (1 for single interest entry)
-                    origin_id=origin_id,
-                )
-
-                # Set transaction_type based on interest sign
-                if interest_earned[0] > 0:
-                    interest_entry.metadata["transaction_type"] = "income"
-                    boundary_category = "income.interest"
-                else:
-                    interest_entry.metadata["transaction_type"] = "expense"
-                    boundary_category = "expense.interest"
-
-                stamp_posting_metadata(
-                    interest_entry.postings[0],
-                    node_id=cash_node_id,
-                    type_tag="interest",
-                )
-                stamp_posting_metadata(
-                    interest_entry.postings[1],
-                    node_id=BOUNDARY_NODE_ID,
-                    category=boundary_category,
-                    type_tag="interest",
-                )
-
-                # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                if not journal.has_id(interest_entry.id):
-                    journal.post(interest_entry)
-
-            # Apply interest to balance
-            bal[0] *= 1 + r_m
-            # Apply post-interest adjustments (no interest on these)
-            bal[0] += post_interest_in[0] - post_interest_out[0]
-
-            # Enforce overdraft limit if configured
-            if overdraft_limit is not None and bal[0] < -overdraft_limit:
-                if overdraft_policy == "raise":
-                    raise ConfigError(
-                        f"{brick.id}: overdraft_limit exceeded at month 0: balance {bal[0]:.2f} < -{overdraft_limit:.2f}"
-                    )
-                elif overdraft_policy == "warn":
-                    import logging
-
-                    log = logging.getLogger(__name__)
-                    log.warning(
-                        "%s: overdraft_limit exceeded at month 0: balance %.2f < -%.2f",
-                        brick.id,
-                        bal[0],
-                        overdraft_limit,
-                    )
-                # "ignore": do nothing; keep balance as computed
-        else:
-            bal[0] = 0.0
-            interest_earned[0] = 0.0
-
-        # Calculate balance for remaining months
-        for t in range(1, T):
+        # Calculate balance for remaining months (after first active)
+        for t in range(first_active_idx + 1, T):
             # Apply active mask before interest calculations
             if mask[t]:
                 # Start with previous month's balance
@@ -316,91 +322,7 @@ class ValuationCash(IValuationStrategy):
                 bal[t] += external_in[t] - external_out[t]
                 # Calculate interest on the full balance (including this month's flows)
                 interest_earned[t] = bal[t] * r_m
-                # V2: Create journal entry for interest (DR cash, CR income.interest or expense.interest)
-                # Emit entry for any non-zero interest (positive or negative)
-                if interest_earned[t] != 0:
-                    interest_timestamp = ctx.t_index[t]
-                    # Convert numpy datetime64 to Python datetime
-                    from datetime import datetime
-
-                    import pandas as pd
-
-                    if isinstance(interest_timestamp, np.datetime64):
-                        interest_timestamp = pd.Timestamp(
-                            interest_timestamp
-                        ).to_pydatetime()
-                    elif hasattr(interest_timestamp, "astype"):
-                        interest_timestamp = pd.Timestamp(
-                            interest_timestamp.astype("datetime64[D]")
-                        ).to_pydatetime()
-                    else:
-                        interest_timestamp = datetime.fromisoformat(
-                            str(interest_timestamp)
-                        )
-
-                    # Use unique parent_id that includes ":interest" to avoid conflict with opening entries
-                    parent_id = f"a:{brick.id}:interest"
-                    operation_id = create_operation_id(parent_id, interest_timestamp)
-                    # Use sequence=1 for interest entry (only one entry per month)
-                    entry_id = create_entry_id(operation_id, 1)
-                    origin_id = generate_transaction_id(
-                        brick.id,
-                        interest_timestamp,
-                        {"interest": interest_earned[t]},
-                        brick.links or {},
-                        sequence=t,  # Month index for origin_id uniqueness
-                    )
-
-                    interest_entry = JournalEntry(
-                        id=entry_id,
-                        timestamp=interest_timestamp,
-                        postings=[
-                            Posting(
-                                account_id=cash_node_id,
-                                amount=create_amount(interest_earned[t], ctx.currency),
-                                metadata={},
-                            ),
-                            Posting(
-                                account_id=BOUNDARY_NODE_ID,
-                                amount=create_amount(-interest_earned[t], ctx.currency),
-                                metadata={},
-                            ),
-                        ],
-                        metadata={},
-                    )
-
-                    stamp_entry_metadata(
-                        interest_entry,
-                        parent_id=parent_id,  # Use same parent_id as operation_id
-                        timestamp=interest_timestamp,
-                        tags={"type": "interest"},
-                        sequence=1,  # Sequence within operation (1 for single interest entry)
-                        origin_id=origin_id,
-                    )
-
-                    # Set transaction_type based on interest sign
-                    if interest_earned[t] > 0:
-                        interest_entry.metadata["transaction_type"] = "income"
-                        boundary_category = "income.interest"
-                    else:
-                        interest_entry.metadata["transaction_type"] = "expense"
-                        boundary_category = "expense.interest"
-
-                    stamp_posting_metadata(
-                        interest_entry.postings[0],
-                        node_id=cash_node_id,
-                        type_tag="interest",
-                    )
-                    stamp_posting_metadata(
-                        interest_entry.postings[1],
-                        node_id=BOUNDARY_NODE_ID,
-                        category=boundary_category,
-                        type_tag="interest",
-                    )
-
-                    # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
-                    if not journal.has_id(interest_entry.id):
-                        journal.post(interest_entry)
+                _post_interest_entry(t)
 
                 # Apply interest to balance
                 bal[t] *= 1 + r_m

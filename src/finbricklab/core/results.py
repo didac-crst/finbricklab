@@ -1292,6 +1292,8 @@ def _aggregate_journal_monthly(
     length = len(time_index)
     cash_in = np.zeros(length)
     cash_out = np.zeros(length)
+    interest_in_from_journal = np.zeros(length)
+    interest_out_from_journal = np.zeros(length)
     assets = np.zeros(length)
     liabilities = np.zeros(length)
     interest = np.zeros(length)
@@ -1363,6 +1365,8 @@ def _aggregate_journal_monthly(
 
         # Process each entry
         for entry in month_entries:
+            if entry.metadata.get("transaction_type") == "opening":
+                continue
             # Check if entry touches boundary
             # Use get_node_scope() to detect boundary accounts (including FX_CLEAR_NODE_ID)
             touches_boundary = False
@@ -1486,6 +1490,9 @@ def _aggregate_journal_monthly(
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
             if asset_posting:
+                is_interest_entry = (
+                    entry.metadata.get("tags", {}).get("type") == "interest"
+                )
                 asset_node_id = asset_posting.metadata.get("node_id")
                 if (
                     asset_node_id is not None
@@ -1495,8 +1502,12 @@ def _aggregate_journal_monthly(
                     amount = float(asset_posting.amount.value)
                     if asset_posting.is_debit():
                         cash_in[month_idx] += abs(amount)
+                        if is_interest_entry:
+                            interest_in_from_journal[month_idx] += abs(amount)
                     else:  # credit
                         cash_out[month_idx] += abs(amount)
+                        if is_interest_entry:
+                            interest_out_from_journal[month_idx] += abs(amount)
 
         # Aggregate balances from outputs if provided
         if outputs:
@@ -1511,6 +1522,12 @@ def _aggregate_journal_monthly(
                         interest[month_idx] += output["interest"][month_idx]
 
     # Calculate derived fields
+    desired_interest_in = np.clip(interest, a_min=0.0, a_max=None)
+    desired_interest_out = np.clip(-interest, a_min=0.0, a_max=None)
+
+    cash_in += desired_interest_in - interest_in_from_journal
+    cash_out += desired_interest_out - interest_out_from_journal
+
     net_cf = cash_in - cash_out
     equity = assets - liabilities
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import numpy as np
@@ -587,6 +587,11 @@ class Scenario:
         brick_iteration_counters = {}
         # compiler = BrickCompiler(account_registry)  # No longer needed with new journal system
 
+        period_index = pd.PeriodIndex(t_index, freq="M")
+        month_lookup = {
+            period.strftime("%Y-%m"): idx for idx, period in enumerate(period_index)
+        }
+
         # Register all cash accounts as internal assets
         cash_ids = [
             b.id
@@ -613,6 +618,17 @@ class Scenario:
                 continue
 
             cash_brick = next(b for b in self.bricks if b.id == cash_id)
+            mask = active_mask(
+                t_index,
+                cash_brick.start_date,
+                cash_brick.end_date,
+                cash_brick.duration_m,
+            )
+            active_indices = np.flatnonzero(mask)
+            if active_indices.size == 0:
+                continue
+
+            first_active_idx = int(active_indices[0])
             initial_balance = cash_brick.spec.get("initial_balance", 0.0)
             if initial_balance != 0:
                 import hashlib
@@ -634,8 +650,8 @@ class Scenario:
                 # Use node IDs for account_id (consistent with V2 model)
                 cash_node_id = get_node_id(cash_id, "a")
                 opening_entry = JournalEntry(
-                    id=f"opening:{cash_id}:0",
-                    timestamp=ctx.t_index[0],
+                    id=f"opening:{cash_id}:{first_active_idx}",
+                    timestamp=ctx.t_index[first_active_idx],
                     postings=[
                         Posting(
                             BOUNDARY_NODE_ID,  # Use node ID for boundary side
@@ -661,7 +677,7 @@ class Scenario:
                 stamp_entry_metadata(
                     entry=opening_entry,
                     parent_id=f"a:{cash_id}",  # Asset brick parent
-                    timestamp=ctx.t_index[0],
+                    timestamp=ctx.t_index[first_active_idx],
                     tags={"type": "opening_balance"},
                     sequence=1,
                     origin_id=origin_id,
@@ -794,6 +810,7 @@ class Scenario:
             # Calculate external flows from FBrick outputs for this cash account
             external_in = np.zeros(len(ctx.t_index))
             external_out = np.zeros(len(ctx.t_index))
+            array_parent_ids: set[str] = set()
 
             # Sum up all brick flows that route to this cash account
             for brick_id, brick_output in outputs.items():
@@ -813,22 +830,34 @@ class Scenario:
                     ):
                         if brick.links["route"]["to"] == b.id:
                             # This brick routes to our cash account
-                            external_in += brick_output["cash_in"]
-                            external_out += brick_output["cash_out"]
+                            if np.any(brick_output["cash_in"]) or np.any(
+                                brick_output["cash_out"]
+                            ):
+                                external_in += brick_output["cash_in"]
+                                external_out += brick_output["cash_out"]
+                                array_parent_ids.add(f"fs:{brick_id}")
                     elif not (brick.links and "route" in brick.links):
                         # No explicit routing - use default routing (all flows go to first cash account)
                         # This maintains backward compatibility with the old system
-                        external_in += brick_output["cash_in"]
-                        external_out += brick_output["cash_out"]
+                        if np.any(brick_output["cash_in"]) or np.any(
+                            brick_output["cash_out"]
+                        ):
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                            array_parent_ids.add(f"fs:{brick_id}")
                 elif isinstance(brick, TBrick):
                     # Transfer bricks: route based on from/to links
                     if brick.links and "from" in brick.links and "to" in brick.links:
                         if brick.links["from"] == b.id:
                             # Money going out from this account
-                            external_out += brick_output["cash_out"]
+                            if np.any(brick_output["cash_out"]):
+                                external_out += brick_output["cash_out"]
+                                array_parent_ids.add(f"ts:{brick_id}")
                         elif brick.links["to"] == b.id:
                             # Money coming in to this account
-                            external_in += brick_output["cash_in"]
+                            if np.any(brick_output["cash_in"]):
+                                external_in += brick_output["cash_in"]
+                                array_parent_ids.add(f"ts:{brick_id}")
                 elif isinstance(brick, ABrick) and brick.kind == K.A_PROPERTY:
                     # Property bricks generate cash flows (purchase costs, etc.)
                     # Check for explicit routing first
@@ -839,12 +868,20 @@ class Scenario:
                     ):
                         if brick.links["route"]["to"] == b.id:
                             # This brick routes to our cash account
-                            external_in += brick_output["cash_in"]
-                            external_out += brick_output["cash_out"]
+                            if np.any(brick_output["cash_in"]) or np.any(
+                                brick_output["cash_out"]
+                            ):
+                                external_in += brick_output["cash_in"]
+                                external_out += brick_output["cash_out"]
+                                array_parent_ids.add(f"a:{brick_id}")
                     elif b.id == self.settlement_default_cash_id:
                         # Fall back to settlement account if no explicit routing
-                        external_in += brick_output["cash_in"]
-                        external_out += brick_output["cash_out"]
+                        if np.any(brick_output["cash_in"]) or np.any(
+                            brick_output["cash_out"]
+                        ):
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                            array_parent_ids.add(f"a:{brick_id}")
                 elif isinstance(brick, LBrick):
                     # Liability bricks generate cash flows (payments, etc.)
                     # Check for explicit routing first
@@ -855,12 +892,20 @@ class Scenario:
                     ):
                         if brick.links["route"]["to"] == b.id:
                             # This brick routes to our cash account
-                            external_in += brick_output["cash_in"]
-                            external_out += brick_output["cash_out"]
+                            if np.any(brick_output["cash_in"]) or np.any(
+                                brick_output["cash_out"]
+                            ):
+                                external_in += brick_output["cash_in"]
+                                external_out += brick_output["cash_out"]
+                                array_parent_ids.add(f"l:{brick_id}")
                     elif b.id == self.settlement_default_cash_id:
                         # Fall back to settlement account if no explicit routing
-                        external_in += brick_output["cash_in"]
-                        external_out += brick_output["cash_out"]
+                        if np.any(brick_output["cash_in"]) or np.any(
+                            brick_output["cash_out"]
+                        ):
+                            external_in += brick_output["cash_in"]
+                            external_out += brick_output["cash_out"]
+                            array_parent_ids.add(f"l:{brick_id}")
                 elif isinstance(brick, ABrick) and brick.kind == K.A_CASH:
                     # Cash accounts with maturity transfers
                     # Check for explicit routing first
@@ -871,8 +916,40 @@ class Scenario:
                     ):
                         if brick.links["route"]["to"] == b.id:
                             # This cash account routes to our cash account (maturity transfer)
-                            external_in += brick_output["cash_in"]
-                            external_out += brick_output["cash_out"]
+                            if np.any(brick_output["cash_in"]) or np.any(
+                                brick_output["cash_out"]
+                            ):
+                                external_in += brick_output["cash_in"]
+                                external_out += brick_output["cash_out"]
+                                array_parent_ids.add(f"a:{brick_id}")
+
+            cash_node_id = get_node_id(b.id, "a")
+            for entry in journal.entries:
+                parent_id = entry.metadata.get("parent_id")
+                if parent_id in array_parent_ids:
+                    continue
+                if entry.metadata.get("transaction_type") == "opening":
+                    continue
+                if entry.metadata.get("tags", {}).get("type") == "interest":
+                    continue
+
+                if isinstance(entry.timestamp, datetime):
+                    month_str = entry.timestamp.strftime("%Y-%m")
+                else:
+                    month_str = str(entry.timestamp)[:7]
+                month_idx = month_lookup.get(month_str)
+                if month_idx is None:
+                    continue
+
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id != cash_node_id:
+                        continue
+                    amount = float(posting.amount.value)
+                    if posting.is_debit():
+                        external_in[month_idx] += abs(amount)
+                    else:
+                        external_out[month_idx] += abs(amount)
 
             # Set external flows for backward compatibility
             b.spec["external_in"] = external_in
