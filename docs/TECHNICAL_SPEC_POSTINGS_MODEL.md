@@ -253,3 +253,18 @@ MacroGroup inspection
 - Account mapping: ensure each A/L brick registers the account ids it uses; derive `node_id` consistently (e.g., prefix `a:` or `l:`). For boundary postings, set `node_id = 'b:boundary'` and carry a `category` tag.
 - FX: split cross‑currency into separate entries (trade + FX P&L) so each entry stays zero‑sum per currency.
 - Performance: index journal by month and by account; prefer vectorized groupby over Python loops.
+
+## Appendix: Answered V2 Questions
+
+The design questions previously tracked in `V2_QUESTIONS.md` have been reconciled into this spec. Key outcomes:
+
+1. **Migration** – Single cutover. `BrickOutput` keeps balance data but cash arrays are optional shells. All tests/docs assume journal-first.
+2. **Strategy Interface** – All shells write directly to `ScenarioContext.journal`. Interest arrays remain for KPI continuity; no alternative output type was introduced.
+3. **Node IDs & Registry** – `AccountRegistry` is authoritative. It auto-derives `a:/l:` IDs, registers boundary constants, and provides lookup/validation helpers.
+4. **Two-Posting Invariant** – Enforced at entry creation with immediate failure on violation, including per-currency zero sum and unique `origin_id`.
+5. **FX Handling** – Three-leg pattern (source, destination, P&L) with the clearing account `b:fx_clear`; per-currency zero sum is guaranteed by separate entries.
+6. **Aggregation** – `ScenarioResults.monthly()` always uses the journal. Internal transfers cancel when both postings belong to the selection, and transfer visibility filters are applied afterward.
+7. **MacroGroups** – Only A/L nodes (or nested MacroGroups) are valid members; DAG validation happens eagerly to prevent cycles.
+8. **CLI/Diagnostics** – Boundary-only visibility is the default; diagnostics output includes cancellation stats, FX detection, and category totals.
+
+This appendix keeps the spec self-contained; future design changes should update this list instead of reviving a separate Q&A doc.
