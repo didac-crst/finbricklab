@@ -927,8 +927,10 @@ class Scenario:
                     continue
                 if entry.metadata.get("transaction_type") == "opening":
                     continue
-                if entry.metadata.get("tags", {}).get("type") == "interest":
-                    continue
+                tag_type = entry.metadata.get("tags", {}).get("type")
+                if tag_type == "interest":
+                    if isinstance(parent_id, str) and parent_id.startswith(f"a:{b.id}"):
+                        continue
 
                 if isinstance(entry.timestamp, datetime):
                     month_str = entry.timestamp.strftime("%Y-%m")
