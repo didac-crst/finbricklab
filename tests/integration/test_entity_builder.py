@@ -12,6 +12,7 @@ from finbricklab.core.entity import Entity
 from finbricklab.core.exceptions import ScenarioValidationError
 from finbricklab.core.kinds import K
 from finbricklab.core.links import RouteLink
+from finbricklab.core.scenario import Scenario
 
 
 class TestEntityBuilder:
@@ -132,6 +133,33 @@ class TestEntityBuilder:
             "investments",
             "portfolio",
         }  # Both parent and child MacroBricks
+
+    def test_auto_id_generation_for_entity_and_scenario(self):
+        """Entity and Scenario derive IDs from names when omitted."""
+
+        entity = Entity(id=None, name="Family Portfolio")
+        assert entity.id == "family_portfolio"
+
+        cash_brick = entity.new_ABrick(
+            id=None,
+            name="Cash Account",
+            kind=K.A_CASH,
+            spec={"initial_balance": 1000.0},
+        )
+
+        scenario = entity.create_scenario(
+            id=None,
+            name="Retirement Strategy",
+            brick_ids=[cash_brick.id],
+            settlement_default_cash_id=cash_brick.id,
+        )
+
+        assert scenario.id == "retirement_strategy"
+        assert scenario is entity.get_scenario("retirement_strategy")
+        assert "retirement_strategy" in entity.list_scenarios()
+
+        standalone = Scenario(id=None, name="Standalone Plan", bricks=[])
+        assert standalone.id == "standalone_plan"
 
     def test_validation_error_handling(self):
         """Test validation error handling with detailed error information."""

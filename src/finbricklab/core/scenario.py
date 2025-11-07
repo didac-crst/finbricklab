@@ -19,6 +19,7 @@ from .bricks import (
     FinBrickABC,
     LBrick,
     TBrick,
+    _slugify_brick_name,
     wire_strategies,
 )
 from .context import ScenarioContext
@@ -71,9 +72,9 @@ class Scenario:
         cash flow routing to specific accounts.
     """
 
-    id: str
     name: str
     bricks: list[FinBrickABC]
+    id: str = ""
     macrobricks: list[MacroBrick] = field(default_factory=list)
     currency: str = "EUR"
     config: ScenarioConfig = field(default_factory=ScenarioConfig)
@@ -87,6 +88,16 @@ class Scenario:
 
     def __post_init__(self):
         """Initialize the registry after dataclass construction."""
+        if not self.id:
+            if not self.name:
+                raise ConfigError("Scenario must define either an id or a name")
+            normalized = _slugify_brick_name(self.name)
+            if not normalized:
+                raise ConfigError(
+                    f"Scenario name '{self.name}' cannot be converted into a valid id"
+                )
+            self.id = normalized
+
         if self._registry is None:
             self._registry = self._build_registry()
 
@@ -137,7 +148,7 @@ class Scenario:
             macrobricks.append(MacroBrick(**struct_cfg))
 
         return cls(
-            id=data.get("id", "scenario"),
+            id=data.get("id") or "",
             name=data.get("name", "Unnamed Scenario"),
             bricks=bricks,
             macrobricks=macrobricks,
