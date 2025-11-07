@@ -186,7 +186,14 @@ class TransferLumpSum(ITransferStrategy):
                 break
 
         if month_idx is None:
-            month_idx = 0
+            return BrickOutput(
+                cash_in=cash_in,
+                cash_out=cash_out,
+                assets=np.zeros(T),
+                liabilities=np.zeros(T),
+                interest=np.zeros(T),
+                events=[],
+            )
 
         # Use the canonical timeline timestamp for all postings (transfer, fees, FX)
         transfer_timestamp = ctx.t_index[month_idx]
@@ -358,15 +365,11 @@ class TransferLumpSum(ITransferStrategy):
         # FX entries are created outside the regular transfer block
         if month_idx < T and has_fx:
             fx = brick.spec["fx"]
-            if "_pair_codes" in fx:
-                pair_source, pair_dest = fx["_pair_codes"]
-            else:
-                pair_parts = fx["pair"].split("/")
-                if len(pair_parts) != 2:
-                    raise ConfigError(
-                        f"{brick.id}: FX 'pair' must contain exactly two ISO codes"
-                    )
-                pair_source, pair_dest = pair_parts[0], pair_parts[1]
+            if "_pair_codes" not in fx:
+                raise ConfigError(
+                    f"{brick.id}: FX pair was not normalized in prepare()"
+                )
+            pair_source, pair_dest = fx["_pair_codes"]
             source_currency = pair_source
             dest_currency = pair_dest
 
@@ -389,13 +392,11 @@ class TransferLumpSum(ITransferStrategy):
                     )
 
             # Calculate destination amount
-            fx_rate = fx.get("_rate_decimal")
-            if fx_rate is None:
-                fx_rate = (
-                    fx["rate"]
-                    if isinstance(fx["rate"], Decimal)
-                    else Decimal(str(fx["rate"]))
+            if "_rate_decimal" not in fx:
+                raise ConfigError(
+                    f"{brick.id}: FX rate was not normalized in prepare()"
                 )
+            fx_rate = fx["_rate_decimal"]
             amount_source = amount
             amount_dest = amount_source * fx_rate
 
