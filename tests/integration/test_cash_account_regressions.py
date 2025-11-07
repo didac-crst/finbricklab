@@ -59,6 +59,58 @@ def _run_cash_scenario(
     return entity.run_scenario("base_scenario", start=date(2026, 1, 1), months=months)
 
 
+def _run_transfer_scenario(*, include_transfer: bool, months: int = 24) -> dict:
+    """
+    Helper that configures a checking/savings setup with optional recurring transfer.
+    """
+
+    entity = Entity(name="John Muster")
+
+    entity.new_ABrick(
+        name="Checking Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 2, 1),
+        spec={"initial_balance": 100_000.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Savings Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 3, 1),
+        spec={"initial_balance": 1_000.0, "interest_pa": 0.02},
+    )
+
+    entity.new_FBrick(
+        name="Salary",
+        kind=K.F_INCOME_RECURRING,
+        start_date=date(2026, 5, 1),
+        spec={"amount_monthly": 5_000.0, "step_pct": 0.022, "step_every_m": 12},
+        links={"route": {"to": "checking_account"}},
+    )
+
+    brick_ids = ["checking_account", "savings_account", "salary"]
+
+    if include_transfer:
+        entity.new_TBrick(
+            name="Savings Transfer",
+            kind=K.T_TRANSFER_RECURRING,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 12, 1),
+            spec={"amount": 10_000.0, "frequency": "MONTHLY"},
+            links={"from": "checking_account", "to": "savings_account"},
+        )
+        brick_ids.append("savings_transfer")
+
+    entity.create_scenario(
+        name="Transfer Regression",
+        brick_ids=brick_ids,
+        settlement_default_cash_id="checking_account",
+    )
+
+    return entity.run_scenario(
+        "transfer_regression", start=date(2026, 1, 1), months=months
+    )
+
+
 def test_single_cash_account_keeps_initial_balance_without_interest():
     """Baseline regression: equity should stay flat when interest is disabled."""
 
@@ -163,3 +215,58 @@ def test_salary_and_cash_with_staggered_start_dates():
     )
     assert monthly["net_cf"].loc["2026-05"] == pytest.approx(5_000.0)
     assert monthly["net_cf"].loc["2026-06"] == pytest.approx(5_000.0)
+
+
+def test_transfer_shell_excluded_has_no_effect_on_savings():
+    """Leaving the transfer brick out means savings only accrues interest."""
+
+    results = _run_transfer_scenario(include_transfer=False, months=18)
+    savings_assets = results["outputs"]["savings_account"]["assets"]
+    checking_assets = results["outputs"]["checking_account"]["assets"]
+
+    monthly_rate = 0.02 / 12.0
+    first_active_idx = 2  # March 2026
+
+    assert savings_assets[first_active_idx] == pytest.approx(
+        1_000.0 * (1 + monthly_rate), rel=1e-6
+    )
+
+    for idx in range(first_active_idx + 1, first_active_idx + 6):
+        expected = savings_assets[idx - 1] * (1 + monthly_rate)
+        assert savings_assets[idx] == pytest.approx(expected, rel=1e-6)
+
+    salary_start_idx = 4  # May 2026
+    for idx in range(salary_start_idx, salary_start_idx + 4):
+        assert checking_assets[idx] - checking_assets[idx - 1] == pytest.approx(5_000.0)
+
+
+def test_transfer_shell_included_moves_cash_between_accounts():
+    """Including the transfer brick moves money from checking into savings."""
+
+    results = _run_transfer_scenario(include_transfer=True, months=18)
+    savings_assets = results["outputs"]["savings_account"]["assets"]
+    checking_assets = results["outputs"]["checking_account"]["assets"]
+
+    monthly_rate = 0.02 / 12.0
+    first_transfer_idx = 3  # April 2026
+
+    expected_after_first_transfer = (
+        savings_assets[first_transfer_idx - 1] + 10_000.0
+    ) * (1 + monthly_rate)
+    assert savings_assets[first_transfer_idx] == pytest.approx(
+        expected_after_first_transfer, rel=1e-6
+    )
+
+    for idx in range(first_transfer_idx + 1, first_transfer_idx + 6):
+        expected = (savings_assets[idx - 1] + 10_000.0) * (1 + monthly_rate)
+        assert savings_assets[idx] == pytest.approx(expected, rel=1e-6)
+
+    assert checking_assets[first_transfer_idx] == pytest.approx(
+        checking_assets[first_transfer_idx - 1] - 10_000.0, rel=1e-6
+    )
+
+    salary_start_idx = 4  # May 2026
+    for idx in range(salary_start_idx, salary_start_idx + 4):
+        assert checking_assets[idx] - checking_assets[idx - 1] == pytest.approx(
+            -5_000.0
+        )
