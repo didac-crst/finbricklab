@@ -278,82 +278,81 @@ class TransferLumpSum(ITransferStrategy):
             )
             events.append(event)
 
-            # Handle fees if specified (create separate fee entry)
-            if "fees" in brick.spec:
-                fees = brick.spec["fees"]
-                fee_amount = Decimal(str(fees["amount"]))
-                fee_currency = fees.get("currency", currency)
-                fee_node_id = fees.get("_account_node_id") or validate_fee_account(
-                    brick.id, fees.get("account")
-                )
+        if month_idx < T and "fees" in brick.spec:
+            fees = brick.spec["fees"]
+            fee_amount = Decimal(str(fees["amount"]))
+            fee_currency = fees.get("currency", currency)
+            fee_node_id = fees.get("_account_node_id") or validate_fee_account(
+                brick.id, fees.get("account")
+            )
 
-                fee_operation_id = create_operation_id(
-                    f"ts:{brick.id}:fee", transfer_timestamp
-                )
-                fee_entry_id = create_entry_id(fee_operation_id, 1)
-                fee_origin_id = generate_transaction_id(
-                    brick.id,
-                    transfer_timestamp,
-                    {"fee": float(fee_amount)},
-                    brick.links or {},
-                    sequence=0,
-                )
+            fee_operation_id = create_operation_id(
+                f"ts:{brick.id}:fee", transfer_timestamp
+            )
+            fee_entry_id = create_entry_id(fee_operation_id, 1)
+            fee_origin_id = generate_transaction_id(
+                brick.id,
+                transfer_timestamp,
+                {"fee": float(fee_amount)},
+                brick.links or {},
+                sequence=0,
+            )
 
-                fee_entry = JournalEntry(
-                    id=fee_entry_id,
-                    timestamp=transfer_timestamp,
-                    postings=[
-                        Posting(
-                            account_id=fee_node_id,
-                            amount=create_amount(float(fee_amount), fee_currency),
-                            metadata={},
-                        ),
-                        Posting(
-                            account_id=to_node_id,
-                            amount=create_amount(-float(fee_amount), fee_currency),
-                            metadata={},
-                        ),
-                    ],
-                    metadata={},
-                )
+            fee_entry = JournalEntry(
+                id=fee_entry_id,
+                timestamp=transfer_timestamp,
+                postings=[
+                    Posting(
+                        account_id=fee_node_id,
+                        amount=create_amount(float(fee_amount), fee_currency),
+                        metadata={},
+                    ),
+                    Posting(
+                        account_id=to_node_id,
+                        amount=create_amount(-float(fee_amount), fee_currency),
+                        metadata={},
+                    ),
+                ],
+                metadata={},
+            )
 
-                stamp_entry_metadata(
-                    fee_entry,
-                    parent_id=f"ts:{brick.id}",
-                    timestamp=transfer_timestamp,
-                    tags={"type": "transfer_fee"},
-                    sequence=2,
-                    origin_id=fee_origin_id,
-                )
+            stamp_entry_metadata(
+                fee_entry,
+                parent_id=f"ts:{brick.id}",
+                timestamp=transfer_timestamp,
+                tags={"type": "transfer_fee"},
+                sequence=2,
+                origin_id=fee_origin_id,
+            )
 
-                fee_entry.metadata["transaction_type"] = "transfer"
+            fee_entry.metadata["transaction_type"] = "transfer"
 
-                stamp_posting_metadata(
-                    fee_entry.postings[0],
-                    node_id=fee_node_id,
-                    category="expense.transfer_fee",
-                    type_tag="fee",
-                )
-                stamp_posting_metadata(
-                    fee_entry.postings[1],
-                    node_id=to_node_id,
-                    type_tag="fee",
-                )
+            stamp_posting_metadata(
+                fee_entry.postings[0],
+                node_id=fee_node_id,
+                category="expense.transfer_fee",
+                type_tag="fee",
+            )
+            stamp_posting_metadata(
+                fee_entry.postings[1],
+                node_id=to_node_id,
+                type_tag="fee",
+            )
 
-                journal.post(fee_entry)
+            journal.post(fee_entry)
 
-                # Create fee event
-                fee_event = Event(
-                    ctx.t_index[month_idx],
-                    "transfer_fee",
-                    f"Transfer fee: {create_amount(fee_amount, fee_currency)}",
-                    {
-                        "amount": float(fee_amount),
-                        "currency": fee_currency,
-                        "account": fees.get("account"),
-                    },
-                )
-                events.append(fee_event)
+            # Create fee event
+            fee_event = Event(
+                ctx.t_index[month_idx],
+                "transfer_fee",
+                f"Transfer fee: {create_amount(fee_amount, fee_currency)}",
+                {
+                    "amount": float(fee_amount),
+                    "currency": fee_currency,
+                    "account": fees.get("account"),
+                },
+            )
+            events.append(fee_event)
 
         # Handle FX if specified (V2: create FX journal entries)
         # FX entries are created outside the regular transfer block
