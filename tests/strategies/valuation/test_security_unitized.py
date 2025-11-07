@@ -185,7 +185,7 @@ class TestETFUnitizedMath:
             e
             for e in journal.entries
             if e.metadata.get("transaction_type") == "transfer"
-            and "a:etf" in e.metadata.get("parent_id", "")
+            and e.metadata.get("parent_id") == "a:etf"
         ]
 
         # Should have transfer entries (liquidation at end)
@@ -194,8 +194,6 @@ class TestETFUnitizedMath:
         ), "Should have transfer entries from liquidation"
 
         # Find liquidation entry (final month)
-        from datetime import datetime
-
         from finbricklab.core.accounts import get_node_id
 
         cash_node_id = get_node_id("cash", "a")
@@ -203,10 +201,7 @@ class TestETFUnitizedMath:
         final_month_str = "2026-12"
 
         liquidation_entries = [
-            e
-            for e in transfer_entries
-            if isinstance(e.timestamp, datetime)
-            and e.timestamp.strftime("%Y-%m") == final_month_str
+            e for e in transfer_entries if str(e.timestamp)[:7] == final_month_str
         ]
 
         # Should have liquidation entry in final month
@@ -422,7 +417,7 @@ class TestETFScenarioIntegration:
             e
             for e in journal.entries
             if e.metadata.get("transaction_type") == "transfer"
-            and "a:etf" in e.metadata.get("parent_id", "")
+            and e.metadata.get("parent_id") == "a:etf"
         ]
 
         # Should have transfer entries (liquidation at end)

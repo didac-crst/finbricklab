@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from finbricklab.core.accounts import (
-    BOUNDARY_NODE_ID,
     FX_CLEAR_NODE_ID,
     Account,
     AccountScope,
@@ -34,6 +33,8 @@ from finbricklab.core.journal import (
     stamp_posting_metadata,
 )
 from finbricklab.core.results import BrickOutput
+
+from ._validation import validate_fee_account, validate_fx_spec
 
 
 class TransferLumpSum(ITransferStrategy):
@@ -110,10 +111,16 @@ class TransferLumpSum(ITransferStrategy):
                     "TransferLumpSum: fees require 'amount' and 'account'"
                 )
 
+            fee_node_id = validate_fee_account(brick.id, fees.get("account"))
+            fees["_account_node_id"] = fee_node_id
+
         if "fx" in brick.spec:
             fx = brick.spec["fx"]
             if "rate" not in fx or "pair" not in fx:
                 raise ConfigError("TransferLumpSum: fx requires 'rate' and 'pair'")
+
+            transfer_currency = brick.spec.get("currency", ctx.currency)
+            validate_fx_spec(brick.id, fx, transfer_currency)
 
     def simulate(self, brick: TBrick, ctx: ScenarioContext) -> BrickOutput:
         """
@@ -276,21 +283,9 @@ class TransferLumpSum(ITransferStrategy):
                 fees = brick.spec["fees"]
                 fee_amount = Decimal(str(fees["amount"]))
                 fee_currency = fees.get("currency", currency)
-                fee_account = fees.get("account")
-
-                # Fee entry: DR expense (BOUNDARY), CR destination (INTERNAL)
-                # If fee_account is a boundary account, use it; otherwise use BOUNDARY_NODE_ID
-                if fee_account:
-                    # Check if fee_account is boundary or internal
-                    # For now, assume it's a boundary account if not a node_id pattern
-                    if fee_account.startswith(("a:", "l:")):
-                        fee_node_id = get_node_id(
-                            fee_account.split(":")[1], fee_account[0]
-                        )
-                    else:
-                        fee_node_id = BOUNDARY_NODE_ID
-                else:
-                    fee_node_id = BOUNDARY_NODE_ID
+                fee_node_id = fees.get("_account_node_id") or validate_fee_account(
+                    brick.id, fees.get("account")
+                )
 
                 fee_operation_id = create_operation_id(
                     f"ts:{brick.id}:fee", transfer_timestamp
@@ -355,7 +350,7 @@ class TransferLumpSum(ITransferStrategy):
                     {
                         "amount": float(fee_amount),
                         "currency": fee_currency,
-                        "account": fee_account,
+                        "account": fees.get("account"),
                     },
                 )
                 events.append(fee_event)
@@ -364,22 +359,17 @@ class TransferLumpSum(ITransferStrategy):
         # FX entries are created outside the regular transfer block
         if month_idx < T and has_fx:
             fx = brick.spec["fx"]
-            assert "rate" in fx, "FX rate is required"
-            assert "pair" in fx, "FX pair is required"
-
-            # Parse FX pair (e.g., "USD/EUR")
-            # The transfer's currency is the source currency
-            pair = fx["pair"].split("/")
-            if len(pair) != 2:
-                raise ValueError(f"Invalid FX pair format: {fx['pair']}")
-            # Source currency comes from transfer spec, dest from FX pair
-            source_currency = currency  # Transfer's currency is source
-            # Verify FX pair matches transfer currency
-            if pair[0] != source_currency:
-                raise ValueError(
-                    f"FX pair source currency ({pair[0]}) doesn't match transfer currency ({source_currency})"
-                )
-            dest_currency = pair[1]
+            if "_pair_codes" in fx:
+                pair_source, pair_dest = fx["_pair_codes"]
+            else:
+                pair_parts = fx["pair"].split("/")
+                if len(pair_parts) != 2:
+                    raise ConfigError(
+                        f"{brick.id}: FX 'pair' must contain exactly two ISO codes"
+                    )
+                pair_source, pair_dest = pair_parts[0], pair_parts[1]
+            source_currency = pair_source
+            dest_currency = pair_dest
 
             # Get P&L account (default to "P&L:FX")
             pnl_account = fx.get("pnl_account", "P&L:FX")
@@ -400,15 +390,26 @@ class TransferLumpSum(ITransferStrategy):
                     )
 
             # Calculate destination amount
-            fx_rate = Decimal(str(fx["rate"]))
+            fx_rate = fx.get("_rate_decimal")
+            if fx_rate is None:
+                fx_rate = (
+                    fx["rate"]
+                    if isinstance(fx["rate"], Decimal)
+                    else Decimal(str(fx["rate"]))
+                )
             amount_source = amount
             amount_dest = amount_source * fx_rate
 
             # Get explicit destination amount if provided (for P&L calculation)
-            amount_dest_explicit = fx.get("amount_dest")
+            amount_dest_explicit = fx.get("_amount_dest_decimal")
+            if amount_dest_explicit is None and "amount_dest" in fx:
+                raw_amount_dest = fx["amount_dest"]
+                if isinstance(raw_amount_dest, Decimal):
+                    amount_dest_explicit = raw_amount_dest
+                elif raw_amount_dest is not None:
+                    amount_dest_explicit = Decimal(str(raw_amount_dest))
+
             if amount_dest_explicit is not None:
-                amount_dest_explicit = Decimal(str(amount_dest_explicit))
-                # Use explicit amount for destination
                 amount_dest = amount_dest_explicit
 
             # Calculate P&L (residual between rate-derived and explicit amounts)
