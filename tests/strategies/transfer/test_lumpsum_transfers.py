@@ -39,7 +39,7 @@ def test_lumpsum_posts_fees_when_fx_enabled() -> None:
         spec={
             "amount": 100,
             "currency": "EUR",
-            "fees": {"amount": 2, "currency": "EUR", "account": BOUNDARY_NODE_ID},
+            "fees": {"amount": 2, "account": BOUNDARY_NODE_ID},
             "fx": {"pair": "EUR/USD", "rate": "1.1"},
         },
         links={"from": "source", "to": "dest"},
@@ -61,3 +61,6 @@ def test_lumpsum_posts_fees_when_fx_enabled() -> None:
     fee_accounts = {posting.account_id for posting in fee_entry.postings}
     assert BOUNDARY_NODE_ID in fee_accounts
     assert "a:dest" in fee_accounts
+
+    fee_currencies = {posting.amount.currency.code for posting in fee_entry.postings}
+    assert fee_currencies == {"USD"}

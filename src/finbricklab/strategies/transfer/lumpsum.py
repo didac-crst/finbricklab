@@ -288,7 +288,15 @@ class TransferLumpSum(ITransferStrategy):
         if month_idx < T and "fees" in brick.spec:
             fees = brick.spec["fees"]
             fee_amount = Decimal(str(fees["amount"]))
-            fee_currency = fees.get("currency", currency)
+            fee_currency = fees.get("currency")
+            if fee_currency is None:
+                fee_currency = currency
+                if has_fx:
+                    fx_spec = brick.spec["fx"]
+                    assert (
+                        "_pair_codes" in fx_spec
+                    ), f"Bug: {brick.id} FX _pair_codes not set in prepare"
+                    _, fee_currency = fx_spec["_pair_codes"]
             assert (
                 "_account_node_id" in fees
             ), "Bug: fee account not validated in prepare"
