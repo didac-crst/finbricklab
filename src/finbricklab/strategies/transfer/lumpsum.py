@@ -289,9 +289,10 @@ class TransferLumpSum(ITransferStrategy):
             fees = brick.spec["fees"]
             fee_amount = Decimal(str(fees["amount"]))
             fee_currency = fees.get("currency", currency)
-            fee_node_id = fees.get("_account_node_id") or validate_fee_account(
-                brick.id, fees.get("account")
-            )
+            assert (
+                "_account_node_id" in fees
+            ), "Bug: fee account not validated in prepare"
+            fee_node_id = fees["_account_node_id"]
 
             fee_operation_id = create_operation_id(
                 f"ts:{brick.id}:fee", transfer_timestamp
@@ -365,10 +366,9 @@ class TransferLumpSum(ITransferStrategy):
         # FX entries are created outside the regular transfer block
         if month_idx < T and has_fx:
             fx = brick.spec["fx"]
-            if "_pair_codes" not in fx:
-                raise ConfigError(
-                    f"{brick.id}: FX pair was not normalized in prepare()"
-                )
+            assert (
+                "_pair_codes" in fx
+            ), f"Bug: {brick.id} FX _pair_codes not set in prepare"
             pair_source, pair_dest = fx["_pair_codes"]
             source_currency = pair_source
             dest_currency = pair_dest
@@ -392,23 +392,13 @@ class TransferLumpSum(ITransferStrategy):
                     )
 
             # Calculate destination amount
-            if "_rate_decimal" not in fx:
-                raise ConfigError(
-                    f"{brick.id}: FX rate was not normalized in prepare()"
-                )
+            assert "_rate_decimal" in fx, f"Bug: {brick.id} FX rate not set in prepare"
             fx_rate = fx["_rate_decimal"]
             amount_source = amount
             amount_dest = amount_source * fx_rate
 
             # Get explicit destination amount if provided (for P&L calculation)
             amount_dest_explicit = fx.get("_amount_dest_decimal")
-            if amount_dest_explicit is None and "amount_dest" in fx:
-                raw_amount_dest = fx["amount_dest"]
-                if isinstance(raw_amount_dest, Decimal):
-                    amount_dest_explicit = raw_amount_dest
-                elif raw_amount_dest is not None:
-                    amount_dest_explicit = Decimal(str(raw_amount_dest))
-
             if amount_dest_explicit is not None:
                 amount_dest = amount_dest_explicit
 
