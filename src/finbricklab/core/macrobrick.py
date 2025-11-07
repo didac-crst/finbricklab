@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .bricks import _slugify_brick_name
+
 if TYPE_CHECKING:
     from .registry import Registry
 
@@ -29,10 +31,22 @@ class MacroBrick:
         tags: Optional tags for UI grouping and filtering
     """
 
-    id: str
     name: str
+    id: str = ""
     members: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Normalize MacroBrick ID from name when omitted."""
+        if not self.id:
+            if not self.name:
+                raise ValueError("MacroBrick must define either an id or a name")
+            normalized = _slugify_brick_name(self.name)
+            if not normalized:
+                raise ValueError(
+                    f"MacroBrick name '{self.name}' cannot be converted into a valid id"
+                )
+            self.id = normalized
 
     def validate_membership(self, registry: Registry) -> None:
         """

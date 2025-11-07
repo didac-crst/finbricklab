@@ -161,6 +161,12 @@ class TestEntityBuilder:
         standalone = Scenario(id=None, name="Standalone Plan", bricks=[])
         assert standalone.id == "standalone_plan"
 
+        macro = entity.new_MacroBrick(
+            id=None, name="Savings Cluster", member_ids=[cash_brick.id]
+        )
+        assert macro.id == "savings_cluster"
+        assert entity.get_macrobrick("savings_cluster") is macro
+
     def test_validation_error_handling(self):
         """Test validation error handling with detailed error information."""
         entity = Entity(id="person", name="John")

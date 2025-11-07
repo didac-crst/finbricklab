@@ -572,13 +572,18 @@ class Entity:
         return brick
 
     def new_MacroBrick(
-        self, id: str, name: str, member_ids: list[str], tags: list[str] | None = None
+        self,
+        id: str | None = None,
+        name: str | None = None,
+        member_ids: list[str] | None = None,
+        tags: list[str] | None = None,
     ) -> MacroBrick:
         """
         Create and register a new MacroBrick.
 
         Args:
-            id: Unique identifier for the MacroBrick
+            id: Optional unique identifier for the MacroBrick. If omitted, an ID is
+                derived from the name.
             name: Human-readable name for the MacroBrick
             member_ids: List of brick/MacroBrick IDs to include
             tags: Optional list of tags for categorization
@@ -589,14 +594,31 @@ class Entity:
         Raises:
             ValueError: If ID already exists or member IDs not found
         """
-        self._assert_unique_id(id)
+        if name is None:
+            raise ValueError("name is required for MacroBrick")
+        if member_ids is None:
+            raise ValueError("member_ids must be provided for MacroBrick")
+
+        if id:
+            candidate_id = id
+        else:
+            candidate_id = _slugify_brick_name(name)
+            if not candidate_id:
+                raise ValueError(
+                    f"MacroBrick name '{name}' cannot be converted into a valid id"
+                )
+
+        self._assert_unique_id(candidate_id)
         # Validate membership against current catalog
         for member_id in member_ids:
             if member_id not in self._bricks and member_id not in self._macrobricks:
                 raise ValueError(f"Member ID '{member_id}' not found")
 
-        macrobrick = MacroBrick(id=id, name=name, members=member_ids, tags=tags or [])
-        self._macrobricks[id] = macrobrick
+        macrobrick = MacroBrick(
+            id=candidate_id, name=name, members=member_ids, tags=tags or []
+        )
+        final_id = macrobrick.id
+        self._macrobricks[final_id] = macrobrick
         return macrobrick
 
     def create_scenario(
