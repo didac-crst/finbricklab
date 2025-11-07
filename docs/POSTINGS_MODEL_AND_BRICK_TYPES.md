@@ -598,3 +598,27 @@ Examples with IDs and roles:
 MacroGroup membership
 - MacroGroups may contain A/L nodes and/or other MacroGroups; DAG only (no cycles). Shells and Boundary cannot be members.
 - Cancellation logic evaluates the expanded, deduplicated set of A/L members when deciding whether a CDPair is internal‑only and fully inside selection.
+
+## Appendix: V2 Implementation Decisions
+
+The earlier `V2_QUESTIONS.md` document captured a Q&A log. Those answers now live here so future readers do not need to cross-reference:
+
+### Migration & Compatibility
+- Journal-first is the only supported path (single cutover). `cash_in`/`cash_out` arrays are optional shells and no longer authoritative.
+- Tests, docs, and examples all assume the journal-first behavior; no feature flags remain.
+
+### Account Mapping & Entries
+- `AccountRegistry` derives node IDs (`a:*`, `l:*`) automatically; boundary nodes (`b:boundary`, `b:fx_clear`) are registered constants.
+- Every entry enforces the two-posting invariant and per-currency zero sum. Metadata (`node_id`, `type`, `category`, `origin_id`) is stamped at creation.
+
+### Strategy Behavior
+- FlowShell and TransferShell bricks emit journal entries directly via the shared `Journal` on `ScenarioContext`.
+- FX transfers always use three legs (source, destination, optional P&L), ensuring boundary attribution and per-currency balancing.
+- Interest arrays remain for KPIs, but the cash effect of interest is modeled in the journal.
+
+### Aggregation, MacroGroups & Guardrails
+- `ScenarioResults.monthly()` always aggregates from journal data, applying selection/visibility plus internal-transfer cancellation.
+- MacroGroups accept only A/L nodes (or nested MacroGroups) and remain DAGs; validation happens eagerly.
+- Guardrails (duplicate IDs, zero-sum, metadata completeness) fail fast during journal posting.
+
+These decisions align the implementation with the narrative in this spec; any future changes should update this appendix to stay authoritative.

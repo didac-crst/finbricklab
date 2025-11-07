@@ -210,6 +210,43 @@ The system automatically validates:
 - **Net worth consistency**: Total assets = liabilities + equity
 - **Currency precision**: Proper decimal handling per currency
 
+### Journal Flow Diagram
+
+```mermaid
+flowchart LR
+    subgraph Strategy Layer
+        LUMP[Lump Sum Transfer]
+        RECUR[Recurring Transfer]
+        SCHED[Scheduled Transfer]
+    end
+    subgraph Journal Layer
+        ENTRY1[(Posting 1<br/>DR dest asset)]
+        ENTRY2[(Posting 2<br/>CR source asset)]
+        FXCLEAR[(Optional FX Clear<br/>DR/CR b:fx_clear)]
+        PNL[(Optional P&L<br/>DR/CR P&L account)]
+    end
+    subgraph Aggregation Layer
+        MONTHLY[Monthly aggregation<br/>selection + visibility]
+        DIAG[Diagnostics / CLI output]
+    end
+
+    LUMP --> ENTRY1
+    LUMP --> ENTRY2
+    RECUR --> ENTRY1
+    RECUR --> ENTRY2
+    SCHED --> ENTRY1
+    SCHED --> ENTRY2
+    SCHED --> FXCLEAR
+    SCHED --> PNL
+    ENTRY1 --> MONTHLY
+    ENTRY2 --> MONTHLY
+    FXCLEAR --> MONTHLY
+    PNL --> MONTHLY
+    MONTHLY --> DIAG
+```
+
+The diagram highlights the journal-first pipeline: every transfer strategy emits exactly two postings (destination debit, source credit), optional FX legs record clearing/P&L movements, and the aggregated journal drives CLI diagnostics, dashboards, and KPIs.
+
 ---
 
 ## Entity System
