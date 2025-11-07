@@ -2,6 +2,19 @@
 
 Complete reference for all available strategies in FinBrickLab.
 
+Note (V2): FinBrickLab uses a journal‑first model for cash flows. Strategies emit journal entries (two‑posting CDPairs) with:
+- transaction_type (e.g., opening, disbursement, payment, income, expense, transfer)
+- posting metadata: node_id (a:/l:/b:boundary) and boundary category (e.g., income.salary, expense.interest)
+
+Per‑brick `cash_in/cash_out` arrays are deprecated and ignored by aggregation; strategies still provide balances and signed `interest` arrays for KPIs. Use `ScenarioResults.monthly(transfer_visibility=..., selection=...)` or `ScenarioResults.filter(brick_ids=...)` for cash flow aggregation.
+
+**Filter Semantics:**
+- `filter(brick_ids=...)` uses journal-first aggregation and preserves selection/visibility in filtered views
+- Only Asset (A) and Liability (L) bricks produce selection node IDs; Flow (F) and Transfer (T) bricks are ignored for selection
+- MacroBricks are expanded recursively to their A/L member bricks using cached expansion
+- Unknown brick IDs warn and return zeros; empty selection returns zeros across all visibility modes
+- `include_cash=False` persists across visibility changes in filtered views
+
 ## Table of Contents
 
 * [Asset Strategies](#asset-strategies)
@@ -583,10 +596,32 @@ transfer = TBrick(
 )
 ```
 
+**FX Support**:
+- Cross-currency transfers are supported via the `fx` parameter:
+```json
+{
+  "amount": 1000.0,
+  "currency": "USD",
+  "fx": {
+    "rate": 0.9,
+    "pair": "USD/EUR",
+    "amount_dest": 900.0,
+    "pnl_account": "P&L:FX"
+  }
+}
+```
+- FX transfers create three journal entries:
+  1. Source leg (source currency): DR `b:fx_clear` / CR source asset
+  2. Destination leg (destination currency): DR destination asset / CR `b:fx_clear`
+  3. P&L leg (if non-zero): DR/CR between `b:fx_clear` and P&L account
+- The FX clearing account (`b:fx_clear`) is a boundary account that bridges currencies
+- P&L handling: Gains credit the P&L account (income), losses debit it (expense)
+- FX transfers are visible in `TransferVisibility.BOUNDARY_ONLY` mode (they touch the boundary via `b:fx_clear`)
+
 **Behavior**:
 - Creates balanced journal entries (debit from source, credit to destination)
 - Validates that both accounts are internal
-- Ensures zero-sum transaction
+- Ensures zero-sum transaction per currency
 
 ### K.T_TRANSFER_RECURRING
 
@@ -624,6 +659,10 @@ monthly_save = TBrick(
     links={"from": "checking", "to": "savings"}
 )
 ```
+
+**FX Support**:
+- Same FX support as `K.T_TRANSFER_LUMP_SUM` (see above)
+- Each recurring transfer can have FX enabled; FX entries are created per occurrence
 
 **Behavior**:
 - Creates recurring transfer events
@@ -679,6 +718,10 @@ bonus_transfer = TBrick(
     links={"from": "checking", "to": "savings"}
 )
 ```
+
+**FX Support**:
+- Same FX support as `K.T_TRANSFER_LUMP_SUM` (see above)
+- Each scheduled transfer can have FX enabled; FX entries are created per scheduled occurrence
 
 **Behavior**:
 - Creates transfers on specified dates

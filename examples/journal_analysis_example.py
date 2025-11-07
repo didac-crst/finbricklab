@@ -123,13 +123,9 @@ def main():
     )
 
     # === MACROBRICKS ===
-    entity.new_MacroBrick(
-        id="income_sources", name="Income Sources", member_ids=["salary", "freelance"]
-    )
-
-    entity.new_MacroBrick(
-        id="expenses", name="Monthly Expenses", member_ids=["rent", "groceries"]
-    )
+    # V2: MacroBricks can only contain A/L bricks (not F/T bricks)
+    # Income sources are F/T bricks, so we can't create a MacroBrick for them
+    # Instead, we'll create a MacroBrick for investment strategy only
 
     entity.new_MacroBrick(
         id="investment_strategy",
@@ -144,10 +140,14 @@ def main():
         brick_ids=[
             "checking",
             "savings",
-            "income_sources",
-            "expenses",
-            "investment_strategy",
+            "salary",
+            "freelance",
+            "rent",
+            "groceries",
+            "etf_portfolio",
+            "savings_transfer",
             "car_loan",
+            "investment_strategy",
         ],
         settlement_default_cash_id="checking",
     )
@@ -170,8 +170,8 @@ def main():
     print("=== MONTHLY TRANSACTION ANALYSIS ===")
     monthly_stats = (
         journal_df.groupby("timestamp")
-        .agg({"entry_id": "count", "amount": "sum"})
-        .rename(columns={"entry_id": "transactions", "amount": "net_amount"})
+        .agg({"record_id": "nunique", "amount": "sum"})
+        .rename(columns={"record_id": "transactions", "amount": "net_amount"})
     )
 
     print("Monthly breakdown:")
@@ -208,7 +208,7 @@ def main():
 
     # === DOUBLE-ENTRY VALIDATION ===
     print("=== DOUBLE-ENTRY VALIDATION ===")
-    entry_balances = journal_df.groupby("entry_id")["amount"].sum()
+    entry_balances = journal_df.groupby("record_id")["amount"].sum()
     unbalanced_entries = entry_balances[entry_balances.abs() > 1e-6]
     if len(unbalanced_entries) == 0:
         print("✅ All journal entries are properly balanced (zero-sum)")
@@ -216,21 +216,26 @@ def main():
         print(f"❌ {len(unbalanced_entries)} unbalanced entries found")
     print()
 
-    # === FILTERED JOURNAL ANALYSIS ===
+    # === FILTERED JOURNAL ANALYSIS (by category) ===
     print("=== FILTERED JOURNAL ANALYSIS ===")
-
-    # Income sources journal
-    income_view = results["views"].filter(brick_ids=["income_sources"])
-    income_journal = income_view.journal()
-    print(f"📊 Income sources journal: {len(income_journal)} entries")
+    income_journal = journal_df[
+        journal_df["metadata"].apply(
+            lambda m: m.get("category", "").startswith("income.")
+        )
+    ]
+    print(f"📊 Income journal: {len(income_journal)} entries")
     if not income_journal.empty:
         print("Sample income transactions:")
         print(income_journal[["timestamp", "account_id", "amount", "metadata"]].head())
     print()
 
-    # Investment strategy journal
-    investment_view = results["views"].filter(brick_ids=["investment_strategy"])
-    investment_journal = investment_view.journal()
+    # Filter by ETF portfolio brick_id and transaction types
+    investment_journal = journal_df[
+        journal_df["brick_id"].isin(["etf_portfolio"])
+        | journal_df["metadata"].apply(
+            lambda m: m.get("transaction_type", "") in {"transfer", "dividend"}
+        )
+    ]
     print(f"📊 Investment strategy journal: {len(investment_journal)} entries")
     if not investment_journal.empty:
         print("Sample investment transactions:")
@@ -242,16 +247,16 @@ def main():
     # === SPECIFIC ACCOUNT TRANSACTIONS ===
     print("=== SPECIFIC ACCOUNT TRANSACTIONS ===")
 
-    # Checking account transactions
-    checking_txns = results["views"].transactions("checking")
+    # Checking account transactions (filter journal by node_id)
+    checking_txns = journal_df[journal_df["account_id"] == "a:checking"]
     print(f"📊 Checking account transactions: {len(checking_txns)}")
     if not checking_txns.empty:
         print("Checking account sample:")
         print(checking_txns[["timestamp", "amount", "metadata"]].head())
     print()
 
-    # Savings account transactions
-    savings_txns = results["views"].transactions("savings")
+    # Savings account transactions (filter journal by node_id)
+    savings_txns = journal_df[journal_df["account_id"] == "a:savings"]
     print(f"📊 Savings account transactions: {len(savings_txns)}")
     if not savings_txns.empty:
         print("Savings account sample:")

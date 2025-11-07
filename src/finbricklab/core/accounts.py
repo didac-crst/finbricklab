@@ -7,6 +7,12 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
+# BoundaryInterface constant
+BOUNDARY_NODE_ID = "b:boundary"
+
+# FX clearing account constant
+FX_CLEAR_NODE_ID = "b:fx_clear"
+
 
 class AccountScope(Enum):
     """Account scope classification."""
@@ -99,6 +105,22 @@ class AccountRegistry:
     def __init__(self):
         self._accounts: dict[str, Account] = {}
         self._scope_rules: dict[str, set[AccountScope]] = {}
+        # Auto-register boundary account
+        boundary_account = Account(
+            id=BOUNDARY_NODE_ID,
+            name="Boundary Interface",
+            scope=AccountScope.BOUNDARY,
+            account_type=AccountType.PNL,
+        )
+        self.register_account(boundary_account)
+        # Auto-register FX clearing account
+        fx_clear_account = Account(
+            id=FX_CLEAR_NODE_ID,
+            name="FX Clearing",
+            scope=AccountScope.BOUNDARY,
+            account_type=AccountType.EQUITY,
+        )
+        self.register_account(fx_clear_account)
 
     def register_account(self, account: Account) -> None:
         """Register an account."""
@@ -183,6 +205,61 @@ class AccountRegistry:
                 raise ValueError(
                     f"Account '{internal_account_id}' must be internal (scope: {internal_account.scope.value})"
                 )
+
+    def get_account_by_node_id(self, node_id: str) -> Optional[Account]:
+        """
+        Get account by node ID (a:/l:/b:boundary).
+
+        Args:
+            node_id: Node ID to look up
+
+        Returns:
+            Account if found, None otherwise
+        """
+        return self.get_account(node_id)
+
+    def register_brick_account(self, brick_id: str, family: str, name: str) -> Account:
+        """
+        Register an account for a brick with automatic node ID mapping.
+
+        Args:
+            brick_id: Brick identifier
+            family: Brick family ('a', 'l', 'f', 't')
+            name: Human-readable account name
+
+        Returns:
+            Registered Account instance
+        """
+        # Map family to account type and scope
+        if family == "a":
+            account_type = AccountType.ASSET
+            scope = AccountScope.INTERNAL
+            node_id = f"a:{brick_id}"
+        elif family == "l":
+            account_type = AccountType.LIABILITY
+            scope = AccountScope.INTERNAL
+            node_id = f"l:{brick_id}"
+        elif family == "f":
+            # FlowShell - parent only, not posted to
+            account_type = AccountType.PNL
+            scope = AccountScope.BOUNDARY
+            node_id = f"fs:{brick_id}"
+        elif family == "t":
+            # TransferShell - parent only, not posted to
+            account_type = AccountType.PNL
+            scope = AccountScope.INTERNAL
+            node_id = f"ts:{brick_id}"
+        else:
+            raise ValueError(f"Unknown brick family: {family}")
+
+        account = Account(
+            id=node_id,
+            name=name,
+            scope=scope,
+            account_type=account_type,
+        )
+        self.register_account(account)
+        return account
 
 
 def infer_account_scope(account_id: str, account_name: str = "") -> AccountScope:
@@ -284,3 +361,114 @@ def infer_account_type(account_id: str, account_name: str = "") -> AccountType:
 
     # Default to asset
     return AccountType.ASSET
+
+
+def get_node_id(brick_id: str, family: str) -> str:
+    """
+    Get node ID from brick ID and family.
+
+    Args:
+        brick_id: Brick identifier
+        family: Brick family ('a', 'l', 'f', 't')
+
+    Returns:
+        Node ID string (a:<brick_id>, l:<brick_id>, fs:<brick_id>, ts:<brick_id>)
+    """
+    if family == "a":
+        return f"a:{brick_id}"
+    elif family == "l":
+        return f"l:{brick_id}"
+    elif family == "f":
+        return f"fs:{brick_id}"
+    elif family == "t":
+        return f"ts:{brick_id}"
+    else:
+        raise ValueError(f"Unknown brick family: {family}")
+
+
+def get_brick_id_from_node(node_id: str) -> str | None:
+    """
+    Extract brick ID from node ID.
+
+    Args:
+        node_id: Node ID (a:<brick_id>, l:<brick_id>, fs:<brick_id>, ts:<brick_id>, b:boundary)
+
+    Returns:
+        Brick ID if node ID is a brick node, None for boundary
+    """
+    if node_id == BOUNDARY_NODE_ID:
+        return None
+
+    if node_id.startswith("a:") or node_id.startswith("l:"):
+        return node_id[2:]
+    elif node_id.startswith("fs:") or node_id.startswith("ts:"):
+        return node_id[3:]
+    else:
+        # Unknown format, return as-is
+        return node_id
+
+
+def is_boundary_node(node_id: str) -> bool:
+    """
+    Check if node ID is the boundary node.
+
+    Args:
+        node_id: Node ID to check
+
+    Returns:
+        True if node ID is boundary
+    """
+    return node_id == BOUNDARY_NODE_ID
+
+
+def get_node_scope(node_id: str, registry: AccountRegistry) -> AccountScope:
+    """
+    Get account scope for a node ID.
+
+    Args:
+        node_id: Node ID
+        registry: Account registry
+
+    Returns:
+        Account scope
+    """
+    account = registry.get_account_by_node_id(node_id)
+    if account:
+        return account.scope
+
+    # Default based on node ID prefix
+    if node_id == BOUNDARY_NODE_ID or node_id.startswith("fs:"):
+        return AccountScope.BOUNDARY
+    return AccountScope.INTERNAL
+
+
+def get_node_type(node_id: str | None, registry: AccountRegistry) -> AccountType:
+    """
+    Get account type for a node ID.
+
+    Args:
+        node_id: Node ID (may be None for legacy entries)
+        registry: Account registry
+
+    Returns:
+        Account type
+
+    Raises:
+        ValueError: If node_id is None (legacy entries not supported)
+    """
+    if node_id is None:
+        raise ValueError("node_id is None - legacy entry format not supported in V2")
+
+    account = registry.get_account_by_node_id(node_id)
+    if account:
+        return account.account_type
+
+    # Default based on node ID prefix
+    if node_id.startswith("a:"):
+        return AccountType.ASSET
+    elif node_id.startswith("l:"):
+        return AccountType.LIABILITY
+    elif node_id == BOUNDARY_NODE_ID or node_id.startswith("fs:"):
+        return AccountType.PNL
+    else:
+        return AccountType.ASSET

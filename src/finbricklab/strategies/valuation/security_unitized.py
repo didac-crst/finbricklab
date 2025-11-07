@@ -4,12 +4,26 @@ ETF investment valuation strategy.
 
 from __future__ import annotations
 
-import numpy as np
+from datetime import datetime
 
+import numpy as np
+import pandas as pd
+
+from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import ABrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.events import Event
 from finbricklab.core.interfaces import IValuationStrategy
+from finbricklab.core.journal import (
+    JournalEntry,
+    Posting,
+    create_entry_id,
+    create_operation_id,
+    generate_transaction_id,
+    stamp_entry_metadata,
+    stamp_posting_metadata,
+)
 from finbricklab.core.results import BrickOutput
 from finbricklab.core.utils import active_mask
 
@@ -187,8 +201,9 @@ class ValuationSecurityUnitized(IValuationStrategy):
 
     def simulate(self, brick: ABrick, ctx: ScenarioContext) -> BrickOutput:
         """
-        Simulate the ETF investment over the time period.
+        Simulate the ETF investment over the time period (V2: journal-first pattern).
 
+        Creates journal entries for dividends (cash), buys, and sells.
         Handles initial holdings, one-shot purchases, DCA contributions,
         dividend payments/reinvestment, and price appreciation.
 
@@ -197,16 +212,49 @@ class ValuationSecurityUnitized(IValuationStrategy):
             ctx: The simulation context
 
         Returns:
-            BrickOutput with cash flows, asset value, and events
+            BrickOutput with asset value, zero cash flows, and events
+            (V2: cash_in/cash_out are zero; journal entries created instead)
         """
         T = len(ctx.t_index)
         s = brick.spec
-        cash_in = np.zeros(T)  # dividends (if not reinvested)
-        cash_out = np.zeros(T)  # purchases
+
+        # V2: Don't emit cash arrays - use journal entries instead
+        cash_in = np.zeros(T)
+        cash_out = np.zeros(T)
         units = np.zeros(T)
         price = np.zeros(T)
         dividends_earned = np.zeros(T)  # Track dividends/yield earned
         events = []
+
+        # Get journal from context (V2)
+        if ctx.journal is None:
+            raise ValueError(
+                "Journal must be provided in ScenarioContext for V2 postings model"
+            )
+        journal = ctx.journal
+
+        # Get node IDs
+        etf_node_id = get_node_id(brick.id, "a")
+        # Find cash account node ID (use settlement_default_cash_id or find from registry)
+        cash_node_id = None
+        if ctx.settlement_default_cash_id:
+            cash_node_id = get_node_id(ctx.settlement_default_cash_id, "a")
+        else:
+            # Find first cash account from registry
+            for other_brick in ctx.registry.values():
+                if hasattr(other_brick, "kind") and other_brick.kind == "a.cash":
+                    cash_node_id = get_node_id(other_brick.id, "a")
+                    break
+        if cash_node_id is None:
+            # Fallback: use default
+            cash_node_id = "a:cash"  # Default fallback
+
+        # Sequence management for entry IDs within a single operation/timestamp
+        sequence_counters: dict[str, int] = {}
+
+        def next_sequence(operation_id: str) -> int:
+            sequence_counters[operation_id] = sequence_counters.get(operation_id, 0) + 1
+            return sequence_counters[operation_id]
 
         # Price path calculation with volatility
         price[0] = float(s["price0"])
@@ -226,13 +274,79 @@ class ValuationSecurityUnitized(IValuationStrategy):
         units[0] = float(s["initial_units"])
 
         # One-shot buy at start (cash impact)
+        # V2: Create journal entry for buy (INTERNAL↔INTERNAL: DR a:etf, CR a:cash)
         buy0 = s.get("buy_at_start")
         if buy0:
             if "amount" in buy0 and buy0["amount"] > 0:
                 amt = float(buy0["amount"])
                 add_u = amt / price[0]
                 units[0] += add_u
-                cash_out[0] += amt
+
+                # Create journal entry for buy
+                buy_timestamp = ctx.t_index[0]
+                if isinstance(buy_timestamp, np.datetime64):
+                    buy_timestamp = pd.Timestamp(buy_timestamp).to_pydatetime()
+                elif hasattr(buy_timestamp, "astype"):
+                    buy_timestamp = pd.Timestamp(
+                        buy_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    buy_timestamp = datetime.fromisoformat(str(buy_timestamp))
+
+                operation_id = create_operation_id(f"a:{brick.id}", buy_timestamp)
+                sequence = next_sequence(operation_id)
+                entry_id = create_entry_id(operation_id, sequence)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    buy_timestamp,
+                    {"buy_at_start": amt},
+                    brick.links or {},
+                    sequence=0,
+                )
+
+                # DR a:etf (increase asset), CR a:cash (decrease cash)
+                buy_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=buy_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=etf_node_id,
+                            amount=create_amount(amt, ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=cash_node_id,
+                            amount=create_amount(-amt, ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    buy_entry,
+                    parent_id=f"a:{brick.id}",
+                    timestamp=buy_timestamp,
+                    tags={"type": "buy"},
+                    sequence=sequence,
+                    origin_id=origin_id,
+                )
+
+                buy_entry.metadata["transaction_type"] = "transfer"
+
+                stamp_posting_metadata(
+                    buy_entry.postings[0],
+                    node_id=etf_node_id,
+                    type_tag="buy",
+                )
+                stamp_posting_metadata(
+                    buy_entry.postings[1],
+                    node_id=cash_node_id,
+                    type_tag="buy",
+                )
+
+                journal.post(buy_entry)
+
                 if s.get("events_level") in ("major", "all"):
                     events.append(
                         Event(
@@ -246,7 +360,72 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 u = float(buy0["units"])
                 amt = u * price[0]
                 units[0] += u
-                cash_out[0] += amt
+
+                # Create journal entry for buy
+                buy_timestamp = ctx.t_index[0]
+                if isinstance(buy_timestamp, np.datetime64):
+                    buy_timestamp = pd.Timestamp(buy_timestamp).to_pydatetime()
+                elif hasattr(buy_timestamp, "astype"):
+                    buy_timestamp = pd.Timestamp(
+                        buy_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    buy_timestamp = datetime.fromisoformat(str(buy_timestamp))
+
+                operation_id = create_operation_id(f"a:{brick.id}", buy_timestamp)
+                sequence = next_sequence(operation_id)
+                entry_id = create_entry_id(operation_id, sequence)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    buy_timestamp,
+                    {"buy_at_start": u},
+                    brick.links or {},
+                    sequence=0,
+                )
+
+                # DR a:etf (increase asset), CR a:cash (decrease cash)
+                buy_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=buy_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=etf_node_id,
+                            amount=create_amount(amt, ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=cash_node_id,
+                            amount=create_amount(-amt, ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    buy_entry,
+                    parent_id=f"a:{brick.id}",
+                    timestamp=buy_timestamp,
+                    tags={"type": "buy"},
+                    sequence=sequence,
+                    origin_id=origin_id,
+                )
+
+                buy_entry.metadata["transaction_type"] = "transfer"
+
+                stamp_posting_metadata(
+                    buy_entry.postings[0],
+                    node_id=etf_node_id,
+                    type_tag="buy",
+                )
+                stamp_posting_metadata(
+                    buy_entry.postings[1],
+                    node_id=cash_node_id,
+                    type_tag="buy",
+                )
+
+                journal.post(buy_entry)
+
                 if s.get("events_level") in ("major", "all"):
                     events.append(
                         Event(
@@ -276,6 +455,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 # Track dividends earned (regardless of reinvestment)
                 dividends_earned[t] = dv
                 if reinv and dv > 0:
+                    # Reinvest: no cash CDPair, just increase units
                     add_u = dv / price[t]
                     units[t] += add_u
                     if ev_lvl in ("major", "all"):
@@ -287,9 +467,80 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 {"amount": dv, "units": add_u, "price": price[t]},
                             )
                         )
-                else:
-                    cash_in[t] += dv
-                    if ev_lvl in ("major", "all") and dv > 0:
+                elif dv > 0:
+                    # Cash dividend: V2: Create journal entry (BOUNDARY↔INTERNAL: CR income.dividend, DR cash)
+                    dividend_timestamp = ctx.t_index[t]
+                    if isinstance(dividend_timestamp, np.datetime64):
+                        dividend_timestamp = pd.Timestamp(
+                            dividend_timestamp
+                        ).to_pydatetime()
+                    elif hasattr(dividend_timestamp, "astype"):
+                        dividend_timestamp = pd.Timestamp(
+                            dividend_timestamp.astype("datetime64[D]")
+                        ).to_pydatetime()
+                    else:
+                        dividend_timestamp = datetime.fromisoformat(
+                            str(dividend_timestamp)
+                        )
+
+                    operation_id = create_operation_id(
+                        f"a:{brick.id}", dividend_timestamp
+                    )
+                    sequence = next_sequence(operation_id)
+                    entry_id = create_entry_id(operation_id, sequence)
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        dividend_timestamp,
+                        {"dividend": dv},
+                        brick.links or {},
+                        sequence=t,
+                    )
+
+                    # CR income.dividend (boundary), DR cash (internal)
+                    dividend_entry = JournalEntry(
+                        id=entry_id,
+                        timestamp=dividend_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(dv, ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(-dv, ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        dividend_entry,
+                        parent_id=f"a:{brick.id}",
+                        timestamp=dividend_timestamp,
+                        tags={"type": "dividend"},
+                        sequence=sequence,
+                        origin_id=origin_id,
+                    )
+
+                    dividend_entry.metadata["transaction_type"] = "income"
+
+                    stamp_posting_metadata(
+                        dividend_entry.postings[0],
+                        node_id=cash_node_id,
+                        type_tag="dividend",
+                    )
+                    stamp_posting_metadata(
+                        dividend_entry.postings[1],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="income.dividend",
+                        type_tag="dividend",
+                    )
+
+                    journal.post(dividend_entry)
+
+                    if ev_lvl in ("major", "all"):
                         events.append(
                             Event(
                                 ctx.t_index[t],
@@ -300,11 +551,22 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         )
 
             # DCA AFTER dividends
+            # V2: Create journal entries for DCA buys (INTERNAL↔INTERNAL: DR a:etf, CR a:cash)
             if dca is not None:
                 start_off = int(dca.get("start_offset_m", 0))
                 months = dca.get("months", None)
                 m_rel = t - start_off
                 if m_rel >= 0 and (months is None or m_rel < int(months)):
+                    dca_timestamp = ctx.t_index[t]
+                    if isinstance(dca_timestamp, np.datetime64):
+                        dca_timestamp = pd.Timestamp(dca_timestamp).to_pydatetime()
+                    elif hasattr(dca_timestamp, "astype"):
+                        dca_timestamp = pd.Timestamp(
+                            dca_timestamp.astype("datetime64[D]")
+                        ).to_pydatetime()
+                    else:
+                        dca_timestamp = datetime.fromisoformat(str(dca_timestamp))
+
                     if dca["mode"] == "amount":
                         step_blocks = max(0, m_rel // 12)
                         amt = float(dca["amount"]) * (
@@ -313,7 +575,66 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         if amt > 0:
                             add_u = amt / price[t]
                             units[t] += add_u
-                            cash_out[t] += amt
+
+                            # Create journal entry for DCA buy
+                            operation_id = create_operation_id(
+                                f"a:{brick.id}", dca_timestamp
+                            )
+                            sequence = next_sequence(operation_id)
+                            entry_id = create_entry_id(operation_id, sequence)
+                            origin_id = generate_transaction_id(
+                                brick.id,
+                                dca_timestamp,
+                                {"dca": amt, "month": m_rel},
+                                brick.links or {},
+                                sequence=t,
+                            )
+
+                            # DR a:etf (increase asset), CR a:cash (decrease cash)
+                            dca_entry = JournalEntry(
+                                id=entry_id,
+                                timestamp=dca_timestamp,
+                                postings=[
+                                    Posting(
+                                        account_id=etf_node_id,
+                                        amount=create_amount(amt, ctx.currency),
+                                        metadata={},
+                                    ),
+                                    Posting(
+                                        account_id=cash_node_id,
+                                        amount=create_amount(-amt, ctx.currency),
+                                        metadata={},
+                                    ),
+                                ],
+                                metadata={},
+                            )
+
+                            stamp_entry_metadata(
+                                dca_entry,
+                                parent_id=f"a:{brick.id}",
+                                timestamp=dca_timestamp,
+                                tags={"type": "buy"},
+                                sequence=sequence,
+                                origin_id=origin_id,
+                            )
+
+                            dca_entry.metadata["transaction_type"] = "transfer"
+
+                            stamp_posting_metadata(
+                                dca_entry.postings[0],
+                                node_id=etf_node_id,
+                                type_tag="buy",
+                            )
+                            stamp_posting_metadata(
+                                dca_entry.postings[1],
+                                node_id=cash_node_id,
+                                type_tag="buy",
+                            )
+
+                            # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                            if not journal.has_id(dca_entry.id):
+                                journal.post(dca_entry)
+
                             if ev_lvl == "all":
                                 events.append(
                                     Event(
@@ -332,7 +653,66 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         if u > 0:
                             amt = u * price[t]  # Use current month's price
                             units[t] += u
-                            cash_out[t] += amt
+
+                            # Create journal entry for DCA buy
+                            operation_id = create_operation_id(
+                                f"a:{brick.id}", dca_timestamp
+                            )
+                            sequence = next_sequence(operation_id)
+                            entry_id = create_entry_id(operation_id, sequence)
+                            origin_id = generate_transaction_id(
+                                brick.id,
+                                dca_timestamp,
+                                {"dca": u, "month": m_rel},
+                                brick.links or {},
+                                sequence=t,
+                            )
+
+                            # DR a:etf (increase asset), CR a:cash (decrease cash)
+                            dca_entry = JournalEntry(
+                                id=entry_id,
+                                timestamp=dca_timestamp,
+                                postings=[
+                                    Posting(
+                                        account_id=etf_node_id,
+                                        amount=create_amount(amt, ctx.currency),
+                                        metadata={},
+                                    ),
+                                    Posting(
+                                        account_id=cash_node_id,
+                                        amount=create_amount(-amt, ctx.currency),
+                                        metadata={},
+                                    ),
+                                ],
+                                metadata={},
+                            )
+
+                            stamp_entry_metadata(
+                                dca_entry,
+                                parent_id=f"a:{brick.id}",
+                                timestamp=dca_timestamp,
+                                tags={"type": "buy"},
+                                sequence=sequence,
+                                origin_id=origin_id,
+                            )
+
+                            dca_entry.metadata["transaction_type"] = "transfer"
+
+                            stamp_posting_metadata(
+                                dca_entry.postings[0],
+                                node_id=etf_node_id,
+                                type_tag="buy",
+                            )
+                            stamp_posting_metadata(
+                                dca_entry.postings[1],
+                                node_id=cash_node_id,
+                                type_tag="buy",
+                            )
+
+                            # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                            if not journal.has_id(dca_entry.id):
+                                journal.post(dca_entry)
+
                             if ev_lvl == "all":
                                 events.append(
                                     Event(
@@ -344,6 +724,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                                 )
 
             # SELLS AFTER DCA (one-shot and SDCA)
+            # V2: Create journal entries for sells (INTERNAL↔INTERNAL: DR a:cash, CR a:etf)
             # One-shot sells
             sell_directives = s.get("sell", [])
             for sell_spec in sell_directives:
@@ -360,29 +741,112 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         sell_units = min(units[t], sell_spec["units"])
 
                     if sell_units > 0:
+                        sell_amt = sell_units * price[t]
                         units[t] -= sell_units
-                        cash_in[t] += sell_units * price[t]
+
+                        # Create journal entry for sell
+                        sell_timestamp = ctx.t_index[t]
+                        if isinstance(sell_timestamp, np.datetime64):
+                            sell_timestamp = pd.Timestamp(
+                                sell_timestamp
+                            ).to_pydatetime()
+                        elif hasattr(sell_timestamp, "astype"):
+                            sell_timestamp = pd.Timestamp(
+                                sell_timestamp.astype("datetime64[D]")
+                            ).to_pydatetime()
+                        else:
+                            sell_timestamp = datetime.fromisoformat(str(sell_timestamp))
+
+                        operation_id = create_operation_id(
+                            f"a:{brick.id}", sell_timestamp
+                        )
+                        sequence = next_sequence(operation_id)
+                        entry_id = create_entry_id(operation_id, sequence)
+                        origin_id = generate_transaction_id(
+                            brick.id,
+                            sell_timestamp,
+                            {"sell": sell_units},
+                            brick.links or {},
+                            sequence=t,
+                        )
+
+                        # DR a:cash (increase cash), CR a:etf (decrease asset)
+                        sell_entry = JournalEntry(
+                            id=entry_id,
+                            timestamp=sell_timestamp,
+                            postings=[
+                                Posting(
+                                    account_id=cash_node_id,
+                                    amount=create_amount(sell_amt, ctx.currency),
+                                    metadata={},
+                                ),
+                                Posting(
+                                    account_id=etf_node_id,
+                                    amount=create_amount(-sell_amt, ctx.currency),
+                                    metadata={},
+                                ),
+                            ],
+                            metadata={},
+                        )
+
+                        stamp_entry_metadata(
+                            sell_entry,
+                            parent_id=f"a:{brick.id}",
+                            timestamp=sell_timestamp,
+                            tags={"type": "sell"},
+                            sequence=sequence,
+                            origin_id=origin_id,
+                        )
+
+                        sell_entry.metadata["transaction_type"] = "transfer"
+
+                        stamp_posting_metadata(
+                            sell_entry.postings[0],
+                            node_id=cash_node_id,
+                            type_tag="sell",
+                        )
+                        stamp_posting_metadata(
+                            sell_entry.postings[1],
+                            node_id=etf_node_id,
+                            type_tag="sell",
+                        )
+
+                        # Guard: Skip posting if entry with same ID already exists (e.g., re-simulation)
+                        if not journal.has_id(sell_entry.id):
+                            journal.post(sell_entry)
+
                         if ev_lvl in ("major", "all"):
                             events.append(
                                 Event(
                                     ctx.t_index[t],
                                     "sell",
-                                    f"Sell {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
+                                    f"Sell {sell_units:,.6f}u for €{sell_amt:,.2f}",
                                     {
                                         "units": sell_units,
-                                        "amount": sell_units * price[t],
+                                        "amount": sell_amt,
                                         "price": price[t],
                                     },
                                 )
                             )
 
             # SDCA (Systematic DCA-out)
+            # V2: Create journal entries for SDCA sells (INTERNAL↔INTERNAL: DR a:cash, CR a:etf)
             sdca = s.get("sdca")
             if sdca is not None:
                 start_off = int(sdca.get("start_offset_m", 0))
                 months = sdca.get("months", None)
                 m_rel = t - start_off
                 if m_rel >= 0 and (months is None or m_rel < int(months)):
+                    sdca_timestamp = ctx.t_index[t]
+                    if isinstance(sdca_timestamp, np.datetime64):
+                        sdca_timestamp = pd.Timestamp(sdca_timestamp).to_pydatetime()
+                    elif hasattr(sdca_timestamp, "astype"):
+                        sdca_timestamp = pd.Timestamp(
+                            sdca_timestamp.astype("datetime64[D]")
+                        ).to_pydatetime()
+                    else:
+                        sdca_timestamp = datetime.fromisoformat(str(sdca_timestamp))
+
                     if sdca["mode"] == "amount":
                         amt = float(sdca["amount"])
                         sell_units = min(units[t], amt / price[t])
@@ -390,17 +854,75 @@ class ValuationSecurityUnitized(IValuationStrategy):
                         sell_units = min(units[t], float(sdca["units"]))
 
                     if sell_units > 0:
+                        sell_amt = sell_units * price[t]
                         units[t] -= sell_units
-                        cash_in[t] += sell_units * price[t]
+
+                        # Create journal entry for SDCA sell
+                        operation_id = create_operation_id(
+                            f"a:{brick.id}", sdca_timestamp
+                        )
+                        sequence = next_sequence(operation_id)
+                        entry_id = create_entry_id(operation_id, sequence)
+                        origin_id = generate_transaction_id(
+                            brick.id,
+                            sdca_timestamp,
+                            {"sdca": sell_units, "month": m_rel},
+                            brick.links or {},
+                            sequence=t,
+                        )
+
+                        # DR a:cash (increase cash), CR a:etf (decrease asset)
+                        sdca_entry = JournalEntry(
+                            id=entry_id,
+                            timestamp=sdca_timestamp,
+                            postings=[
+                                Posting(
+                                    account_id=cash_node_id,
+                                    amount=create_amount(sell_amt, ctx.currency),
+                                    metadata={},
+                                ),
+                                Posting(
+                                    account_id=etf_node_id,
+                                    amount=create_amount(-sell_amt, ctx.currency),
+                                    metadata={},
+                                ),
+                            ],
+                            metadata={},
+                        )
+
+                        stamp_entry_metadata(
+                            sdca_entry,
+                            parent_id=f"a:{brick.id}",
+                            timestamp=sdca_timestamp,
+                            tags={"type": "sell"},
+                            sequence=sequence,
+                            origin_id=origin_id,
+                        )
+
+                        sdca_entry.metadata["transaction_type"] = "transfer"
+
+                        stamp_posting_metadata(
+                            sdca_entry.postings[0],
+                            node_id=cash_node_id,
+                            type_tag="sell",
+                        )
+                        stamp_posting_metadata(
+                            sdca_entry.postings[1],
+                            node_id=etf_node_id,
+                            type_tag="sell",
+                        )
+
+                        journal.post(sdca_entry)
+
                         if ev_lvl == "all":
                             events.append(
                                 Event(
                                     ctx.t_index[t],
                                     "sdca",
-                                    f"SDCA: {sell_units:,.6f}u for €{sell_units * price[t]:,.2f}",
+                                    f"SDCA: {sell_units:,.6f}u for €{sell_amt:,.2f}",
                                     {
                                         "units": sell_units,
-                                        "amount": sell_units * price[t],
+                                        "amount": sell_amt,
                                         "price": price[t],
                                     },
                                 )
@@ -414,6 +936,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
         asset_value = units * price
 
         # Auto-dispose on window end (equity-neutral)
+        # V2: Create journal entries for liquidation (INTERNAL↔INTERNAL: DR a:cash, CR a:etf)
+        # Fees handled as separate boundary entry if applicable
         mask = active_mask(
             ctx.t_index, brick.start_date, brick.end_date, brick.duration_m
         )
@@ -428,7 +952,134 @@ class ValuationSecurityUnitized(IValuationStrategy):
             fees = gross * fees_pct
             proceeds = gross - fees
 
-            cash_in[t_stop] += proceeds  # book sale
+            if gross > 0:
+                # Create journal entries for liquidation
+                liquidate_timestamp = ctx.t_index[t_stop]
+                if isinstance(liquidate_timestamp, np.datetime64):
+                    liquidate_timestamp = pd.Timestamp(
+                        liquidate_timestamp
+                    ).to_pydatetime()
+                elif hasattr(liquidate_timestamp, "astype"):
+                    liquidate_timestamp = pd.Timestamp(
+                        liquidate_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    liquidate_timestamp = datetime.fromisoformat(
+                        str(liquidate_timestamp)
+                    )
+
+                operation_id = create_operation_id(f"a:{brick.id}", liquidate_timestamp)
+
+                # Main liquidation entry: DR a:cash (gross), CR a:etf (gross)
+                # Fees handled separately below
+                sequence = next_sequence(operation_id)
+                entry_id = create_entry_id(operation_id, sequence)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    liquidate_timestamp,
+                    {"liquidate": gross},
+                    brick.links or {},
+                    sequence=t_stop,
+                )
+
+                # DR a:cash (gross received), CR a:etf (full asset value)
+                liquidate_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=liquidate_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=cash_node_id,
+                            amount=create_amount(gross, ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=etf_node_id,
+                            amount=create_amount(-gross, ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+
+                stamp_entry_metadata(
+                    liquidate_entry,
+                    parent_id=f"a:{brick.id}",
+                    timestamp=liquidate_timestamp,
+                    tags={"type": "sell"},
+                    sequence=sequence,
+                    origin_id=origin_id,
+                )
+
+                liquidate_entry.metadata["transaction_type"] = "transfer"
+
+                stamp_posting_metadata(
+                    liquidate_entry.postings[0],
+                    node_id=cash_node_id,
+                    type_tag="sell",
+                )
+                stamp_posting_metadata(
+                    liquidate_entry.postings[1],
+                    node_id=etf_node_id,
+                    type_tag="sell",
+                )
+
+                journal.post(liquidate_entry)
+
+                # Fee entry (if any): DR expense.fee (BOUNDARY), CR a:cash (INTERNAL)
+                if fees > 0:
+                    sequence = next_sequence(operation_id)
+                    fee_entry_id = create_entry_id(operation_id, sequence)
+                    fee_origin_id = generate_transaction_id(
+                        brick.id,
+                        liquidate_timestamp,
+                        {"fee": fees},
+                        brick.links or {},
+                        sequence=t_stop,
+                    )
+
+                    fee_entry = JournalEntry(
+                        id=fee_entry_id,
+                        timestamp=liquidate_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(fees, ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=cash_node_id,
+                                amount=create_amount(-fees, ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+
+                    stamp_entry_metadata(
+                        fee_entry,
+                        parent_id=f"a:{brick.id}",
+                        timestamp=liquidate_timestamp,
+                        tags={"type": "fee"},
+                        sequence=sequence,
+                        origin_id=fee_origin_id,
+                    )
+
+                    fee_entry.metadata["transaction_type"] = "transfer"
+
+                    stamp_posting_metadata(
+                        fee_entry.postings[0],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.fee",
+                        type_tag="fee",
+                    )
+                    stamp_posting_metadata(
+                        fee_entry.postings[1],
+                        node_id=cash_node_id,
+                        type_tag="fee",
+                    )
+
+                    journal.post(fee_entry)
+
             asset_value[t_stop] = 0.0  # explicit zero on the sale month
             # Set all future values to 0 (ETF is liquidated)
             asset_value[t_stop + 1 :] = 0.0
@@ -441,9 +1092,10 @@ class ValuationSecurityUnitized(IValuationStrategy):
                 )
             )
 
+        # V2: Shell behavior - return zero arrays (no balances)
         return BrickOutput(
-            cash_in=cash_in,
-            cash_out=cash_out,
+            cash_in=cash_in,  # Zero - deprecated
+            cash_out=cash_out,  # Zero - deprecated
             assets=asset_value,
             liabilities=np.zeros(T),
             interest=dividends_earned,  # Positive for dividend income

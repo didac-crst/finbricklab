@@ -594,6 +594,82 @@ finbrick run -i demo.json -o results.json --start 2026-01-01 --months 12
 finbrick validate -i demo.json
 ```
 
+### Using Diagnostics
+
+The `journal-diagnostics` command provides detailed insights into journal entries, cash flows, and internal transfers:
+
+```bash
+# Basic diagnostics (default: BOUNDARY_ONLY visibility)
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12
+
+# Show all transfers (including internal)
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --transfer-visibility ALL
+
+# Show only transfer entries
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --transfer-visibility ONLY
+
+# Filter by month and show sample entries
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --month 2026-03 --sample 10
+
+# Select specific bricks or MacroGroups
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 \
+  --select cash savings investments
+
+# JSON output for programmatic checks
+finbrick journal-diagnostics -i demo.json --start 2026-01-01 --months 12 --json
+```
+
+**Diagnostics Output**
+
+The diagnostics command reports:
+- **Total entries**: Total number of journal entries in the scenario
+- **Internal-only entries canceled**: Count and sum of internal transfers that cancel in aggregated views
+- **Boundary entries**: Count and sum by category (income, expense, etc.)
+- **Transfer entries**: Count and sum of transfer transactions
+- **Sample entries**: Top N entries with entry_id, timestamp, transaction_type, node_ids, categories, and amounts
+
+**Transfer Visibility Modes**
+
+- `BOUNDARY_ONLY` (default): Show only boundary-crossing entries (income/expense). Internal transfers are hidden.
+- `ALL`: Show all entries including internal transfers.
+- `ONLY`: Show only transfer entries (internal and boundary-crossing).
+- `OFF`: Hide all transfer entries (only show income/expense).
+
+**Important**: Internal transfers cancel in aggregated views when both nodes are in the selection, regardless of visibility mode. Visibility controls which entries are eligible for aggregation, but does not override cancellation. Use `--transfer-visibility ALL` to see all transfers, but cancellation still applies for aggregated views.
+
+**JSON Output Example**
+
+```json
+{
+  "total_entries": 45,
+  "internal_only_cancelled": {
+    "count": 12,
+    "sum": 24000.0
+  },
+  "boundary_entries": {
+    "income.recurring": {"count": 12, "sum": 60000.0},
+    "expense.recurring": {"count": 12, "sum": 36000.0}
+  },
+  "transfer_entries": {
+    "count": 12,
+    "sum": 24000.0
+  },
+  "sample_entries": [
+    {
+      "entry_id": "cp:op:fs:salary:2026-01:1",
+      "timestamp": "2026-01-31",
+      "transaction_type": "income",
+      "node_ids": ["b:boundary", "a:cash"],
+      "categories": ["income.recurring", null],
+      "amounts": {"EUR": 5000.0}
+    }
+  ]
+}
+```
+
 ---
 
 ## Scenario JSON (minimal spec)
@@ -658,17 +734,25 @@ finbrick validate -i demo.json
 
 ## Outputs
 
-Each strategy returns a conceptual **`BrickOutput`**:
+V2 uses a journal‑first model for cash flows and keeps per‑brick balances/KPIs in outputs:
 
-* `cash_in[T]`, `cash_out[T]` — arrays aligned to the scenario timeline
-* `assets[T]`, `liabilities[T]` — arrays aligned to the timeline
-* `events[]` — optional discrete events (fees, prepayments, etc.)
+- `BrickOutput` (per strategy):
+  - `assets[T]`, `liabilities[T]`, `interest[T]` — arrays aligned to the scenario timeline
+  - `events[]` — optional discrete events (fees, prepayments, etc.)
+  - `cash_in/cash_out` are deprecated and may be omitted (they are ignored by aggregation)
 
-A **Scenario run** returns a structure that includes:
+- Scenario results:
+  - `results["views"].monthly(transfer_visibility=..., selection=...)` — journal‑first aggregation of cash flows with selection and visibility filters
+  - `results["views"].filter(brick_ids=...)` — creates filtered views with **sticky defaults** (selection, visibility, and `include_cash` persist across subsequent `monthly()` calls unless explicitly overridden)
+  - `results["views"].to_freq("Q"|"Y")` — time aggregation helpers
+  - `results["views"].journal()` — journal entries as a DataFrame with metadata (transaction_type, categories, node_ids)
+  - `totals` — a **DataFrame** with time index; common columns include `cash`, `non_cash`, `assets`, `liabilities`, `interest`, `equity`
 
-* `bricks` — per‑brick outputs
-* `totals` — a **DataFrame** with time index; typical columns include `cash`, `assets`, `liabilities` (and may include others depending on your build)
-* JSON export — via `export_run_json()` (shape stable within a minor series)
+Notes
+- Cash flow aggregation comes from the Journal (not per‑brick arrays)
+- **Selection rules**: Only Asset (A) and Liability (L) bricks produce selection node IDs. Flow (F) and Transfer (T) bricks generate journal entries but don't affect selection aggregation.
+- Selection accepts A/L node IDs (e.g., `a:cash`, `l:mortgage`) and MacroBrick IDs (expanded to A/L)
+- Transfer visibility: `BOUNDARY_ONLY` (default), `ALL`, `ONLY`, `OFF`
 
 ---
 
@@ -784,9 +868,14 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+**Testing**
+
+* Tests are organized by area: `tests/core/`, `tests/strategies/`, `tests/integration/`
+* See [CONTRIBUTING.md](docs/CONTRIBUTING.md#testing-guidelines) for test structure and naming conventions
+
 **Releases**
 
-* Tag with semantic versioning (e.g., `v0.1.0`).
+* Tag with semantic versioning (e.g., `v0.2.0`).
 * CI should execute README snippets to avoid drift.
 
 ---
@@ -806,9 +895,9 @@ finbricklab/
 │   ├── fx.py                # Foreign exchange utilities
 │   └── cli.py               # finbrick CLI entry point
 ├── tests/                   # unit & integration tests
-│   ├── test_entity_*.py     # Entity system tests
-│   ├── test_kpi_utilities.py # KPI function tests
-│   ├── test_fx_utilities.py  # FX utility tests
+│   ├── core/                # Core functionality tests
+│   ├── strategies/           # Strategy-specific tests
+│   ├── integration/         # Integration tests (Entity, smoke, etc.)
 │   ├── data/golden_12m.csv   # Golden dataset for testing
 │   └── ...                  # other test modules
 ├── docs/                    # comprehensive documentation

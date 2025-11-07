@@ -95,55 +95,51 @@ def main():
     print("Running scenario for 6 months...")
     results = e.run_scenario("demo_scenario", start=date(2026, 1, 1), months=6)
 
-    # Show full results
+    # Show full results (journal-first aggregation)
     print("\n=== FULL RESULTS ===")
     full_monthly = results["views"].monthly()
     print("Full monthly totals (first 3 months):")
     print(full_monthly.head(3))
     print()
 
-    # Filter to only cash and salary
-    print("=== FILTERED: Cash + Salary Only ===")
-    cash_salary_view = results["views"].filter(brick_ids=["cash", "salary"])
-    cash_salary_monthly = cash_salary_view.monthly()
-    print("Cash + Salary monthly totals (first 3 months):")
-    print(cash_salary_monthly.head(3))
+    # Select only the cash account (salary inflows appear on the cash node)
+    print("=== SELECTION: Cash Only (salary inflows appear on cash) ===")
+    cash_only_monthly = results["views"].monthly(selection={"a:cash"})
+    print("Cash-only monthly totals (first 3 months):")
+    print(cash_only_monthly.head(3))
     print()
 
-    # Filter to investment portfolio MacroBrick
-    print("=== FILTERED: Investment Portfolio MacroBrick ===")
-    investments_view = results["views"].filter(brick_ids=["investments"])
-    investments_monthly = investments_view.monthly()
+    # Select investment portfolio MacroBrick (expanded to A/L nodes)
+    print("=== SELECTION: Investment Portfolio MacroBrick ===")
+    investments_monthly = results["views"].monthly(selection={"investments"})
     print("Investment portfolio monthly totals (first 3 months):")
     print(investments_monthly.head(3))
     print()
 
-    # Filter to real estate MacroBrick
-    print("=== FILTERED: Real Estate MacroBrick ===")
-    real_estate_view = results["views"].filter(brick_ids=["real_estate"])
-    real_estate_monthly = real_estate_view.monthly()
+    # Select real estate MacroBrick (property + mortgage)
+    print("=== SELECTION: Real Estate MacroBrick ===")
+    real_estate_monthly = results["views"].monthly(selection={"real_estate"})
     print("Real estate monthly totals (first 3 months):")
     print(real_estate_monthly.head(3))
     print()
 
-    # Filter to both cash and real estate
-    print("=== FILTERED: Cash + Real Estate ===")
-    mixed_view = results["views"].filter(brick_ids=["cash", "real_estate"])
-    mixed_monthly = mixed_view.monthly()
+    # Select both cash and real estate
+    print("=== SELECTION: Cash + Real Estate ===")
+    mixed_monthly = results["views"].monthly(selection={"a:cash", "real_estate"})
     print("Cash + Real Estate monthly totals (first 3 months):")
     print(mixed_monthly.head(3))
     print()
 
     # Show quarterly aggregation on filtered data
-    print("=== QUARTERLY AGGREGATION ON FILTERED DATA ===")
-    investments_quarterly = investments_view.quarterly()
+    print("=== QUARTERLY AGGREGATION ===")
+    investments_quarterly = results["views"].to_freq("Q")
     print("Investment portfolio quarterly totals:")
     print(investments_quarterly)
     print()
 
     # Show yearly aggregation on filtered data
-    print("=== YEARLY AGGREGATION ON FILTERED DATA ===")
-    real_estate_yearly = real_estate_view.yearly()
+    print("=== YEARLY AGGREGATION ===")
+    real_estate_yearly = results["views"].to_freq("Y")
     print("Real estate yearly totals:")
     print(real_estate_yearly)
     print()
@@ -163,25 +159,19 @@ def main():
     print(journal_df.head())
     print()
 
-    # Show journal for filtered view
-    print("=== FILTERED JOURNAL: Investment Portfolio ===")
-    investments_journal = investments_view.journal()
-    print(f"Investment portfolio journal entries: {len(investments_journal)}")
-    if not investments_journal.empty:
+    # Show journal filtered by ETF brick (simple DataFrame filter for demo)
+    print("=== FILTERED JOURNAL: Investment Portfolio (ETF only) ===")
+    inv_journal = journal_df[journal_df["brick_id"].isin(["etf"])]
+    print(f"Investment portfolio journal entries: {len(inv_journal)}")
+    if not inv_journal.empty:
         print("Investment journal sample:")
-        print(investments_journal.head())
+        print(inv_journal.head())
     print()
 
     print("=== SUMMARY ===")
-    print("✅ Successfully demonstrated filtered results functionality!")
-    print(
-        "✅ Filtered views support all time aggregation methods (monthly, quarterly, yearly)"
-    )
-    print("✅ Can filter by unified brick_ids (bricks and MacroBricks mixed)")
-    print("✅ MacroBricks are automatically expanded to their constituent bricks")
-    print("✅ Filtered results maintain the same structure as full results")
-    print("✅ NEW: Journal functionality provides transaction-level detail!")
-    print("✅ NEW: Filtered views also support journal analysis!")
+    print("✅ Selection-based aggregation supports monthly/quarterly/yearly views")
+    print("✅ Selection accepts MacroBricks (expanded to A/L bricks)")
+    print("✅ Journal-first model provides transaction-level detail")
 
 
 if __name__ == "__main__":

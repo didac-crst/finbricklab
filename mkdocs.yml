@@ -62,6 +62,10 @@ nav:
       - Postings Model & Brick Types: POSTINGS_MODEL_AND_BRICK_TYPES.md
       - Technical Spec: TECHNICAL_SPEC_POSTINGS_MODEL.md
       - Contributing: CONTRIBUTING.md
+  - V2 Architecture:
+      - Postings Model & Brick Types: POSTINGS_MODEL_AND_BRICK_TYPES.md
+      - Technical Specification: TECHNICAL_SPEC_POSTINGS_MODEL.md
+      - V2 Implementation Q&A: V2_QUESTIONS.md
   - Reference:
       - Overview: reference/index.md
       - API Reference: API_REFERENCE.md

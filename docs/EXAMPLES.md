@@ -293,51 +293,48 @@ print(f"Investment assets: €{investment_totals['asset_value'][-1]:,.2f}")
 
 ---
 
-## Filtered Results
+## Selection-Based Aggregation (V2)
 
-### Filter by Specific Bricks
+### Select by Specific Node IDs
 
 ```python
-# Filter to show only cash and salary
-cash_salary_view = results["views"].filter(brick_ids=["cash", "salary"])
-cash_salary_monthly = cash_salary_view.monthly()
+# Select only the cash account (salary inflows appear on the cash node)
+cash_only_monthly = results["views"].monthly(selection={"a:cash"})
 
-print("Cash + Salary monthly totals:")
-print(cash_salary_monthly.head())
+print("Cash-only monthly totals:")
+print(cash_only_monthly.head())
 ```
 
-### Filter by MacroBricks
+### Select by MacroBricks
 
 ```python
-# Filter to show only investment portfolio
-investments_view = results["views"].filter(brick_ids=["investments"])
-investments_monthly = investments_view.monthly()
+# Select investment portfolio MacroBrick (expanded to A/L nodes)
+investments_monthly = results["views"].monthly(selection={"investments"})
 
 print("Investment portfolio monthly totals:")
 print(investments_monthly.head())
 ```
 
-### Mixed Filtering
+### Mixed Selection
 
 ```python
-# Filter to show cash + real estate MacroBrick
-mixed_view = results["views"].filter(brick_ids=["cash", "housing"])
-mixed_monthly = mixed_view.monthly()
+# Select both cash and real estate MacroBrick
+mixed_monthly = results["views"].monthly(selection={"a:cash", "housing"})
 
 print("Cash + Real Estate monthly totals:")
 print(mixed_monthly.head())
 ```
 
-### Time Aggregation on Filtered Data
+### Time Aggregation with Selection
 
 ```python
-# Quarterly aggregation on filtered data
-investments_quarterly = investments_view.quarterly()
+# Quarterly aggregation with selection
+investments_quarterly = results["views"].to_freq("Q", selection={"investments"})
 print("Investment portfolio quarterly totals:")
 print(investments_quarterly)
 
-# Yearly aggregation on filtered data
-housing_yearly = housing_view.yearly()
+# Yearly aggregation with selection
+housing_yearly = results["views"].to_freq("Y", selection={"housing"})
 print("Housing yearly totals:")
 print(housing_yearly)
 ```
@@ -509,10 +506,39 @@ print(final_results)
 - `liabilities` instead of `debt_balance`
 - Consistent naming across all output formats
 
-### 5. **Filtered Results**
-- Filter by specific bricks or MacroBricks
+### 5. **Filtered Results (V2)**
+- Filter by specific bricks or MacroBricks using journal-first aggregation
+- **Sticky defaults**: Selection, visibility, and `include_cash` settings persist in filtered views
+- Filtered views remember their selection/visibility for subsequent `monthly()` calls unless explicitly overridden
+- Only A/L bricks produce selection node IDs; F/T bricks are ignored for selection
+- MacroBricks are expanded recursively using cached expansion
+- Unknown brick IDs warn and return zeros
+- `include_cash=False` persists across visibility changes (sticky on filtered views)
 - Support for all time aggregation methods (monthly, quarterly, yearly)
 - Maintains same structure as full results
+
+**Example:**
+```python
+# Filter to cash account only
+cash_view = results["views"].filter(brick_ids=["cash"])
+
+# Selection is preserved (sticky) - changing visibility still respects cash selection
+cash_all = cash_view.monthly(transfer_visibility=TransferVisibility.ALL)
+cash_boundary = cash_view.monthly(transfer_visibility=TransferVisibility.BOUNDARY_ONLY)
+# Default call uses the stored selection + visibility
+cash_default = cash_view.monthly()  # Uses stored selection and visibility
+
+# Filter to MacroBrick (automatically expanded)
+investments_view = results["views"].filter(brick_ids=["investments"])
+
+# include_cash=False persists across visibility changes (sticky)
+no_cash_view = results["views"].filter(brick_ids=["cash"], include_cash=False)
+assert "cash" not in no_cash_view.monthly(transfer_visibility=TransferVisibility.ALL).columns
+assert "cash" not in no_cash_view.monthly().columns  # Sticky default applies
+
+# Override defaults by passing explicit parameters
+override_view = no_cash_view.monthly(selection={"a:other_account"})  # Temporarily overrides stored selection
+```
 
 ### 6. **MacroBrick Aggregation**
 - Automatic calculation of MacroBrick totals
@@ -552,12 +578,18 @@ print("Checking account transactions:")
 print(checking_txns[['timestamp', 'amount', 'metadata']].head())
 ```
 
-### Filtered Journal Analysis
+### Filtered Journal Analysis (V2)
 
 ```python
-# Get journal for specific components
-income_journal = results["views"].filter(brick_ids=["income_sources"]).journal()
-investment_journal = results["views"].filter(brick_ids=["investment_strategy"]).journal()
+# Filter journal by category (income sources)
+journal_df = results["views"].journal()
+income_journal = journal_df[journal_df["metadata"].apply(lambda m: m.get("category", "").startswith("income."))]
+
+# Filter journal by brick_id or transaction type
+investment_journal = journal_df[
+    journal_df["brick_id"].isin(["investment_strategy", "etf"]) |
+    journal_df["metadata"].apply(lambda m: m.get("transaction_type", "") in {"transfer", "dividend"})
+]
 
 print(f"Income transactions: {len(income_journal)}")
 print(f"Investment transactions: {len(investment_journal)}")

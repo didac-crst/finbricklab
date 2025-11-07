@@ -157,12 +157,9 @@ def create_balloon_loan_example():
         spec={
             "principal": 500000.0,  # €500,000 loan
             "rate_pa": 0.06,  # 6% interest rate
-            "term_months": 60,  # 5 years
-            "amortization": {
-                "type": "interest_only",  # Interest-only for first 4 years
-                "amort_months": 0,
-            },
-            "balloon_at_maturity": "full",  # Full balloon payment
+            "balloon_after_months": 60,  # Balloon payment after 5 years
+            "amortization_rate_pa": 0.06,  # Same as interest rate for interest-only
+            "balloon_type": "residual",  # Pay remaining principal
             "start_date": "2026-01-01",
         },
     )

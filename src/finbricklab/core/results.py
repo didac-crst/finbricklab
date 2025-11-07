@@ -4,42 +4,22 @@ Results and output structures for FinBrickLab.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
 
-from .accounts import AccountScope
+from .accounts import (
+    BOUNDARY_NODE_ID,
+    AccountScope,
+    AccountType,
+    get_node_scope,
+    get_node_type,
+)
 from .events import Event
-from .journal import JournalEntry
+from .journal import Journal, JournalEntry
 from .registry import Registry
 from .transfer_visibility import TransferVisibility
-
-
-def _entry_touches_boundary(entry: JournalEntry, registry: Registry | None) -> bool:
-    """
-    Check if a journal entry touches a boundary account.
-
-    Args:
-        entry: The journal entry to check
-        registry: The account registry (currently Registry type, will be AccountRegistry)
-
-    Returns:
-        True if the entry has any posting to a boundary account
-    """
-    if not registry:
-        return False
-    for posting in entry.postings:
-        try:
-            # TODO: Replace with proper account registry when available
-            # Currently Registry doesn't have get_account; this is a placeholder
-            account = registry.get_account(posting.account_id)  # type: ignore
-            if account and getattr(account, "scope", None) == AccountScope.BOUNDARY:
-                return True
-        except Exception:
-            # If account not found in registry, treat as INTERNAL
-            continue
-    return False
 
 
 class BrickOutput(TypedDict):
@@ -51,8 +31,8 @@ class BrickOutput(TypedDict):
     interest tracking, and event tracking across all types of financial instruments.
 
     Attributes:
-        cash_in: Monthly cash inflows (always >= 0)
-        cash_out: Monthly cash outflows (always >= 0)
+        cash_in: Monthly cash inflows (always >= 0) - DEPRECATED: use journal entries instead
+        cash_out: Monthly cash outflows (always >= 0) - DEPRECATED: use journal entries instead
         assets: Monthly asset valuation (0 for non-assets)
         liabilities: Monthly debt balance (0 for non-liabilities)
         interest: Monthly interest income (+) / expense (-) (0 if not applicable)
@@ -60,13 +40,14 @@ class BrickOutput(TypedDict):
 
     Note:
         All numpy arrays have the same length corresponding to the simulation period.
-        Cash flows are always positive values - the direction is implicit in the field name.
+        Cash flows (cash_in/cash_out) are deprecated in V2 - use journal entries instead.
+        Aggregators will ignore cash_in/cash_out and compute cashflow from journal.
         Interest is signed: positive for income (cash accounts, securities), negative for expense (loans, credit).
         Events are time-stamped and can be used to build a simulation ledger.
     """
 
-    cash_in: np.ndarray  # Monthly cash inflows (>=0)
-    cash_out: np.ndarray  # Monthly cash outflows (>=0)
+    cash_in: NotRequired[np.ndarray]  # Monthly cash inflows (>=0) - DEPRECATED
+    cash_out: NotRequired[np.ndarray]  # Monthly cash outflows (>=0) - DEPRECATED
     assets: np.ndarray  # Monthly asset value (0 if not an asset)
     liabilities: np.ndarray  # Monthly debt balance (0 if not a liability)
     interest: np.ndarray  # Monthly interest income (+) / expense (-) (0 if not applicable)
@@ -86,6 +67,9 @@ class ScenarioResults:
         registry: Registry | None = None,
         outputs: dict[str, BrickOutput] | None = None,
         journal=None,
+        default_selection: set[str] | None = None,
+        default_visibility: TransferVisibility | None = None,
+        include_cash: bool | None = None,
     ):
         """
         Initialize with monthly totals DataFrame (PeriodIndex).
@@ -95,11 +79,17 @@ class ScenarioResults:
             registry: Optional registry for MacroBrick expansion
             outputs: Optional outputs dict for filtered views
             journal: Optional journal object for transaction analysis
+            default_selection: Optional default selection set for filtered views
+            default_visibility: Optional default transfer visibility for filtered views
+            include_cash: Whether cash column should be included (None = default behavior)
         """
         self._monthly_data = totals  # PeriodIndex 'M'
         self._registry = registry
         self._outputs = outputs
         self._journal = journal
+        self._default_selection = default_selection
+        self._default_visibility = default_visibility
+        self._include_cash = include_cash
 
     def to_freq(self, freq: str = "Q") -> pd.DataFrame:
         """
@@ -117,16 +107,18 @@ class ScenarioResults:
         self,
         transfer_visibility: TransferVisibility | None = None,
         include_transparent: bool | None = None,
+        selection: set[str] | None = None,
     ) -> pd.DataFrame:
         """
-        Return monthly data with optional transfer visibility filtering.
+        Return monthly data with journal-first aggregation (V2 postings model).
 
         Args:
-            transfer_visibility: How to handle transfer visibility (default: OFF)
+            transfer_visibility: How to handle transfer visibility (default: BOUNDARY_ONLY)
             include_transparent: Backward compatibility flag (deprecated)
+            selection: Optional set of brick/node IDs to filter (for MacroGroups)
 
         Returns:
-            Monthly data DataFrame with optional transfer filtering applied
+            Monthly data DataFrame with journal-first aggregation
         """
         # Handle backward compatibility
         if include_transparent is not None:
@@ -143,16 +135,65 @@ class ScenarioResults:
             else:
                 transfer_visibility = TransferVisibility.OFF
 
-        # If no transfer visibility specified, return data as-is
+        # Use default selection/visibility if not explicitly provided
+        if selection is None:
+            selection = self._default_selection
         if transfer_visibility is None:
-            return self._monthly_data
+            transfer_visibility = (
+                self._default_visibility or TransferVisibility.BOUNDARY_ONLY
+            )
 
-        # If no filtering needed, return data as-is
-        if transfer_visibility == TransferVisibility.ALL:
-            return self._monthly_data
+        # Validate and filter selection to only A/L node IDs (defensive check)
+        if selection is not None:
+            selection = self._validate_node_selection(selection)
 
-        # Apply transfer visibility filtering
-        return self._apply_transfer_visibility_filter(transfer_visibility)
+        # Use journal-first aggregation if journal is available AND selection/visibility is explicitly provided
+        # Empty set selection is treated as explicit (will return zeros via aggregation)
+        # If no selection/visibility, use pre-aggregated data (for filtered views or legacy compatibility)
+        has_explicit_selection = selection is not None  # Empty set is explicit
+        has_explicit_visibility = (
+            transfer_visibility != TransferVisibility.BOUNDARY_ONLY
+        )
+        if (
+            (has_explicit_selection or has_explicit_visibility)
+            and self._journal is not None
+            and self._registry is not None
+        ):
+            # Get time index from monthly data
+            time_index = self._monthly_data.index
+
+            # Aggregate from journal
+            df = _aggregate_journal_monthly(
+                journal=self._journal,
+                registry=self._registry,
+                time_index=time_index,
+                selection=selection,
+                transfer_visibility=transfer_visibility,
+                outputs=self._outputs,
+            )
+
+            # Apply transfer visibility if needed (already handled in aggregation)
+            # Handle include_cash=False if set during filtering
+            if self._include_cash is False and "cash" in df.columns:
+                df = df.drop(columns=["cash"])
+            return df
+
+        # Use pre-aggregated data (for filtered views or when no explicit selection/visibility)
+        # This allows filtered ScenarioResults to return their already-filtered _monthly_data
+        result_df = self._monthly_data
+        if (
+            transfer_visibility == TransferVisibility.BOUNDARY_ONLY
+            or transfer_visibility is None
+        ):
+            result_df = self._monthly_data
+        else:
+            # Apply transfer visibility filtering on legacy data
+            result_df = self._apply_transfer_visibility_filter(transfer_visibility)
+
+        # Handle include_cash=False if set during filtering
+        if self._include_cash is False and "cash" in result_df.columns:
+            result_df = result_df.drop(columns=["cash"])
+        return result_df
 
     def _apply_transfer_visibility_filter(
         self, visibility: TransferVisibility
@@ -198,7 +239,12 @@ class ScenarioResults:
         self, visibility: TransferVisibility
     ) -> dict:
         """
-        Filter brick outputs based on transfer visibility settings.
+        Filter brick outputs based on transfer visibility settings (legacy path).
+
+        **Note:** This method uses the legacy per-brick cash array approach and is only
+        used as a fallback when journal-first aggregation is not available. For V2 scenarios,
+        journal-first aggregation via `monthly(selection=..., transfer_visibility=...)` is
+        authoritative and preferred.
 
         Args:
             visibility: The transfer visibility setting to apply
@@ -206,6 +252,16 @@ class ScenarioResults:
         Returns:
             Dictionary of filtered brick outputs
         """
+        import warnings
+
+        warnings.warn(
+            "Using legacy transfer visibility path (per-brick cash arrays). "
+            "Journal-first aggregation is authoritative. "
+            "Ensure journal is available for V2 behavior.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
         filtered_outputs: dict[str, BrickOutput] = {}
         transfer_count = 0
         transfer_sum = 0.0
@@ -218,23 +274,70 @@ class ScenarioResults:
             is_transfer = self._is_transfer_brick(brick_id)
             if is_transfer:
                 transfer_count += 1
-                # Calculate transfer sum (cash_in + cash_out)
-                transfer_sum += output["cash_in"].sum() + output["cash_out"].sum()
+                # Calculate transfer sum (cash_in + cash_out) - handle optional fields
+                cash_in = output.get("cash_in")
+                cash_out = output.get("cash_out")
+                if cash_in is not None and cash_out is not None:
+                    transfer_sum += cash_in.sum() + cash_out.sum()
 
                 # Apply visibility rules
                 if visibility == TransferVisibility.OFF:
                     # Hide internal transfers - zero out the cash flows
                     filtered_output = output.copy()
-                    filtered_output["cash_in"] = np.zeros_like(output["cash_in"])
-                    filtered_output["cash_out"] = np.zeros_like(output["cash_out"])
+                    if "cash_in" in output:
+                        filtered_output["cash_in"] = np.zeros_like(output["cash_in"])
+                    if "cash_out" in output:
+                        filtered_output["cash_out"] = np.zeros_like(output["cash_out"])
                     filtered_outputs[brick_id] = filtered_output
                 elif visibility == TransferVisibility.ONLY:
                     # Show only transfers
                     filtered_outputs[brick_id] = output
                 elif visibility == TransferVisibility.BOUNDARY_ONLY:
-                    # Show only boundary-crossing transfers (for now, show all transfers)
-                    # TODO: Implement boundary detection
-                    filtered_outputs[brick_id] = output
+                    # Show only boundary-crossing transfers (use scope-aware boundary detection)
+                    # Check if this transfer has any boundary-touching entries in journal
+                    if (
+                        self._journal is not None
+                        and self._journal.account_registry is not None
+                    ):
+                        # Check journal entries for this brick to see if any touch boundary
+                        touches_boundary = False
+                        # Create family prefix set for exact parent_id matching (avoid substring false positives)
+                        family_parent_ids = {
+                            f"a:{brick_id}",
+                            f"l:{brick_id}",
+                            f"fs:{brick_id}",
+                            f"ts:{brick_id}",
+                        }
+                        for entry in self._journal.entries:
+                            # Check if entry belongs to this brick (exact parent_id match)
+                            parent_id = entry.metadata.get("parent_id", "")
+                            if parent_id not in family_parent_ids:
+                                continue
+                            # Check if entry touches boundary
+                            for posting in entry.postings:
+                                node_id = posting.metadata.get("node_id")
+                                if node_id is None or not isinstance(node_id, str):
+                                    continue
+                                try:
+                                    scope = get_node_scope(
+                                        node_id, self._journal.account_registry
+                                    )
+                                    if scope == AccountScope.BOUNDARY:
+                                        touches_boundary = True
+                                        break
+                                except ValueError:
+                                    # Fallback to direct comparison for known boundary nodes
+                                    if node_id == BOUNDARY_NODE_ID:
+                                        touches_boundary = True
+                                        break
+                            if touches_boundary:
+                                break
+                        if touches_boundary:
+                            filtered_outputs[brick_id] = output
+                        # If no boundary-touching entries, skip this transfer
+                    else:
+                        # Fallback: if no journal, include all transfers (legacy behavior)
+                        filtered_outputs[brick_id] = output
                 else:
                     # Show all transfers
                     filtered_outputs[brick_id] = output
@@ -319,8 +422,9 @@ class ScenarioResults:
 
         # Aggregate the filtered outputs
         for output in filtered_outputs.values():
-            cash_in += output["cash_in"]
-            cash_out += output["cash_out"]
+            # Handle optional cash arrays (deprecated in V2)
+            cash_in += output.get("cash_in", np.zeros(len(time_index)))
+            cash_out += output.get("cash_out", np.zeros(len(time_index)))
             assets += output["assets"]
             liabilities += output["liabilities"]
             interest += output["interest"]
@@ -422,31 +526,199 @@ class ScenarioResults:
             "hidden_transfer_sum": 0.0,
         }
 
+    def _resolve_selection(
+        self, brick_ids: list[str] | None
+    ) -> tuple[set[str], list[str], list[str]]:
+        """
+        Resolve brick IDs and MacroBricks to A/L node IDs for selection.
+
+        This helper extracts the common logic for expanding MacroBricks and converting
+        brick IDs to node IDs, used by both filter() and monthly().
+
+        Args:
+            brick_ids: List of brick IDs and/or MacroBrick IDs
+
+        Returns:
+            Tuple of (selection_set, unknown_ids, non_al_ids) where:
+            - selection_set: Set of A/L node IDs for selection
+            - unknown_ids: List of unknown brick IDs (warned)
+            - non_al_ids: List of non-A/L brick IDs (warned, ignored in selection)
+        """
+        if self._registry is None:
+            return set(), [], []
+
+        selection_set: set[str] = set()
+        unknown_ids: list[str] = []
+        non_al_ids: list[str] = []
+
+        if brick_ids is not None and len(brick_ids) > 0:
+            for item_id in brick_ids:
+                if self._registry.is_macrobrick(item_id):
+                    # Expand MacroBrick using cached expansion (get_struct_flat_members)
+                    members = self._registry.get_struct_flat_members(item_id)
+                    # Convert brick IDs to node IDs
+                    for brick_id in members:
+                        brick = self._registry.get_brick(brick_id)
+                        if hasattr(brick, "family"):
+                            if brick.family == "a":
+                                selection_set.add(f"a:{brick_id}")
+                            elif brick.family == "l":
+                                selection_set.add(f"l:{brick_id}")
+                            else:
+                                # F/T bricks are ignored (don't add to selection, but don't warn)
+                                non_al_ids.append(brick_id)
+                elif self._registry.is_brick(item_id):
+                    # Direct brick selection - convert to node ID
+                    brick = self._registry.get_brick(item_id)
+                    if hasattr(brick, "family"):
+                        if brick.family == "a":
+                            selection_set.add(f"a:{item_id}")
+                        elif brick.family == "l":
+                            selection_set.add(f"l:{item_id}")
+                        else:
+                            # F/T bricks are ignored in selection
+                            non_al_ids.append(item_id)
+                else:
+                    # Unknown ID - skip with warning
+                    unknown_ids.append(item_id)
+
+        return selection_set, unknown_ids, non_al_ids
+
+    def _validate_node_selection(self, selection: set[str]) -> set[str]:
+        """
+        Validate and filter selection to only A/L node IDs.
+
+        This defensive helper ensures that only Asset (a:) and Liability (l:) node IDs
+        are included in selection. Flow (fs:) and Transfer (ts:) node IDs are ignored,
+        and boundary (b:) node IDs are removed.
+
+        Args:
+            selection: Set of node IDs to validate
+
+        Returns:
+            Filtered set containing only A/L node IDs
+        """
+        if not selection:
+            return selection
+
+        validated: set[str] = set()
+        invalid_ids: list[str] = []
+
+        for node_id in selection:
+            if node_id.startswith("a:") or node_id.startswith("l:"):
+                validated.add(node_id)
+            else:
+                invalid_ids.append(node_id)
+
+        # Warn if non-A/L node IDs were provided
+        if invalid_ids:
+            import warnings
+
+            warnings.warn(
+                f"Non-A/L node IDs in selection ignored (only a: and l: node IDs are valid): {invalid_ids}",
+                stacklevel=3,
+            )
+
+        return validated
+
     def filter(
         self,
         brick_ids: list[str] | None = None,
         include_cash: bool = True,
+        transfer_visibility: TransferVisibility | None = None,
     ) -> ScenarioResults:
         """
-        Filter results to show only selected bricks and/or MacroBricks.
+        Filter results to show only selected bricks and/or MacroBricks (V2: journal-first).
+
+        This method now uses journal-first aggregation via monthly(selection=...) for V2
+        compatibility. It replaces the legacy _compute_filtered_totals() approach.
+
+        **Selection Rules:**
+        - Only Asset (A) and Liability (L) bricks produce selection node IDs
+        - Flow (F) and Transfer (T) bricks are ignored in selection (they generate entries but don't filter aggregation)
+        - MacroBricks are expanded recursively to their A/L member bricks
+        - Unknown brick IDs are skipped with a warning
 
         Args:
             brick_ids: List of brick IDs and/or MacroBrick IDs to include (None = no filtering)
-            include_cash: Whether to include cash in the aggregation
+            include_cash: Whether to include cash column in the result (default: True)
+            transfer_visibility: Optional transfer visibility setting (default: BOUNDARY_ONLY)
 
         Returns:
-            New ScenarioResults with filtered aggregated data
+            New ScenarioResults with filtered aggregated data and preserved selection/visibility
 
         Raises:
-            RuntimeError: If registry or outputs are not available
+            RuntimeError: If registry or journal is not available
         """
         # Validation
-        if not self._registry or not self._outputs:
-            raise RuntimeError("Cannot filter: missing registry or outputs")
+        if not self._registry:
+            raise RuntimeError("Cannot filter: missing registry")
 
-        # Resolve selection to brick IDs (expand MacroBricks automatically)
+        # Default transfer visibility
+        if transfer_visibility is None:
+            transfer_visibility = TransferVisibility.BOUNDARY_ONLY
+
+        # V2: Use journal-first aggregation if journal is available
+        if self._journal is not None:
+            # Build selection set of node IDs from brick_ids + MacroBrick expansion
+            selection_set, unknown_ids, non_al_ids = self._resolve_selection(brick_ids)
+
+            # Warn for unknown IDs and non-A/L bricks (consolidated warning)
+            if unknown_ids or non_al_ids:
+                import warnings
+
+                warning_parts = []
+                if unknown_ids:
+                    warning_parts.append(f"unknown IDs: {unknown_ids}")
+                if non_al_ids:
+                    warning_parts.append(
+                        f"non-A/L brick IDs (ignored for selection): {non_al_ids}"
+                    )
+                warnings.warn(
+                    f"Filter selection issues, skipping: {'; '.join(warning_parts)}",
+                    stacklevel=2,
+                )
+
+            # V2: Use journal-first aggregation via monthly(selection=...)
+            # If selection is empty (empty brick_ids or all unknown), return zeros
+            if not selection_set:
+                # Return zeroed DataFrame with same index/columns as monthly data
+                filtered_df = self._monthly_data.copy()
+                for col in filtered_df.columns:
+                    filtered_df[col] = 0.0
+                # Use empty set as sentinel to preserve "empty selection = zeros" semantics
+                # This ensures monthly() treats empty selection as explicit (returns zeros)
+                default_selection = set()
+            else:
+                # Get filtered monthly data using journal-first aggregation
+                filtered_df = self.monthly(
+                    selection=selection_set,
+                    transfer_visibility=transfer_visibility,
+                )
+                default_selection = selection_set
+
+            # Handle include_cash=False
+            if not include_cash and "cash" in filtered_df.columns:
+                filtered_df = filtered_df.drop(columns=["cash"])
+
+            # Return new ScenarioResults with filtered data and preserved selection/visibility
+            return ScenarioResults(
+                filtered_df,
+                self._registry,
+                self._outputs,
+                self._journal,
+                default_selection=default_selection,
+                default_visibility=transfer_visibility,
+                include_cash=include_cash,
+            )
+
+        # Fallback to legacy path if journal not available
+        if not self._outputs:
+            raise RuntimeError("Cannot filter: missing outputs (legacy path)")
+
+        # Legacy: Resolve selection to brick IDs (expand MacroBricks automatically)
         selected_bricks: set[str] = set()
-        if brick_ids:
+        if brick_ids is not None and len(brick_ids) > 0:
             for item_id in brick_ids:
                 if self._registry.is_macrobrick(item_id):
                     # Expand MacroBrick to its constituent bricks
@@ -464,6 +736,18 @@ class ScenarioResults:
                         stacklevel=2,
                     )
 
+        # Legacy: If selection is empty, return zeros
+        if not selected_bricks:
+            filtered_df = self._monthly_data.copy()
+            for col in filtered_df.columns:
+                filtered_df[col] = 0.0
+            # Handle include_cash=False
+            if not include_cash and "cash" in filtered_df.columns:
+                filtered_df = filtered_df.drop(columns=["cash"])
+            return ScenarioResults(
+                filtered_df, self._registry, self._outputs, self._journal
+            )
+
         # Identify cash bricks (for cash column calculation)
         cash_bricks = set()
         for bid in selected_bricks:
@@ -472,7 +756,7 @@ class ScenarioResults:
                 if hasattr(brick, "kind") and brick.kind == "a.cash":
                     cash_bricks.add(bid)
 
-        # Compute filtered totals
+        # Legacy: Compute filtered totals
         filtered_df = _compute_filtered_totals(
             self._outputs,
             selected_bricks,
@@ -481,9 +765,18 @@ class ScenarioResults:
             cash_bricks,
         )
 
-        # Return new ScenarioResults with filtered data
+        # Handle include_cash=False
+        if not include_cash and "cash" in filtered_df.columns:
+            filtered_df = filtered_df.drop(columns=["cash"])
+
+        # Return new ScenarioResults with filtered data (preserve empty selection for legacy path)
         return ScenarioResults(
-            filtered_df, self._registry, self._outputs, self._journal
+            filtered_df,
+            self._registry,
+            self._outputs,
+            self._journal,
+            default_selection=set() if not selected_bricks else None,
+            default_visibility=None,
         )
 
     def journal(
@@ -853,8 +1146,13 @@ def _compute_filtered_totals(
         return empty_df
 
     # Calculate totals for selected bricks only
-    cash_in_tot = sum(o["cash_in"] for o in filtered_outputs.values())
-    cash_out_tot = sum(o["cash_out"] for o in filtered_outputs.values())
+    # Handle optional cash arrays (deprecated in V2)
+    cash_in_tot = sum(
+        o.get("cash_in", np.zeros(len(t_index))) for o in filtered_outputs.values()
+    )
+    cash_out_tot = sum(
+        o.get("cash_out", np.zeros(len(t_index))) for o in filtered_outputs.values()
+    )
     assets_tot = sum(o["assets"] for o in filtered_outputs.values())
     liabilities_tot = sum(o["liabilities"] for o in filtered_outputs.values())
     interest_tot = sum(o["interest"] for o in filtered_outputs.values())
@@ -951,6 +1249,313 @@ def aggregate_totals(
     if return_period_index:
         return out
     return out.to_timestamp(how="end")  # Convert to period-end timestamps
+
+
+def _aggregate_journal_monthly(
+    journal: Journal,
+    registry: Registry,
+    time_index: pd.PeriodIndex,
+    selection: set[str] | None = None,
+    transfer_visibility: TransferVisibility = TransferVisibility.BOUNDARY_ONLY,
+    outputs: dict[str, BrickOutput] | None = None,
+) -> pd.DataFrame:
+    """
+    Aggregate journal entries monthly with internal cancellation logic.
+
+    This implements journal-first aggregation for V2 postings model:
+    - Time bucket by entry timestamp (month precision)
+    - For selection S (A/L set from MacroGroup or single A/L):
+      - Iterate entries (two postings each)
+      - Check if any posting hits `b:boundary`
+      - If both postings INTERNAL and both `node_id ∈ S` → cancel for cashflow
+      - Else, find ASSET posting:
+        - If `node_id ∈ S`: include (DR=inflow, CR=outflow)
+        - Ignore LIABILITY postings for cashflow totals
+      - Attribute boundary postings by `category` for P&L
+
+    Args:
+        journal: Journal with entries
+        registry: Registry for account/node lookup
+        time_index: Time index for output DataFrame
+        selection: Set of A/L node IDs to include (None = all)
+        transfer_visibility: Transfer visibility setting
+        outputs: Optional brick outputs for balance aggregation
+
+    Returns:
+        DataFrame with monthly totals (cash_in, cash_out, assets, liabilities, interest, equity)
+    """
+    from datetime import datetime
+
+    import numpy as np
+
+    # Initialize arrays
+    length = len(time_index)
+    cash_in = np.zeros(length)
+    cash_out = np.zeros(length)
+    assets = np.zeros(length)
+    liabilities = np.zeros(length)
+    interest = np.zeros(length)
+
+    # Get account registry from journal
+    account_registry = journal.account_registry
+    if account_registry is None:
+        raise ValueError("Journal must have account_registry for aggregation")
+
+    # Expand selection if needed (for MacroGroups)
+    selection_set: set[str] = set()
+    if selection is not None:
+        # Empty selection (len=0) means return zeros - return early
+        if len(selection) == 0:
+            # Return all zeros DataFrame
+            df = pd.DataFrame(
+                {
+                    "cash_in": cash_in,
+                    "cash_out": cash_out,
+                    "net_cf": cash_in - cash_out,
+                    "assets": assets,
+                    "liabilities": liabilities,
+                    "interest": interest,
+                    "equity": assets - liabilities,
+                    "cash": np.zeros(length),
+                    "non_cash": assets,
+                },
+                index=time_index,
+            )
+            return df
+        else:
+            for node_id in selection:
+                # Check if it's a MacroGroup
+                if registry and registry.is_macrobrick(node_id):
+                    # Expand MacroGroup using cached expansion (get_struct_flat_members)
+                    members = registry.get_struct_flat_members(node_id)
+                    # Convert brick IDs to node IDs
+                    for brick_id in members:
+                        brick = registry.get_brick(brick_id)
+                        if hasattr(brick, "family"):
+                            if brick.family == "a":
+                                selection_set.add(f"a:{brick_id}")
+                            elif brick.family == "l":
+                                selection_set.add(f"l:{brick_id}")
+                else:
+                    # Direct node ID
+                    selection_set.add(node_id)
+
+    # Group entries by month
+    entries_by_month: dict[str, list[JournalEntry]] = {}
+    for entry in journal.entries:
+        # Normalize timestamp to month
+        if isinstance(entry.timestamp, datetime):
+            month_str = entry.timestamp.strftime("%Y-%m")
+        else:
+            # Handle numpy datetime64
+            month_str = str(entry.timestamp)[:7]  # YYYY-MM
+
+        if month_str not in entries_by_month:
+            entries_by_month[month_str] = []
+        entries_by_month[month_str].append(entry)
+
+    # Process each month
+    for month_idx, period in enumerate(time_index):
+        month_str = period.strftime("%Y-%m")
+
+        # Get entries for this month
+        month_entries = entries_by_month.get(month_str, [])
+
+        # Process each entry
+        for entry in month_entries:
+            # Check if entry touches boundary
+            # Use get_node_scope() to detect boundary accounts (including FX_CLEAR_NODE_ID)
+            touches_boundary = False
+            for posting in entry.postings:
+                boundary_node_id = posting.metadata.get("node_id")
+                if boundary_node_id is None or not isinstance(boundary_node_id, str):
+                    continue  # Skip postings without node_id (legacy entries)
+                try:
+                    scope = get_node_scope(boundary_node_id, account_registry)
+                    if scope == AccountScope.BOUNDARY:
+                        touches_boundary = True
+                        break
+                except ValueError:
+                    # Fallback to direct comparison for known boundary nodes
+                    if boundary_node_id == BOUNDARY_NODE_ID:
+                        touches_boundary = True
+                        break
+
+            # Check if this is a transfer entry
+            # Include fx_transfer so it participates in transfer-visibility logic
+            is_transfer_entry = entry.metadata.get("transaction_type") in {
+                "transfer",
+                "tbrick",
+                "maturity_transfer",
+                "fx_transfer",
+            }
+
+            # Check if both postings are INTERNAL (global check, regardless of selection)
+            both_internal_global = not touches_boundary
+            if both_internal_global:
+                # Verify all postings are INTERNAL (not boundary)
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        both_internal_global = False
+                        break
+                    try:
+                        scope = get_node_scope(posting_node_id, account_registry)
+                        if scope != AccountScope.INTERNAL:
+                            both_internal_global = False
+                            break
+                    except ValueError:
+                        # Fallback: if can't determine scope, assume not internal
+                        both_internal_global = False
+                        break
+
+            # Check if both postings are INTERNAL and in selection (for cancellation)
+            both_internal_in_selection = False
+            if both_internal_global and selection_set:
+                both_in_selection = True
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        both_in_selection = (
+                            False  # Legacy entries can't be internal transfers
+                        )
+                        break
+                    if posting_node_id not in selection_set:
+                        both_in_selection = False
+                        break
+                if both_in_selection:
+                    both_internal_in_selection = True
+
+            # Apply TransferVisibility filtering
+            if transfer_visibility != TransferVisibility.ALL:
+                if transfer_visibility == TransferVisibility.OFF:
+                    # Hide internal transfers (global check, works without selection)
+                    if is_transfer_entry and both_internal_global:
+                        continue  # Skip internal transfers
+                    # Also skip if both internal and in selection (cancellation)
+                    if both_internal_in_selection:
+                        continue  # Skip internal transfers in selection
+                elif transfer_visibility == TransferVisibility.ONLY:
+                    # Show only transfer entries
+                    if not is_transfer_entry:
+                        continue  # Skip non-transfer entries
+                elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
+                    # Show only boundary-crossing transfers (not internal transfers)
+                    if is_transfer_entry and not touches_boundary:
+                        continue  # Skip internal transfers
+                    if not is_transfer_entry and not touches_boundary:
+                        continue  # Skip non-boundary entries
+
+            # Apply cancellation: if both INTERNAL and in selection, cancel
+            if both_internal_in_selection:
+                # Skip this entry for cashflow (internal transfer cancels)
+                continue
+
+            # Find ASSET posting (selection-aware)
+            asset_posting = None
+            if selection_set:
+                # If selection_set is present, prefer the ASSET posting whose node_id is in selection
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        continue  # Skip postings without node_id (legacy entries)
+                    try:
+                        node_type = get_node_type(posting_node_id, account_registry)
+                        if (
+                            node_type == AccountType.ASSET
+                            and posting_node_id in selection_set
+                        ):
+                            asset_posting = posting
+                            break
+                    except ValueError:
+                        continue  # Skip if node_id is None or invalid
+                # If none matched, skip this entry's cashflow
+            else:
+                # No selection_set: pick the first ASSET posting (status quo)
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id is None or not isinstance(posting_node_id, str):
+                        continue  # Skip postings without node_id (legacy entries)
+                    try:
+                        node_type = get_node_type(posting_node_id, account_registry)
+                        if node_type == AccountType.ASSET:
+                            asset_posting = posting
+                            break
+                    except ValueError:
+                        continue  # Skip if node_id is None or invalid
+
+            # Include ASSET posting (already selection-aware if selection_set was provided)
+            if asset_posting:
+                asset_node_id = asset_posting.metadata.get("node_id")
+                if (
+                    asset_node_id is not None
+                    and isinstance(asset_node_id, str)
+                    and (not selection_set or asset_node_id in selection_set)
+                ):
+                    amount = float(asset_posting.amount.value)
+                    if asset_posting.is_debit():
+                        cash_in[month_idx] += abs(amount)
+                    else:  # credit
+                        cash_out[month_idx] += abs(amount)
+
+        # Aggregate balances from outputs if provided
+        if outputs:
+            for brick_id, output in outputs.items():
+                # Check if this brick is in selection
+                output_brick = registry.get_brick(brick_id) if registry else None
+                if output_brick and hasattr(output_brick, "family"):
+                    output_node_id = f"{output_brick.family}:{brick_id}"
+                    if not selection_set or output_node_id in selection_set:
+                        assets[month_idx] += output["assets"][month_idx]
+                        liabilities[month_idx] += output["liabilities"][month_idx]
+                        interest[month_idx] += output["interest"][month_idx]
+
+    # Calculate derived fields
+    net_cf = cash_in - cash_out
+    equity = assets - liabilities
+
+    # Calculate cash column (sum of cash account assets)
+    cash_assets = None
+    if outputs:
+        from .kinds import K
+
+        for brick_id, output in outputs.items():
+            cash_brick = registry.get_brick(brick_id) if registry else None
+            if (
+                cash_brick
+                and hasattr(cash_brick, "kind")
+                and cash_brick.kind == K.A_CASH
+            ):
+                cash_node_id = (
+                    f"{cash_brick.family}:{brick_id}"
+                    if hasattr(cash_brick, "family")
+                    else f"a:{brick_id}"
+                )
+                if not selection_set or cash_node_id in selection_set:
+                    s = output["assets"]
+                    cash_assets = s if cash_assets is None else (cash_assets + s)
+    cash_assets = cash_assets if cash_assets is not None else np.zeros(len(time_index))
+
+    # Calculate non_cash assets
+    non_cash_assets = assets - cash_assets
+
+    # Create DataFrame
+    df = pd.DataFrame(
+        {
+            "cash_in": cash_in,
+            "cash_out": cash_out,
+            "net_cf": net_cf,
+            "assets": assets,
+            "liabilities": liabilities,
+            "interest": interest,
+            "equity": equity,
+            "cash": cash_assets,
+            "non_cash": non_cash_assets,
+        },
+        index=time_index,
+    )
+
+    return df
 
 
 def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:

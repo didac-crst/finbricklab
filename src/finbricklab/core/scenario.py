@@ -90,6 +90,10 @@ class Scenario:
         if self._registry is None:
             self._registry = self._build_registry()
 
+        # Validate MacroBrick membership (V2: A/L only, no F/T/Shell/Boundary)
+        for macrobrick in self.macrobricks:
+            macrobrick.validate_membership(self._registry)
+
     def _build_registry(self) -> Registry:
         """Build the registry from bricks and macrobricks."""
         bricks_dict = {brick.id: brick for brick in self.bricks}
@@ -270,8 +274,10 @@ class Scenario:
         # Simulate selected bricks and route cash flows (in deterministic order)
         outputs, journal = self._simulate_bricks(ctx, t_index, execution_order)
 
-        # Aggregate results into summary statistics
-        totals = self._aggregate_results(outputs, t_index, include_cash)
+        # Aggregate results into summary statistics (journal-first for V2)
+        totals = self._aggregate_results(
+            outputs, t_index, include_cash, journal=journal
+        )
 
         # Build MacroBrick aggregates
         by_struct = self._build_struct_aggregates(outputs, brick_ids)
@@ -515,11 +521,21 @@ class Scenario:
         self, start: date, months: int
     ) -> tuple[np.ndarray, ScenarioContext]:
         """Initialize the simulation context and resolve mortgage links."""
+        from .accounts import AccountRegistry
+        from .journal import Journal
+
         t_index = month_range(start, months)
+
+        # Create account registry and journal for V2 postings model
+        account_registry = AccountRegistry()
+        journal = Journal(account_registry)
+
         ctx = ScenarioContext(
             t_index=t_index,
             currency=self.currency,
             registry={b.id: b for b in self.bricks},
+            journal=journal,
+            settlement_default_cash_id=self.settlement_default_cash_id,
         )
 
         # Resolve mortgage links and validate settlement buckets
@@ -540,16 +556,21 @@ class Scenario:
         self, ctx: ScenarioContext, t_index: np.ndarray, execution_order: list[str]
     ):
         """Simulate all bricks using Journal-based system."""
-        from .accounts import Account, AccountRegistry, AccountScope, AccountType
-
-        # from .compiler import BrickCompiler  # No longer needed with new journal system
-        from .journal import Journal
+        from .accounts import (
+            BOUNDARY_NODE_ID,
+            Account,
+            AccountScope,
+            AccountType,
+            get_node_id,
+        )
 
         outputs: dict[str, BrickOutput] = {}
 
-        # Create account registry and journal
-        account_registry = AccountRegistry()
-        journal = Journal(account_registry)
+        # Use journal and account registry from context (V2 postings model)
+        if ctx.journal is None:
+            raise ValueError("Journal must be provided in ScenarioContext")
+        journal = ctx.journal
+        account_registry = journal.account_registry
 
         # Track iteration count per brick and transaction type
         brick_iteration_counters = {}
@@ -562,6 +583,9 @@ class Scenario:
             if isinstance(b, ABrick) and b.kind == K.A_CASH and b.id in execution_order
         ]
 
+        # Track processed cash IDs to prevent duplicate opening entries
+        processed_openings: set[str] = set()
+
         for cash_id in cash_ids:
             account_registry.register_account(
                 Account(
@@ -573,39 +597,83 @@ class Scenario:
             )
 
             # Initialize cash account with opening balance
+            # Guard: skip if already processed
+            if cash_id in processed_openings:
+                continue
+
             cash_brick = next(b for b in self.bricks if b.id == cash_id)
             initial_balance = cash_brick.spec.get("initial_balance", 0.0)
             if initial_balance != 0:
+                import hashlib
+
                 from .currency import create_amount
-                from .journal import JournalEntry, Posting
 
                 # Create opening balance entry with canonical format
                 # Positive amount = debit for assets, credit for equity
+                from .journal import (
+                    JournalEntry,
+                    Posting,
+                    stamp_entry_metadata,
+                    stamp_posting_metadata,
+                )
+
+                # Get currency from postings (will be set below)
+                currency = self.currency  # Default to scenario currency
+
+                # Use node IDs for account_id (consistent with V2 model)
+                cash_node_id = get_node_id(cash_id, "a")
                 opening_entry = JournalEntry(
                     id=f"opening:{cash_id}:0",
                     timestamp=ctx.t_index[0],
                     postings=[
                         Posting(
-                            "equity:opening",
-                            create_amount(-initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "credit"},
+                            BOUNDARY_NODE_ID,  # Use node ID for boundary side
+                            create_amount(-initial_balance, currency),
+                            {},
                         ),
                         Posting(
-                            f"asset:{cash_id}",
-                            create_amount(initial_balance, "EUR"),
-                            {"type": "opening_balance", "posting_side": "debit"},
+                            cash_node_id,  # Use node ID for asset side
+                            create_amount(initial_balance, currency),
+                            {},
                         ),
                     ],
-                    metadata={
-                        "type": "opening_balance",
-                        "account": cash_id,
-                        "brick_id": cash_id,  # Use cash_id as brick_id for opening balances
-                        "brick_type": "asset",  # Opening balances are asset-related
-                        "transaction_type": "opening",  # Special transaction_type for opening balances
-                        "iteration": 0,  # Opening balances are iteration 0
-                    },
+                    metadata={},
                 )
+
+                # Generate stable origin_id from entry.id + currency
+                # This ensures uniqueness per entry while staying deterministic
+                origin_id = hashlib.sha256(
+                    f"{opening_entry.id}:{currency}".encode()
+                ).hexdigest()[:16]
+
+                # Stamp entry metadata
+                stamp_entry_metadata(
+                    entry=opening_entry,
+                    parent_id=f"a:{cash_id}",  # Asset brick parent
+                    timestamp=ctx.t_index[0],
+                    tags={"type": "opening_balance"},
+                    sequence=1,
+                    origin_id=origin_id,
+                )
+
+                # Set transaction_type for opening entries
+                opening_entry.metadata["transaction_type"] = "opening"
+
+                # Stamp posting metadata
+                stamp_posting_metadata(
+                    posting=opening_entry.postings[0],  # Equity posting
+                    node_id=BOUNDARY_NODE_ID,  # Equity is boundary
+                    category="equity.opening",
+                    type_tag="opening_balance",
+                )
+                stamp_posting_metadata(
+                    posting=opening_entry.postings[1],  # Asset posting
+                    node_id=get_node_id(cash_id, "a"),  # Asset node ID
+                    type_tag="opening_balance",
+                )
+
                 journal.post(opening_entry)
+                processed_openings.add(cash_id)
 
         if len(cash_ids) == 0:
             raise AssertionError(
@@ -638,26 +706,53 @@ class Scenario:
                 Account(account_id, account_id, AccountScope.BOUNDARY, account_type)
             )
 
-        # Register asset: prefixed accounts for all cash accounts
+        # Register cash accounts with node IDs (consistent with V2 model)
         for cash_id in cash_ids:
+            cash_node_id = get_node_id(cash_id, "a")
             account_registry.register_account(
                 Account(
-                    f"asset:{cash_id}",
-                    f"asset:{cash_id}",
+                    cash_node_id,  # Use node ID format
+                    f"Cash Account {cash_id}",
                     AccountScope.INTERNAL,
                     AccountType.ASSET,
                 )
             )
 
-        # Register canonical equity:opening account (used by opening balances)
-        account_registry.register_account(
-            Account(
-                "equity:opening",
-                "equity:opening",
-                AccountScope.BOUNDARY,
-                AccountType.EQUITY,
+        # Register liability accounts with node IDs (for loan bricks)
+        liability_ids = [
+            b.id
+            for b in self.bricks
+            if isinstance(b, LBrick) and b.id in execution_order
+        ]
+        for liability_id in liability_ids:
+            liability_node_id = get_node_id(liability_id, "l")
+            account_registry.register_account(
+                Account(
+                    liability_node_id,  # Use node ID format
+                    f"Liability {liability_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.LIABILITY,
+                )
             )
-        )
+
+        # Register asset accounts with node IDs (for non-cash asset bricks like ETF, property)
+        asset_ids = [
+            b.id
+            for b in self.bricks
+            if isinstance(b, ABrick)
+            and b.id in execution_order
+            and b.kind != K.A_CASH  # Exclude cash (already registered)
+        ]
+        for asset_id in asset_ids:
+            asset_node_id = get_node_id(asset_id, "a")
+            account_registry.register_account(
+                Account(
+                    asset_node_id,  # Use node ID format
+                    f"Asset {asset_id}",
+                    AccountScope.INTERNAL,
+                    AccountType.ASSET,
+                )
+            )
 
         # Simulate all bricks and compile to journal entries
 
@@ -777,11 +872,19 @@ class Scenario:
         # Handle maturity transfers for cash accounts with end_date and route links
         self._handle_maturity_transfers(outputs, ctx, journal, brick_iteration_counters)
 
-        # Validate journal invariants
+        # Validate journal invariants (V2)
         if self.validate_routing:
             errors = journal.validate_invariants(account_registry)
             if errors:
                 raise AssertionError(f"Journal validation failed: {errors}")
+
+            # V2: Validate origin_id uniqueness
+            from .validation import validate_origin_id_uniqueness
+
+            try:
+                validate_origin_id_uniqueness(journal)
+            except ValueError as e:
+                raise AssertionError(f"Journal origin_id validation failed: {e}") from e
 
         return outputs, journal
 
@@ -793,6 +896,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Handle maturity transfers for cash accounts with end_date and route links."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .events import Event
         from .journal import JournalEntry, Posting
@@ -925,12 +1029,16 @@ class Scenario:
                             brick, "maturity_transfer", brick_iteration_counters
                         )
 
+                        # Use node IDs for account_id (consistent with V2 model)
+                        source_node_id = get_node_id(brick.id, "a")
+                        dest_node_id = get_node_id(dest_brick_id, "a")
+
                         transfer_entry = JournalEntry(
                             id=f"maturity_transfer:{brick.id}:{iteration}",
                             timestamp=month_timestamp,
                             postings=[
                                 Posting(
-                                    f"asset:{brick.id}",
+                                    source_node_id,  # Use node ID format
                                     create_amount(-transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
@@ -942,7 +1050,7 @@ class Scenario:
                                     },
                                 ),
                                 Posting(
-                                    f"asset:{dest_brick_id}",
+                                    dest_node_id,  # Use node ID format
                                     create_amount(transfer_amount, currency),
                                     {
                                         "type": "maturity_transfer",
@@ -1061,6 +1169,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for transfer brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1076,11 +1185,12 @@ class Scenario:
         # Get currency from brick spec (default to scenario currency)
         currency = brick.spec.get("currency", self.currency)
 
-        # Money goes out from source account (credit)
+        # Use node IDs for account_id (consistent with V2 model)
         if cash_out > 0:
+            from_node_id = get_node_id(brick.links["from"], "a")
             postings.append(
                 Posting(
-                    f"asset:{brick.links['from']}",
+                    from_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "transfer_out",
@@ -1092,9 +1202,10 @@ class Scenario:
 
         # Money comes in to destination account (debit)
         if cash_in > 0:
+            to_node_id = get_node_id(brick.links["to"], "a")
             postings.append(
                 Posting(
-                    f"asset:{brick.links['to']}",
+                    to_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "transfer_in",
@@ -1125,6 +1236,15 @@ class Scenario:
             },
         )
 
+        # Stamp posting metadata with node_id (V2 requirement)
+        from .journal import stamp_posting_metadata
+
+        for posting in entry.postings:
+            if posting.account_id.startswith("a:"):
+                stamp_posting_metadata(
+                    posting, node_id=posting.account_id, type_tag="transfer"
+                )
+
         journal.post(entry)
 
     def _create_flow_journal_entry(
@@ -1137,6 +1257,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for flow brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1167,6 +1288,9 @@ class Scenario:
 
         if not cash_account:
             return  # Still no cash account available
+
+        # Use node ID for cash account (consistent with V2 model)
+        cash_node_id = get_node_id(cash_account, "a")
 
         # Create boundary account for the flow using brick_id
         if brick.kind.startswith("f.income"):
@@ -1209,7 +1333,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "income_allocation",
@@ -1222,7 +1346,7 @@ class Scenario:
             # Expense: credit asset cash, debit expense (boundary)
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "expense_payment",
@@ -1261,6 +1385,30 @@ class Scenario:
             },
         )
 
+        # Stamp posting metadata with node_id (V2 requirement)
+        from .accounts import BOUNDARY_NODE_ID
+        from .journal import stamp_posting_metadata
+
+        for posting in entry.postings:
+            if posting.account_id == boundary_account:
+                # Boundary posting - use boundary account ID
+                category = (
+                    "income.recurring"
+                    if transaction_type == "income"
+                    else "expense.recurring"
+                )
+                stamp_posting_metadata(
+                    posting,
+                    node_id=BOUNDARY_NODE_ID,
+                    category=category,
+                    type_tag=transaction_type,
+                )
+            elif posting.account_id == cash_node_id:
+                # Cash posting - use node ID
+                stamp_posting_metadata(
+                    posting, node_id=cash_node_id, type_tag=transaction_type
+                )
+
         journal.post(entry)
 
     def _create_liability_journal_entry(
@@ -1273,6 +1421,7 @@ class Scenario:
         brick_iteration_counters: dict,
     ) -> None:
         """Create journal entry for liability brick monthly transaction."""
+        from .accounts import get_node_id
         from .currency import create_amount
         from .journal import JournalEntry, Posting
 
@@ -1299,6 +1448,9 @@ class Scenario:
                 # No cash account available - skip journal entry
                 return
             cash_account = cash_ids[0]
+
+        # Use node ID for cash account (consistent with V2 model)
+        cash_node_id = get_node_id(cash_account, "a")
 
         # Create boundary account for the liability using brick_id
         boundary_account = f"liability:{brick.id}"
@@ -1335,7 +1487,7 @@ class Scenario:
             )
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(cash_in, currency),
                     {
                         "type": "liability_disbursement",
@@ -1370,6 +1522,24 @@ class Scenario:
                 postings=postings.copy(),
                 metadata=disbursement_metadata,
             )
+
+            # Stamp posting metadata with node_id (V2 requirement)
+            from .accounts import BOUNDARY_NODE_ID
+            from .journal import stamp_posting_metadata
+
+            for posting in disbursement_entry.postings:
+                if posting.account_id == boundary_account:
+                    stamp_posting_metadata(
+                        posting,
+                        node_id=BOUNDARY_NODE_ID,
+                        category="liability.disbursement",
+                        type_tag="disbursement",
+                    )
+                elif posting.account_id == cash_node_id:
+                    stamp_posting_metadata(
+                        posting, node_id=cash_node_id, type_tag="disbursement"
+                    )
+
             journal.post(disbursement_entry)
 
             # Reset postings for payment entry
@@ -1388,7 +1558,7 @@ class Scenario:
             # Payment: credit asset cash, debit liability (boundary)
             postings.append(
                 Posting(
-                    f"asset:{cash_account}",
+                    cash_node_id,  # Use node ID format
                     create_amount(-cash_out, currency),
                     {
                         "type": "loan_payment",
@@ -1451,6 +1621,25 @@ class Scenario:
                 postings=postings,
                 metadata=metadata,
             )
+
+            # Stamp posting metadata with node_id (V2 requirement)
+            from .accounts import BOUNDARY_NODE_ID
+            from .journal import stamp_posting_metadata
+
+            for posting in entry.postings:
+                if posting.account_id == boundary_account:
+                    stamp_posting_metadata(
+                        posting,
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.interest"
+                        if interest_amount > 0
+                        else "liability.payment",
+                        type_tag="payment",
+                    )
+                elif posting.account_id == cash_node_id:
+                    stamp_posting_metadata(
+                        posting, node_id=cash_node_id, type_tag="payment"
+                    )
 
             journal.post(entry)
 
@@ -1523,12 +1712,61 @@ class Scenario:
         )
 
     def _aggregate_results(
-        self, outputs: dict[str, BrickOutput], t_index: np.ndarray, include_cash: bool
+        self,
+        outputs: dict[str, BrickOutput],
+        t_index: np.ndarray,
+        include_cash: bool,
+        journal=None,
     ) -> pd.DataFrame:
-        """Aggregate simulation results into summary statistics."""
-        # Calculate totals
-        cash_in_tot = sum(o["cash_in"] for o in outputs.values())
-        cash_out_tot = sum(o["cash_out"] for o in outputs.values())
+        """Aggregate simulation results into summary statistics (journal-first for V2)."""
+        # Use journal-first aggregation if journal is available (V2)
+        if journal is not None and self._registry is not None:
+            from .results import _aggregate_journal_monthly
+
+            # Convert t_index to PeriodIndex
+            if not isinstance(t_index, pd.PeriodIndex):
+                t_index_pd = pd.PeriodIndex(
+                    [pd.Period(t, freq="M") for t in t_index], freq="M"
+                )
+            else:
+                t_index_pd = t_index
+
+            # Aggregate from journal
+            totals = _aggregate_journal_monthly(
+                journal=journal,
+                registry=self._registry,
+                time_index=t_index_pd,
+                selection=None,  # All bricks
+                transfer_visibility=TransferVisibility.BOUNDARY_ONLY,
+                outputs=outputs,
+            )
+
+            # Add cash column if requested
+            if include_cash:
+                cash_assets = None
+                for b in self.bricks:
+                    if isinstance(b, ABrick) and b.kind == K.A_CASH:
+                        if b.id in outputs:
+                            s = outputs[b.id]["assets"]
+                            cash_assets = (
+                                s if cash_assets is None else (cash_assets + s)
+                            )
+                cash_assets = (
+                    cash_assets if cash_assets is not None else np.zeros(len(t_index))
+                )
+                totals["cash"] = cash_assets
+
+            # Finalize totals
+            return finalize_totals(totals)
+
+        # Legacy path: aggregate from outputs (deprecated in V2)
+        # Handle optional cash arrays
+        cash_in_tot = sum(
+            o.get("cash_in", np.zeros(len(t_index))) for o in outputs.values()
+        )
+        cash_out_tot = sum(
+            o.get("cash_out", np.zeros(len(t_index))) for o in outputs.values()
+        )
         assets_tot = sum(o["assets"] for o in outputs.values())
         liabilities_tot = sum(o["liabilities"] for o in outputs.values())
         interest_tot = sum(o["interest"] for o in outputs.values())
@@ -1979,7 +2217,11 @@ class Scenario:
         new_t_index = ctx.t_index[start_idx:]
 
         return ScenarioContext(
-            t_index=new_t_index, currency=ctx.currency, registry=ctx.registry
+            t_index=new_t_index,
+            currency=ctx.currency,
+            registry=ctx.registry,
+            journal=ctx.journal,
+            settlement_default_cash_id=ctx.settlement_default_cash_id,
         )
 
     def _shift_output(

@@ -73,7 +73,7 @@ License:
 """
 
 # Version information
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "FinBrickLab Team"
 __description__ = "Strategy-Driven Brick Architecture for Financial Scenarios"
 

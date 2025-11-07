@@ -168,14 +168,40 @@ class TestOnetimeFlows:
 
         results = scenario.run(start=date(2026, 1, 1), months=12)
 
-        # Should have income in June
-        cash_in = results["totals"]["cash_in"]
-        assert cash_in.iloc[5] == 5000.0  # June (0-indexed, so month 5)
+        # V2: Use journal-first aggregation instead of totals
+        monthly = results["views"].monthly()
 
-        # Other months should have no income
+        # V2: Check journal entries for one-time income
+        journal = results["journal"]
+        income_entries = [
+            e for e in journal.entries if e.metadata.get("transaction_type") == "income"
+        ]
+        # V2: Income entries may not have brick_id set, check by parent_id
+        # Filter for entries that match the bonus (one-time income in June)
+        # parent_id format is "fs:bonus" for one-time income
+        bonus_entries = [
+            e
+            for e in income_entries
+            if "bonus" in e.metadata.get("parent_id", "")
+            or e.metadata.get("brick_id") == "bonus"
+        ]
+        assert len(bonus_entries) >= 1, "Should have at least one bonus income entry"
+
+        # V2: Check monthly aggregation for income
+        # Month 0 (January) has opening balance (€1000), month 5 (June) has bonus (€5000)
+        assert (
+            monthly["cash_in"].iloc[0] == 1000.0
+        ), "Month 0 should have opening balance"
+        assert (
+            monthly["cash_in"].iloc[5] == 5000.0
+        ), "June (month 5) should have bonus income"
+
+        # Other months (except 0 and 5) should have no income
         for i in range(12):
-            if i != 5:
-                assert cash_in.iloc[i] == 0.0
+            if i not in (0, 5):
+                assert (
+                    monthly["cash_in"].iloc[i] == 0.0
+                ), f"Month {i} should have no income"
 
     def test_expense_onetime_strategy(self):
         """Test that onetime expense flows work correctly."""

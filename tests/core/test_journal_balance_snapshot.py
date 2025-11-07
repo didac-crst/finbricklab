@@ -149,66 +149,87 @@ class TestJournalBalanceSnapshot:
             journal.post(invalid_entry)
 
     def test_multi_currency_entry_zero_sum(self):
-        """Test entries with multiple currencies are zero-sum per currency."""
-        # Entry with two currencies - both must zero-sum independently
-        valid_multi = JournalEntry(
-            id="multi",
+        """Test entries with multiple currencies are zero-sum per currency (V2: two-posting entries)."""
+        # V2: Each entry must have exactly 2 postings
+        # Split multi-currency entry into separate entries per currency
+        journal = Journal()
+
+        # USD entry: income → cash
+        usd_entry = JournalEntry(
+            id="multi_usd",
             timestamp=np.datetime64("2024-01-15", "M"),
             postings=[
                 Posting("asset:cash_usd", create_amount(100, "USD"), {}),
                 Posting("income:salary_usd", create_amount(-100, "USD"), {}),
+            ],
+        )
+        journal.post(usd_entry)
+
+        # EUR entry: income → cash
+        eur_entry = JournalEntry(
+            id="multi_eur",
+            timestamp=np.datetime64("2024-01-15", "M"),
+            postings=[
                 Posting("asset:cash_eur", create_amount(50, "EUR"), {}),
                 Posting("income:salary_eur", create_amount(-50, "EUR"), {}),
             ],
         )
-        journal = Journal()
-        journal.post(valid_multi)
+        journal.post(eur_entry)
 
-        # Invalid multi-currency - EUR doesn't zero-sum
+        # Invalid entry - EUR doesn't zero-sum
+        # V2: Must use two-posting entry for validation
         with pytest.raises(ValueError, match="not zero-sum"):
-            invalid_multi = JournalEntry(
-                id="invalid_multi",
+            invalid_eur = JournalEntry(
+                id="invalid_eur",
                 timestamp=np.datetime64("2024-01-15", "M"),
                 postings=[
-                    Posting("asset:cash_usd", create_amount(100, "USD"), {}),
-                    Posting("income:salary_usd", create_amount(-100, "USD"), {}),
                     Posting("asset:cash_eur", create_amount(50, "EUR"), {}),
                     Posting(
                         "income:salary_eur", create_amount(-30, "EUR"), {}
-                    ),  # Mismatch
+                    ),  # Mismatch: 50 - 30 = 20, not zero-sum
                 ],
             )
-            journal.post(invalid_multi)
+            journal.post(invalid_eur)
 
     def test_entry_get_currency_totals(self):
-        """Test that get_currency_totals returns zero for valid entries."""
-        entry = JournalEntry(
-            id="test",
+        """Test that get_currency_totals returns zero for valid entries (V2: two-posting entries)."""
+        # V2: Each entry must have exactly 2 postings
+        # Test EUR entry
+        eur_entry = JournalEntry(
+            id="test_eur",
             timestamp=np.datetime64("2024-01-15", "M"),
             postings=[
                 Posting("asset:cash", create_amount(100, "EUR"), {}),
                 Posting("equity:opening", create_amount(-100, "EUR"), {}),
+            ],
+        )
+        totals = eur_entry.get_currency_totals()
+        assert totals["EUR"] == Decimal("0")
+
+        # Test USD entry
+        usd_entry = JournalEntry(
+            id="test_usd",
+            timestamp=np.datetime64("2024-01-15", "M"),
+            postings=[
                 Posting("asset:cash_usd", create_amount(50, "USD"), {}),
                 Posting("income:salary", create_amount(-50, "USD"), {}),
             ],
         )
-
-        totals = entry.get_currency_totals()
-        assert totals["EUR"] == Decimal("0")
+        totals = usd_entry.get_currency_totals()
         assert totals["USD"] == Decimal("0")
 
     def test_entry_get_accounts(self):
-        """Test get_accounts returns all unique accounts."""
+        """Test get_accounts returns all unique accounts (V2: two-posting entries)."""
+        # V2: Each entry must have exactly 2 postings
+        # Test entry with two different accounts
         entry = JournalEntry(
             id="test",
             timestamp=np.datetime64("2024-01-15", "M"),
             postings=[
                 Posting("asset:cash", create_amount(100, "EUR"), {}),
                 Posting("equity:opening", create_amount(-100, "EUR"), {}),
-                Posting("asset:cash", create_amount(50, "EUR"), {}),  # Same account
-                Posting("income:salary", create_amount(-50, "EUR"), {}),
             ],
         )
 
         accounts = entry.get_accounts()
-        assert accounts == {"asset:cash", "equity:opening", "income:salary"}
+        assert accounts == {"asset:cash", "equity:opening"}

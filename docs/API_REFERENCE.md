@@ -68,8 +68,15 @@ class ScenarioResults:
     def __init__(self, totals: pd.DataFrame, registry: Registry = None, outputs: Dict = None, journal: Journal = None):
         """Initialize with monthly totals and optional journal."""
 
-    def monthly(self) -> pd.DataFrame:
-        """Get monthly aggregated results."""
+    def monthly(self, transfer_visibility: TransferVisibility = TransferVisibility.BOUNDARY_ONLY, selection: set[str] | None = None) -> pd.DataFrame:
+        """Get monthly aggregated results (journal-first).
+
+        Args:
+            transfer_visibility: OFF | ONLY | BOUNDARY_ONLY | ALL
+            selection: Optional set of A/L node IDs (e.g., {"a:cash", "l:mortgage"}) and/or MacroBrick IDs
+        Returns:
+            Monthly DataFrame with journal-first cashflow aggregation.
+        """
 
     def quarterly(self) -> pd.DataFrame:
         """Get quarterly aggregated results."""
@@ -84,15 +91,57 @@ def journal(self) -> pd.DataFrame:
     def transactions(self, account_id: str) -> pd.DataFrame:
         """Get all transactions for a specific account."""
 
-    def filter(self, brick_ids: List[str]) -> ScenarioResults:
-        """Filter results to specific bricks or MacroBricks."""
+    def filter(self, brick_ids: List[str] | None = None, include_cash: bool = True, transfer_visibility: TransferVisibility | None = None) -> ScenarioResults:
+        """Filter results to specific bricks or MacroBricks (V2: journal-first).
+
+        This method uses journal-first aggregation via `monthly(selection=...)` for V2 compatibility.
+
+        **Selection Rules:**
+        - Only Asset (A) and Liability (L) bricks produce selection node IDs
+        - Flow (F) and Transfer (T) bricks are ignored in selection (they generate journal entries but don't filter aggregation)
+        - MacroBricks are expanded recursively to their A/L member bricks using cached expansion
+        - Unknown brick IDs are skipped with a warning and return zeros
+        - Empty selection returns all zeros
+
+        **Filtered View Behavior (Sticky Defaults):**
+        - Selection, visibility, and `include_cash` settings are **persisted** in filtered views
+        - Calling `monthly()` on a filtered view **automatically uses** the preserved selection/visibility by default
+        - These defaults remain "sticky" for subsequent `monthly()` calls unless explicitly overridden
+        - `include_cash=False` persists across visibility changes (sticky on filtered views)
+        - Empty selection persists across all visibility modes (returns zeros)
+        - To override: pass explicit `selection` or `transfer_visibility` to `monthly()` to temporarily override the stored defaults
+
+        Args:
+            brick_ids: List of brick IDs and/or MacroBrick IDs to include (None = no filtering)
+            include_cash: Whether to include cash column in the result (default: True)
+            transfer_visibility: Optional transfer visibility setting (default: BOUNDARY_ONLY)
+
+        Returns:
+            New ScenarioResults with filtered aggregated data and preserved selection/visibility
+
+        Example:
+            ```python
+            # Filter to cash account only
+            cash_view = results["views"].filter(brick_ids=["cash"])
+
+            # Selection is preserved - changing visibility still respects cash selection
+            cash_all = cash_view.monthly(transfer_visibility=TransferVisibility.ALL)
+
+            # Filter to MacroBrick (expanded to A/L nodes)
+            investments_view = results["views"].filter(brick_ids=["investments"])
+
+            # include_cash=False persists
+            no_cash_view = results["views"].filter(brick_ids=["cash"], include_cash=False)
+            assert "cash" not in no_cash_view.monthly().columns
+            ```
+        """
 ```
 
-**Key Features:**
+**Key Features (V2):**
 - **Time Aggregation**: Monthly, quarterly, yearly views
 - **Journal Analysis**: Complete transaction-level detail with canonical structure
 - **Account Filtering**: Get transactions for specific accounts
-- **Component Filtering**: Focus on specific bricks or MacroBricks
+- **Selection-based Aggregation**: Focus on specific A/L nodes or MacroBricks via `monthly(selection=...)`
 - **Double-Entry Validation**: Ensure proper accounting
 - **Canonical Structure**: Self-documenting record IDs and primary columns for easy analysis
 
