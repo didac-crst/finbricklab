@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 from finbricklab import Entity
 from finbricklab.core.kinds import K
+from finbricklab.core.transfer_visibility import TransferVisibility
 
 
 def _run_cash_scenario(
@@ -508,3 +509,124 @@ def test_filtered_views_respect_cash_and_liability_semantics():
     assert feb_loan["net_cf"] == pytest.approx(0.0, abs=1e-9)
     assert feb_loan["interest"] == pytest.approx(-250.0, rel=1e-6)
     assert feb_loan["capitalized_cf"] == pytest.approx(166.6667, rel=1e-6)
+
+    post_start_cash = cash_view.loc["2026-02":]
+    assert (post_start_cash["cash_out"] > 0.0).all()
+
+    post_start_loan = loan_view.loc["2026-02":]
+    assert np.allclose(post_start_loan["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(post_start_loan["cash_out"], 0.0, atol=1e-9)
+    assert np.allclose(post_start_loan["net_cf"], 0.0, atol=1e-9)
+    assert (np.abs(post_start_loan["interest"]) > 0.0).any()
+    assert (np.abs(post_start_loan["capitalized_cf"]) > 0.0).any()
+
+    cash_view_off = (
+        results["views"]
+        .filter(
+            brick_ids=["checking_account"],
+            transfer_visibility=TransferVisibility.OFF,
+        )
+        .monthly()
+    )
+    cash_view_all = (
+        results["views"]
+        .filter(
+            brick_ids=["checking_account"],
+            transfer_visibility=TransferVisibility.ALL,
+        )
+        .monthly()
+    )
+
+    assert cash_view_off.loc["2026-02", "cash_out"] == pytest.approx(250.0, rel=1e-6)
+    assert (
+        cash_view_off.loc["2026-02", "cash_out"] < cash_view.loc["2026-02", "cash_out"]
+    )
+    assert cash_view_all.loc["2026-02", "cash_out"] == pytest.approx(
+        cash_view.loc["2026-02", "cash_out"], rel=1e-9
+    )
+
+
+def test_filtered_views_multiple_cash_accounts_and_transfers():
+    """Multiple cash selections handle internal transfers and visibility toggles."""
+
+    entity = Entity(name="Two Cash Accounts")
+
+    entity.new_ABrick(
+        name="Checking",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 10_000.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Savings",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 1_000.0, "interest_pa": 0.0},
+    )
+
+    entity.new_FBrick(
+        name="Salary",
+        kind=K.F_INCOME_RECURRING,
+        start_date=date(2026, 1, 1),
+        spec={"amount_monthly": 5_000.0},
+        links={"route": {"to": "checking"}},
+    )
+
+    entity.new_TBrick(
+        name="Monthly Transfer",
+        kind=K.T_TRANSFER_RECURRING,
+        start_date=date(2026, 1, 1),
+        spec={"amount": 1_000.0, "frequency": "MONTHLY"},
+        links={"from": "checking", "to": "savings"},
+    )
+
+    entity.create_scenario(
+        name="Two Cash Scenario",
+        brick_ids=["checking", "savings", "salary", "monthly_transfer"],
+        settlement_default_cash_id="checking",
+    )
+
+    results = entity.run_scenario("two_cash_scenario", start=date(2026, 1, 1), months=6)
+
+    checking_view = results["views"].filter(brick_ids=["checking"]).monthly()
+    savings_view = results["views"].filter(brick_ids=["savings"]).monthly()
+
+    jan_checking = checking_view.loc["2026-01"]
+    assert jan_checking["cash_in"] == pytest.approx(5_000.0)
+    assert jan_checking["cash_out"] == pytest.approx(1_000.0)
+    assert jan_checking["net_cf"] == pytest.approx(4_000.0)
+
+    jan_savings = savings_view.loc["2026-01"]
+    assert jan_savings["cash_in"] == pytest.approx(1_000.0)
+    assert jan_savings["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert jan_savings["net_cf"] == pytest.approx(1_000.0)
+
+    checking_off = (
+        results["views"]
+        .filter(brick_ids=["checking"], transfer_visibility=TransferVisibility.OFF)
+        .monthly()
+    )
+    assert checking_off.loc["2026-01", "cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert checking_off.loc["2026-01", "cash_in"] == pytest.approx(5_000.0)
+
+    savings_off = (
+        results["views"]
+        .filter(brick_ids=["savings"], transfer_visibility=TransferVisibility.OFF)
+        .monthly()
+    )
+    assert np.allclose(savings_off["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(savings_off["cash_out"], 0.0, atol=1e-9)
+
+    checking_all = (
+        results["views"]
+        .filter(brick_ids=["checking"], transfer_visibility=TransferVisibility.ALL)
+        .monthly()
+    )
+    savings_all = (
+        results["views"]
+        .filter(brick_ids=["savings"], transfer_visibility=TransferVisibility.ALL)
+        .monthly()
+    )
+
+    assert checking_all.loc["2026-01", "cash_out"] == pytest.approx(1_000.0)
+    assert savings_all.loc["2026-01", "cash_in"] == pytest.approx(1_000.0)

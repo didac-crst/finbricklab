@@ -4,7 +4,7 @@ Results and output structures for FinBrickLab.
 
 from __future__ import annotations
 
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -1383,39 +1383,42 @@ def _aggregate_journal_monthly(
                     # Direct node ID
                     selection_set.add(node_id)
 
-    selected_cash_nodes: set[str] = set()
-    undetermined_asset_nodes: set[str] = set()
-    if selection_set:
+    def _is_cash_node(node_id: str) -> bool:
+        if not node_id or not isinstance(node_id, str):
+            return False
+        if not node_id.startswith("a:"):
+            return False
+
         if registry:
             from .kinds import K
 
-        for node_id in selection_set:
-            if not node_id.startswith("a:"):
-                continue
-            brick_found = False
-            brick_is_cash = False
-            if registry:
-                brick_id = node_id.split(":", 1)[1]
-                candidate_brick: Any
-                try:
-                    candidate_brick = registry.get_brick(brick_id)
-                except Exception:
-                    pass
-                else:
-                    brick_found = True
-                    if (
-                        candidate_brick
-                        and getattr(candidate_brick, "kind", None) == K.A_CASH
-                    ):
-                        brick_is_cash = True
+            brick_id = node_id.split(":", 1)[1]
+            try:
+                brick = registry.get_brick(brick_id)
+            except Exception:
+                brick = None
+            if brick and getattr(brick, "kind", None) == K.A_CASH:
+                return True
+            # Registry told us it is not cash; fall through to False
+            if brick is not None:
+                return False
 
-            if brick_is_cash:
-                selected_cash_nodes.add(node_id)
-            elif not brick_found:
-                undetermined_asset_nodes.add(node_id)
+        if account_registry:
+            account = account_registry.get_account(node_id)
+            if account and account.account_type == AccountType.ASSET:
+                name_lower = account.name.lower()
+                if any(
+                    keyword in name_lower
+                    for keyword in ("cash", "checking", "savings", "konto")
+                ):
+                    return True
+        return False
 
-        if not selected_cash_nodes:
-            selected_cash_nodes.update(undetermined_asset_nodes)
+    selected_cash_nodes: set[str] = (
+        {node_id for node_id in selection_set if _is_cash_node(node_id)}
+        if selection_set
+        else set()
+    )
 
     # Group entries by month
     entries_by_month: dict[str, list[JournalEntry]] = {}
@@ -1473,11 +1476,7 @@ def _aggregate_journal_monthly(
             if selected_cash_nodes:
                 for posting in entry.postings:
                     posting_node_id = posting.metadata.get("node_id")
-                    if (
-                        posting_node_id is not None
-                        and isinstance(posting_node_id, str)
-                        and posting_node_id in selected_cash_nodes
-                    ):
+                    if posting_node_id in selected_cash_nodes:
                         entry_hits_selected_cash = True
                         break
 
@@ -1523,6 +1522,8 @@ def _aggregate_journal_monthly(
                     # Hide internal transfers (global check, works without selection)
                     if is_transfer_entry and both_internal_global:
                         continue  # Skip internal transfers
+                    if not touches_boundary:
+                        continue  # Skip all internal entries
                     # Also skip if both internal and in selection (cancellation)
                     if both_internal_in_selection:
                         continue  # Skip internal transfers in selection
@@ -1578,6 +1579,7 @@ def _aggregate_journal_monthly(
                         continue  # Skip if node_id is None or invalid
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
+            interest_recorded_from_cash = False
             for asset_posting in cash_postings:
                 is_interest_entry = (
                     entry.metadata.get("tags", {}).get("type") == "interest"
@@ -1592,10 +1594,27 @@ def _aggregate_journal_monthly(
                     cash_in[month_idx] += abs(amount)
                     if is_interest_entry:
                         interest_in_from_journal[month_idx] += abs(amount)
+                        interest_recorded_from_cash = True
                 else:  # credit
                     cash_out[month_idx] += abs(amount)
                     if is_interest_entry:
                         interest_out_from_journal[month_idx] += abs(amount)
+                        interest_recorded_from_cash = True
+
+            # Track boundary interest postings even if no cash posting is recorded
+            if (
+                entry.metadata.get("tags", {}).get("type") == "interest"
+                and not interest_recorded_from_cash
+            ):
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id == BOUNDARY_NODE_ID:
+                        amount = float(posting.amount.value)
+                        if posting.is_debit():
+                            interest_in_from_journal[month_idx] += abs(amount)
+                        else:
+                            interest_out_from_journal[month_idx] += abs(amount)
+                        break
 
         # Aggregate balances from outputs if provided
         if outputs:
