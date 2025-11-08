@@ -731,3 +731,103 @@ def test_annuity_loan_routes_to_non_default_cash():
     assert offset_view.iloc[0]["cash_in"] == pytest.approx(120_000.0)
     assert offset_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
     assert (offset_view.iloc[1:]["cash_out"] > 0.0).all()
+
+
+def test_credit_fixed_routes_to_configured_cash_account():
+    """Credit fixed loans route drawdowns and payments to the designated cash account."""
+
+    entity = Entity(name="Credit Fixed Routing")
+    entity.new_ABrick(
+        name="Default Wallet",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Fixed Loan Cash",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_LBrick(
+        name="Fixed Loan",
+        kind=K.L_CREDIT_FIXED,
+        start_date=date(2026, 1, 1),
+        spec={
+            "principal": 24_000.0,
+            "rate_pa": 0.048,
+            "term_months": 24,
+        },
+        links={"route": {"from": "fixed_loan_cash", "to": "fixed_loan_cash"}},
+    )
+
+    entity.create_scenario(
+        name="Credit Fixed Scenario",
+        brick_ids=["default_wallet", "fixed_loan_cash", "fixed_loan"],
+        settlement_default_cash_id="default_wallet",
+    )
+
+    results = entity.run_scenario(
+        "credit_fixed_scenario", start=date(2026, 1, 1), months=30
+    )
+
+    default_view = results["views"].filter(brick_ids=["default_wallet"]).monthly()
+    loan_cash_view = results["views"].filter(brick_ids=["fixed_loan_cash"]).monthly()
+
+    assert np.allclose(default_view["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(default_view["cash_out"], 0.0, atol=1e-9)
+
+    assert loan_cash_view.iloc[0]["cash_in"] == pytest.approx(24_000.0)
+    assert loan_cash_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert (loan_cash_view.iloc[1:]["cash_out"] > 0.0).any()
+
+
+def test_credit_line_routes_and_accrues_via_journal():
+    """Credit line drawdowns, interest, and payments use routed cash accounts."""
+
+    entity = Entity(name="Credit Line Routing")
+    entity.new_ABrick(
+        name="Primary Wallet",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Line Cash Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_LBrick(
+        name="Credit Line",
+        kind=K.L_CREDIT_LINE,
+        start_date=date(2026, 1, 1),
+        spec={
+            "credit_limit": 20_000.0,
+            "rate_pa": 0.12,
+            "min_payment": {"type": "percent", "percent": 0.15, "floor": 200.0},
+            "billing_day": 1,
+            "initial_draw": 10_000.0,
+        },
+        links={"route": {"from": "line_cash_account", "to": "line_cash_account"}},
+    )
+
+    entity.create_scenario(
+        name="Credit Line Scenario",
+        brick_ids=["primary_wallet", "line_cash_account", "credit_line"],
+        settlement_default_cash_id="primary_wallet",
+    )
+
+    results = entity.run_scenario(
+        "credit_line_scenario", start=date(2026, 1, 1), months=18
+    )
+
+    primary_view = results["views"].filter(brick_ids=["primary_wallet"]).monthly()
+    line_view = results["views"].filter(brick_ids=["line_cash_account"]).monthly()
+
+    assert np.allclose(primary_view["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(primary_view["cash_out"], 0.0, atol=1e-9)
+
+    assert line_view.iloc[0]["cash_in"] == pytest.approx(10_000.0)
+    assert line_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert (line_view.iloc[1:]["cash_out"] > 0.0).any()

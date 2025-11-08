@@ -4,17 +4,30 @@ Credit line schedule strategy for revolving credit.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import numpy as np
 
+from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import LBrick
 from finbricklab.core.context import ScenarioContext
+from finbricklab.core.currency import create_amount
 from finbricklab.core.errors import ConfigError
 from finbricklab.core.interfaces import IScheduleStrategy
+from finbricklab.core.journal import (
+    JournalEntry,
+    Posting,
+    create_entry_id,
+    create_operation_id,
+    generate_transaction_id,
+    stamp_entry_metadata,
+    stamp_posting_metadata,
+)
 from finbricklab.core.results import BrickOutput
+
+from ._loan_utils import resolve_loan_cash_nodes
 
 
 class ScheduleCreditLine(IScheduleStrategy):
@@ -34,6 +47,12 @@ class ScheduleCreditLine(IScheduleStrategy):
     Optional Parameters:
         - fees: Fee structure (currently only annual fee supported)
         - initial_draw: Initial debt balance (default: 0). Set explicitly to avoid surprises.
+
+    Cash routing honours ``links.route``:
+        - ``route["to"]`` receives drawdowns (initial or subsequent).
+        - ``route["from"]`` funds repayments.
+      Missing legs fall back to the scenario settlement default cash account (or the
+      first cash brick) for backward compatibility.
     """
 
     def prepare(self, brick: LBrick, ctx: ScenarioContext) -> None:
@@ -123,9 +142,16 @@ class ScheduleCreditLine(IScheduleStrategy):
 
         # Initialize arrays
         debt_balance = np.zeros(months, dtype=float)
-        cash_in = np.zeros(months, dtype=float)
-        cash_out = np.zeros(months, dtype=float)
         interest_paid = np.zeros(months, dtype=float)
+
+        if ctx.journal is None:
+            raise ValueError(
+                "Journal must be provided in ScenarioContext for V2 postings model"
+            )
+        journal = ctx.journal
+
+        liability_node_id = get_node_id(brick.id, "l")
+        cash_draw_node_id, cash_pay_node_id = resolve_loan_cash_nodes(brick, ctx)
 
         # Extract credit limit and initial draw
         credit_limit = Decimal(str(brick.spec["credit_limit"]))
@@ -165,10 +191,86 @@ class ScheduleCreditLine(IScheduleStrategy):
             # Record initial draw at start month (ms == 0)
             if ms == 0 and initial_draw > 0:
                 current_balance = initial_draw
-                cash_in[month_idx] = float(initial_draw)
+                draw_timestamp = ctx.t_index[month_idx]
+                if isinstance(draw_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    draw_timestamp = pd.Timestamp(draw_timestamp).to_pydatetime()
+                elif hasattr(draw_timestamp, "astype"):
+                    import pandas as pd
+
+                    draw_timestamp = pd.Timestamp(
+                        draw_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    draw_timestamp = datetime.fromisoformat(str(draw_timestamp))
+
+                operation_id = create_operation_id(f"l:{brick.id}", draw_timestamp)
+                entry_id = create_entry_id(operation_id, 1)
+                origin_id = generate_transaction_id(
+                    brick.id,
+                    draw_timestamp,
+                    brick.spec or {},
+                    brick.links or {},
+                    sequence=0,
+                )
+                draw_entry = JournalEntry(
+                    id=entry_id,
+                    timestamp=draw_timestamp,
+                    postings=[
+                        Posting(
+                            account_id=cash_draw_node_id,
+                            amount=create_amount(float(initial_draw), ctx.currency),
+                            metadata={},
+                        ),
+                        Posting(
+                            account_id=liability_node_id,
+                            amount=create_amount(-float(initial_draw), ctx.currency),
+                            metadata={},
+                        ),
+                    ],
+                    metadata={},
+                )
+                stamp_entry_metadata(
+                    draw_entry,
+                    parent_id=f"l:{brick.id}",
+                    timestamp=draw_timestamp,
+                    tags={"type": "drawdown"},
+                    sequence=1,
+                    origin_id=origin_id,
+                )
+                stamp_posting_metadata(
+                    draw_entry.postings[0],
+                    node_id=cash_draw_node_id,
+                    type_tag="drawdown",
+                )
+                stamp_posting_metadata(
+                    draw_entry.postings[1],
+                    node_id=liability_node_id,
+                    type_tag="drawdown",
+                )
+                if not journal.has_id(draw_entry.id):
+                    journal.post(draw_entry)
 
             # Bill monthly starting month after start (ms >= 1)
             if ms >= 1:
+                payment_timestamp = ctx.t_index[month_idx]
+                if isinstance(payment_timestamp, np.datetime64):
+                    import pandas as pd
+
+                    payment_timestamp = pd.Timestamp(payment_timestamp).to_pydatetime()
+                elif hasattr(payment_timestamp, "astype"):
+                    import pandas as pd
+
+                    payment_timestamp = pd.Timestamp(
+                        payment_timestamp.astype("datetime64[D]")
+                    ).to_pydatetime()
+                else:
+                    payment_timestamp = datetime.fromisoformat(str(payment_timestamp))
+
+                operation_id = create_operation_id(f"l:{brick.id}", payment_timestamp)
+                sequence = 1
+
                 # 1. Accrue interest on previous month's closing balance
                 if current_balance > 0:  # Only accrue interest on positive balance
                     interest = current_balance * i_m
@@ -178,6 +280,53 @@ class ScheduleCreditLine(IScheduleStrategy):
                     current_balance += interest
                     # Track interest paid
                     interest_paid[month_idx] = float(interest)
+                    interest_entry = JournalEntry(
+                        id=create_entry_id(operation_id, sequence),
+                        timestamp=payment_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(float(interest), ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=liability_node_id,
+                                amount=create_amount(-float(interest), ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        payment_timestamp,
+                        brick.spec or {},
+                        brick.links or {},
+                        sequence=month_idx * 100 + sequence,
+                    )
+                    stamp_entry_metadata(
+                        interest_entry,
+                        parent_id=f"l:{brick.id}",
+                        timestamp=payment_timestamp,
+                        tags={"type": "interest_accrual"},
+                        sequence=sequence,
+                        origin_id=origin_id,
+                    )
+                    interest_entry.metadata["transaction_type"] = "accrual"
+                    stamp_posting_metadata(
+                        interest_entry.postings[0],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.interest",
+                        type_tag="interest",
+                    )
+                    stamp_posting_metadata(
+                        interest_entry.postings[1],
+                        node_id=liability_node_id,
+                        type_tag="interest",
+                    )
+                    if not journal.has_id(interest_entry.id):
+                        journal.post(interest_entry)
+                    sequence += 1
 
                 # 2. Add annual fee (prorated monthly) - quantized
                 if annual_fee > 0:
@@ -185,6 +334,53 @@ class ScheduleCreditLine(IScheduleStrategy):
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
                     current_balance += monthly_fee
+                    fee_entry = JournalEntry(
+                        id=create_entry_id(operation_id, sequence),
+                        timestamp=payment_timestamp,
+                        postings=[
+                            Posting(
+                                account_id=BOUNDARY_NODE_ID,
+                                amount=create_amount(float(monthly_fee), ctx.currency),
+                                metadata={},
+                            ),
+                            Posting(
+                                account_id=liability_node_id,
+                                amount=create_amount(-float(monthly_fee), ctx.currency),
+                                metadata={},
+                            ),
+                        ],
+                        metadata={},
+                    )
+                    origin_id = generate_transaction_id(
+                        brick.id,
+                        payment_timestamp,
+                        brick.spec or {},
+                        brick.links or {},
+                        sequence=month_idx * 100 + sequence,
+                    )
+                    stamp_entry_metadata(
+                        fee_entry,
+                        parent_id=f"l:{brick.id}",
+                        timestamp=payment_timestamp,
+                        tags={"type": "fee"},
+                        sequence=sequence,
+                        origin_id=origin_id,
+                    )
+                    fee_entry.metadata["transaction_type"] = "accrual"
+                    stamp_posting_metadata(
+                        fee_entry.postings[0],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.fee",
+                        type_tag="fee",
+                    )
+                    stamp_posting_metadata(
+                        fee_entry.postings[1],
+                        node_id=liability_node_id,
+                        type_tag="fee",
+                    )
+                    if not journal.has_id(fee_entry.id):
+                        journal.post(fee_entry)
+                    sequence += 1
 
                 # 3. Calculate minimum payment (with i_m)
                 min_payment = self._calculate_minimum_payment(
@@ -195,14 +391,63 @@ class ScheduleCreditLine(IScheduleStrategy):
                 if min_payment > 0:
                     payment_amount = min(min_payment, current_balance)
                     current_balance -= payment_amount
-                    cash_out[month_idx] = float(payment_amount)
+                    if payment_amount > 0:
+                        payment_entry = JournalEntry(
+                            id=create_entry_id(operation_id, sequence),
+                            timestamp=payment_timestamp,
+                            postings=[
+                                Posting(
+                                    account_id=liability_node_id,
+                                    amount=create_amount(
+                                        float(payment_amount), ctx.currency
+                                    ),
+                                    metadata={},
+                                ),
+                                Posting(
+                                    account_id=cash_pay_node_id,
+                                    amount=create_amount(
+                                        -float(payment_amount), ctx.currency
+                                    ),
+                                    metadata={},
+                                ),
+                            ],
+                            metadata={},
+                        )
+                        origin_id = generate_transaction_id(
+                            brick.id,
+                            payment_timestamp,
+                            brick.spec or {},
+                            brick.links or {},
+                            sequence=month_idx * 100 + sequence,
+                        )
+                        stamp_entry_metadata(
+                            payment_entry,
+                            parent_id=f"l:{brick.id}",
+                            timestamp=payment_timestamp,
+                            tags={"type": "payment"},
+                            sequence=sequence,
+                            origin_id=origin_id,
+                        )
+                        payment_entry.metadata["transaction_type"] = "payment"
+                        stamp_posting_metadata(
+                            payment_entry.postings[0],
+                            node_id=liability_node_id,
+                            type_tag="payment",
+                        )
+                        stamp_posting_metadata(
+                            payment_entry.postings[1],
+                            node_id=cash_pay_node_id,
+                            type_tag="payment",
+                        )
+                        if not journal.has_id(payment_entry.id):
+                            journal.post(payment_entry)
 
             # Store current balance
             debt_balance[month_idx] = float(current_balance)
 
         return BrickOutput(
-            cash_in=cash_in,
-            cash_out=cash_out,
+            cash_in=np.zeros(months, dtype=float),
+            cash_out=np.zeros(months, dtype=float),
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
             interest=-interest_paid,  # Negative for interest expense
