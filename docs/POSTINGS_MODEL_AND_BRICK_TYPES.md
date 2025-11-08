@@ -173,7 +173,7 @@ Therefore, this proposal can be implemented incrementally by shifting flows into
   - FlowShellBrick: creates postings for boundary↔internal flows (income/expense). Not posted to.
   - TransferShellBrick: creates postings for internal↔internal transfers. Not posted to.
   - BoundaryInterface: singleton node representing the “outside world” side. Hidden; posted to but does not create postings.
-- MacroGroup (MacroBrick): container of A/L nodes and/or other MacroGroups (DAG; no cycles). Shells/Boundary cannot be members.
+- MacroGroup (MacroBrick): container of A/L/F/T bricks and/or other MacroGroups (DAG; no cycles). Boundary nodes remain excluded.
 
 Why this helps: single source of truth for flows (postings), clear separation of concerns, robust cancellation in MacroGroups, and easy inspection by node or by operation.
 
@@ -230,7 +230,7 @@ The following practices reduce foot‑guns and make failures obvious:
   - Validate that LBrick schedules post to the correct INTERNAL/BOUNDARY accounts depending on leg (principal vs interest/fees).
 
 - MacroGroup membership (a.k.a. MacroBrick)
-  - Members may be A/L bricks and/or other MacroGroups (nested). The structure must be a DAG (no cycles). Shells (FlowShell/TransferShell) and Boundary are not valid members.
+  - Members may include any brick type (A/L/F/T) and/or other MacroGroups (nested). The structure must be a DAG (no cycles). Boundary remains invalid.
   - Intra‑selection cancellation is applied only when: all internal postings of an entry map to selected A/L members (after expansion/dedup) and there are no boundary postings.
 
 - Journal‑first aggregation (feature flag)

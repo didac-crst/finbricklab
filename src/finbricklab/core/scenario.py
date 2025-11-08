@@ -98,7 +98,7 @@ class Scenario:
         if self._registry is None:
             self._registry = self._build_registry()
 
-        # Validate MacroBrick membership (V2: A/L only, no F/T/Shell/Boundary)
+        # Validate MacroBrick membership (ensures members exist and families are supported)
         for macrobrick in self.macrobricks:
             macrobrick.validate_membership(self._registry)
 

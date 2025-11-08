@@ -565,8 +565,8 @@ class ScenarioResults:
                             elif brick.family == "l":
                                 selection_set.add(f"l:{brick_id}")
                             else:
-                                # F/T bricks are ignored (don't add to selection, but don't warn)
-                                non_al_ids.append(brick_id)
+                                # F/T bricks are ignored silently for MacroBrick expansion
+                                continue
                 elif self._registry.is_brick(item_id):
                     # Direct brick selection - convert to node ID
                     brick = self._registry.get_brick(item_id)
