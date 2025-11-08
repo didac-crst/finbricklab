@@ -630,3 +630,104 @@ def test_filtered_views_multiple_cash_accounts_and_transfers():
 
     assert checking_all.loc["2026-01", "cash_out"] == pytest.approx(1_000.0)
     assert savings_all.loc["2026-01", "cash_in"] == pytest.approx(1_000.0)
+
+
+def test_balloon_loan_routes_to_non_default_cash():
+    """Balloon loan operations route entirely to the configured cash account."""
+
+    entity = Entity(name="Balloon Loan Routing")
+    entity.new_ABrick(
+        name="Default Checking",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Offset Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_LBrick(
+        name="Balloon Loan",
+        kind=K.L_LOAN_BALLOON,
+        start_date=date(2026, 1, 1),
+        spec={
+            "principal": 50_000.0,
+            "rate_pa": 0.03,
+            "balloon_after_months": 24,
+            "amortization_rate_pa": 0.02,
+            "balloon_type": "residual",
+        },
+        links={"route": {"from": "offset_account", "to": "offset_account"}},
+    )
+
+    entity.create_scenario(
+        name="Balloon Loan Scenario",
+        brick_ids=["default_checking", "offset_account", "balloon_loan"],
+        settlement_default_cash_id="default_checking",
+    )
+
+    results = entity.run_scenario(
+        "balloon_loan_scenario", start=date(2026, 1, 1), months=30
+    )
+
+    default_view = results["views"].filter(brick_ids=["default_checking"]).monthly()
+    offset_view = results["views"].filter(brick_ids=["offset_account"]).monthly()
+
+    assert np.allclose(default_view["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(default_view["cash_out"], 0.0, atol=1e-9)
+
+    assert offset_view.iloc[0]["cash_in"] == pytest.approx(50_000.0)
+    assert offset_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert (offset_view.iloc[1:]["cash_out"] > 0.0).any()
+
+
+def test_annuity_loan_routes_to_non_default_cash():
+    """Annuity loan drawdowns and payments honour explicit route configuration."""
+
+    entity = Entity(name="Annuity Loan Routing")
+    entity.new_ABrick(
+        name="Primary Cash",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Loan Offset",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_LBrick(
+        name="Annuity Loan",
+        kind=K.L_LOAN_ANNUITY,
+        start_date=date(2026, 1, 1),
+        spec={
+            "principal": 120_000.0,
+            "rate_pa": 0.03,
+            "term_months": 120,
+            "first_payment_offset": 1,
+        },
+        links={"route": {"from": "loan_offset", "to": "loan_offset"}},
+    )
+
+    entity.create_scenario(
+        name="Annuity Loan Scenario",
+        brick_ids=["primary_cash", "loan_offset", "annuity_loan"],
+        settlement_default_cash_id="primary_cash",
+    )
+
+    results = entity.run_scenario(
+        "annuity_loan_scenario", start=date(2026, 1, 1), months=18
+    )
+
+    primary_view = results["views"].filter(brick_ids=["primary_cash"]).monthly()
+    offset_view = results["views"].filter(brick_ids=["loan_offset"]).monthly()
+
+    assert np.allclose(primary_view["cash_in"], 0.0, atol=1e-9)
+    assert np.allclose(primary_view["cash_out"], 0.0, atol=1e-9)
+
+    assert offset_view.iloc[0]["cash_in"] == pytest.approx(120_000.0)
+    assert offset_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert (offset_view.iloc[1:]["cash_out"] > 0.0).all()

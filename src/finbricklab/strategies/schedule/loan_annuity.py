@@ -30,6 +30,8 @@ from finbricklab.core.results import BrickOutput
 from finbricklab.core.specs import term_from_amort
 from finbricklab.core.utils import active_mask, resolve_prepayments_to_month_idx
 
+from ._loan_utils import resolve_loan_cash_nodes
+
 
 class FinBrickWarning(UserWarning):
     """Warning for FinBrickLab configuration issues."""
@@ -131,6 +133,12 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         If using links.principal, the principal will be calculated from the linked property's
         initial_value minus down_payment. This enables automatic mortgage sizing based on
         property purchases.
+
+        Cash routing honours ``links.route``:
+            - ``route["to"]`` receives loan proceeds at drawdown.
+            - ``route["from"]`` funds all repayments and fees.
+          Missing legs fall back to the scenario's settlement default cash account (or the
+          first cash brick) to preserve backward compatibility.
     """
 
     def prepare(self, brick: LBrick, ctx: ScenarioContext) -> None:
@@ -337,19 +345,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
 
         # Get node IDs
         liability_node_id = get_node_id(brick.id, "l")
-        # Find cash account node ID (use settlement_default_cash_id or find from registry)
-        cash_node_id = None
-        if ctx.settlement_default_cash_id:
-            cash_node_id = get_node_id(ctx.settlement_default_cash_id, "a")
-        else:
-            # Find first cash account from registry
-            for other_brick in ctx.registry.values():
-                if hasattr(other_brick, "kind") and other_brick.kind == "a.cash":
-                    cash_node_id = get_node_id(other_brick.id, "a")
-                    break
-        if cash_node_id is None:
-            # Fallback: use default
-            cash_node_id = "a:cash"  # Default fallback
+        cash_draw_node_id, cash_pay_node_id = resolve_loan_cash_nodes(brick, ctx)
 
         # Extract parameters
         principal = float(_get_spec_value(brick.spec, "principal", 0))
@@ -411,7 +407,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 timestamp=drawdown_timestamp,
                 postings=[
                     Posting(
-                        account_id=cash_node_id,  # Keep for backward compat
+                        account_id=cash_draw_node_id,
                         amount=create_amount(principal, ctx.currency),
                         metadata={},
                     ),
@@ -440,7 +436,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             # Stamp posting metadata
             stamp_posting_metadata(
                 drawdown_entry.postings[0],
-                node_id=cash_node_id,
+                node_id=cash_draw_node_id,
                 type_tag="drawdown",
             )
             stamp_posting_metadata(
@@ -545,7 +541,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                                 metadata={},
                             ),
                             Posting(
-                                account_id=cash_node_id,
+                                account_id=cash_pay_node_id,
                                 amount=create_amount(-principal_total, ctx.currency),
                                 metadata={},
                             ),
@@ -572,7 +568,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     )
                     stamp_posting_metadata(
                         principal_entry.postings[1],
-                        node_id=cash_node_id,
+                        node_id=cash_pay_node_id,
                         type_tag="principal",
                     )
 
@@ -604,7 +600,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                                 metadata={},
                             ),
                             Posting(
-                                account_id=cash_node_id,
+                                account_id=cash_pay_node_id,
                                 amount=create_amount(-interest, ctx.currency),
                                 metadata={},
                             ),
@@ -632,7 +628,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     )
                     stamp_posting_metadata(
                         interest_entry.postings[1],
-                        node_id=cash_node_id,
+                        node_id=cash_pay_node_id,
                         type_tag="interest",
                     )
 
@@ -664,7 +660,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                                 metadata={},
                             ),
                             Posting(
-                                account_id=cash_node_id,
+                                account_id=cash_pay_node_id,
                                 amount=create_amount(-prepay_fee, ctx.currency),
                                 metadata={},
                             ),
@@ -692,7 +688,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                     )
                     stamp_posting_metadata(
                         fee_entry.postings[1],
-                        node_id=cash_node_id,
+                        node_id=cash_pay_node_id,
                         type_tag="fee",
                     )
 
@@ -764,7 +760,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                             metadata={},
                         ),
                         Posting(
-                            account_id=cash_node_id,
+                            account_id=cash_pay_node_id,
                             amount=create_amount(-residual, ctx.currency),
                             metadata={},
                         ),
@@ -791,7 +787,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 )
                 stamp_posting_metadata(
                     balloon_entry.postings[1],
-                    node_id=cash_node_id,
+                    node_id=cash_pay_node_id,
                     type_tag="balloon",
                 )
 

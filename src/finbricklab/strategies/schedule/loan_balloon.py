@@ -27,6 +27,8 @@ from finbricklab.core.journal import (
 )
 from finbricklab.core.results import BrickOutput
 
+from ._loan_utils import resolve_loan_cash_nodes
+
 
 class ScheduleLoanBalloon(IScheduleStrategy):
     """
@@ -49,6 +51,12 @@ class ScheduleLoanBalloon(IScheduleStrategy):
     Note:
         The loan continues with interest-only payments after the balloon payment
         until the simulation ends. No fixed term is required.
+
+        Cash routing honours ``links.route``:
+            - ``route["to"]`` receives drawdowns.
+            - ``route["from"]`` funds repayments.
+          If either leg is omitted, the scenario settlement default (or first cash
+          account) is used for backward compatibility.
     """
 
     def simulate(
@@ -104,19 +112,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
         # Get node IDs
         liability_node_id = get_node_id(brick.id, "l")
-        # Find cash account node ID (use settlement_default_cash_id or find from registry)
-        cash_node_id = None
-        if ctx.settlement_default_cash_id:
-            cash_node_id = get_node_id(ctx.settlement_default_cash_id, "a")
-        else:
-            # Find first cash account from registry
-            for other_brick in ctx.registry.values():
-                if hasattr(other_brick, "kind") and other_brick.kind == "a.cash":
-                    cash_node_id = get_node_id(other_brick.id, "a")
-                    break
-        if cash_node_id is None:
-            # Fallback: use default
-            cash_node_id = "a:cash"  # Default fallback
+        cash_draw_node_id, cash_pay_node_id = resolve_loan_cash_nodes(brick, ctx)
 
         # Calculate monthly rates
         i_m = rate_pa / Decimal("12")
@@ -179,7 +175,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                 timestamp=drawdown_timestamp,
                 postings=[
                     Posting(
-                        account_id=cash_node_id,
+                        account_id=cash_draw_node_id,
                         amount=create_amount(float(principal), ctx.currency),
                         metadata={},
                     ),
@@ -206,7 +202,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
 
             stamp_posting_metadata(
                 drawdown_entry.postings[0],
-                node_id=cash_node_id,
+                node_id=cash_draw_node_id,
                 type_tag="drawdown",
             )
             stamp_posting_metadata(
@@ -309,7 +305,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                     metadata={},
                                 ),
                                 Posting(
-                                    account_id=cash_node_id,
+                                    account_id=cash_pay_node_id,
                                     amount=create_amount(
                                         -float(balloon_payment), ctx.currency
                                     ),
@@ -337,7 +333,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
                         stamp_posting_metadata(
                             principal_entry.postings[1],
-                            node_id=cash_node_id,
+                            node_id=cash_pay_node_id,
                             type_tag="balloon",
                         )
 
@@ -369,7 +365,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                     metadata={},
                                 ),
                                 Posting(
-                                    account_id=cash_node_id,
+                                    account_id=cash_pay_node_id,
                                     amount=create_amount(
                                         -float(interest), ctx.currency
                                     ),
@@ -398,7 +394,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
                         stamp_posting_metadata(
                             interest_entry.postings[1],
-                            node_id=cash_node_id,
+                            node_id=cash_pay_node_id,
                             type_tag="interest",
                         )
 
@@ -462,7 +458,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                     metadata={},
                                 ),
                                 Posting(
-                                    account_id=cash_node_id,
+                                    account_id=cash_pay_node_id,
                                     amount=create_amount(
                                         -float(principal_payment), ctx.currency
                                     ),
@@ -490,7 +486,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
                         stamp_posting_metadata(
                             principal_entry.postings[1],
-                            node_id=cash_node_id,
+                            node_id=cash_pay_node_id,
                             type_tag="principal",
                         )
 
@@ -522,7 +518,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                     metadata={},
                                 ),
                                 Posting(
-                                    account_id=cash_node_id,
+                                    account_id=cash_pay_node_id,
                                     amount=create_amount(
                                         -float(interest), ctx.currency
                                     ),
@@ -551,7 +547,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
                         stamp_posting_metadata(
                             interest_entry.postings[1],
-                            node_id=cash_node_id,
+                            node_id=cash_pay_node_id,
                             type_tag="interest",
                         )
 
@@ -610,7 +606,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                                     metadata={},
                                 ),
                                 Posting(
-                                    account_id=cash_node_id,
+                                    account_id=cash_pay_node_id,
                                     amount=create_amount(
                                         -float(interest), ctx.currency
                                     ),
@@ -639,7 +635,7 @@ class ScheduleLoanBalloon(IScheduleStrategy):
                         )
                         stamp_posting_metadata(
                             interest_entry.postings[1],
-                            node_id=cash_node_id,
+                            node_id=cash_pay_node_id,
                             type_tag="interest",
                         )
 
