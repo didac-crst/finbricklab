@@ -1643,6 +1643,14 @@ def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:
 
     _append_derived_flow_columns(df)
 
+    # Clean up numerical noise introduced by floating point arithmetic
+    cleanup_eps = 1e-9
+    numeric_cols = df.select_dtypes(include=["float"]).columns
+    if len(numeric_cols) > 0:
+        df[numeric_cols] = df[numeric_cols].mask(
+            df[numeric_cols].abs() < cleanup_eps, 0.0
+        )
+
     # Assert financial identities with small tolerance for floating point errors
     eps = 1e-6
     if (

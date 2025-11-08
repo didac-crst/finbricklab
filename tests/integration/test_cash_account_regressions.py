@@ -150,6 +150,11 @@ def test_single_cash_account_keeps_initial_balance_without_interest():
         np.zeros(post_mask.sum()), abs=1e-9
     )
 
+    eps = 1e-9
+    float_values = np.abs(monthly.select_dtypes(include=["float"]).to_numpy().ravel())
+    assert float_values.size > 0
+    assert np.all((float_values == 0.0) | (float_values >= eps))
+
 
 def test_cash_account_compounds_monthly_interest():
     """Ensure monthly compounding at interest_pa=10%."""
