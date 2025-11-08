@@ -448,3 +448,63 @@ def test_mortgage_principal_surfaces_in_capitalized_flows():
     assert first_amortization["equity_delta"] == pytest.approx(
         first_amortization["net_cf"] + first_amortization["capitalized_cf"], rel=1e-9
     )
+
+
+def test_filtered_views_respect_cash_and_liability_semantics():
+    """Cash selections surface routed flows; liability selections stay cash-neutral."""
+
+    entity = Entity(name="Cash Loan Test")
+    entity.new_ABrick(
+        name="Checking Account",
+        kind=K.A_CASH,
+        start_date=date(2026, 1, 1),
+        spec={"initial_balance": 50_000.0, "interest_pa": 0.0},
+    )
+    entity.new_FBrick(
+        name="Salary",
+        kind=K.F_INCOME_RECURRING,
+        start_date=date(2026, 1, 1),
+        spec={"amount_monthly": 5_000.0},
+        links={"route": {"to": "checking_account"}},
+    )
+    entity.new_LBrick(
+        name="Mortgage",
+        kind=K.L_LOAN_BALLOON,
+        start_date=date(2026, 1, 1),
+        spec={
+            "principal": 100_000.0,
+            "rate_pa": 0.03,
+            "balloon_after_months": 120,
+            "amortization_rate_pa": 0.02,
+            "balloon_type": "residual",
+        },
+        links={"route": {"from": "checking_account", "to": "checking_account"}},
+    )
+
+    entity.create_scenario(
+        name="Cash Loan Scenario",
+        brick_ids=["checking_account", "salary", "mortgage"],
+        settlement_default_cash_id="checking_account",
+    )
+
+    results = entity.run_scenario(
+        "cash_loan_scenario", start=date(2026, 1, 1), months=18
+    )
+
+    cash_view = results["views"].filter(brick_ids=["checking_account"]).monthly()
+    loan_view = results["views"].filter(brick_ids=["mortgage"]).monthly()
+
+    assert {"cash_in", "cash_out", "net_cf"} <= set(cash_view.columns)
+
+    feb_cash = cash_view.loc["2026-02"]
+    assert feb_cash["cash_in"] == pytest.approx(5_000.0)
+    assert feb_cash["cash_out"] == pytest.approx(416.67, abs=1e-4)
+    assert feb_cash["net_cf"] == pytest.approx(4_583.33, abs=1e-4)
+    assert feb_cash["capitalized_cf"] == pytest.approx(0.0, abs=1e-9)
+
+    feb_loan = loan_view.loc["2026-02"]
+    assert feb_loan["cash_in"] == pytest.approx(0.0, abs=1e-9)
+    assert feb_loan["cash_out"] == pytest.approx(0.0, abs=1e-9)
+    assert feb_loan["net_cf"] == pytest.approx(0.0, abs=1e-9)
+    assert feb_loan["interest"] == pytest.approx(-250.0, rel=1e-6)
+    assert feb_loan["capitalized_cf"] == pytest.approx(166.6667, rel=1e-6)

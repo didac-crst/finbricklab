@@ -4,7 +4,7 @@ Results and output structures for FinBrickLab.
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -1383,6 +1383,40 @@ def _aggregate_journal_monthly(
                     # Direct node ID
                     selection_set.add(node_id)
 
+    selected_cash_nodes: set[str] = set()
+    undetermined_asset_nodes: set[str] = set()
+    if selection_set:
+        if registry:
+            from .kinds import K
+
+        for node_id in selection_set:
+            if not node_id.startswith("a:"):
+                continue
+            brick_found = False
+            brick_is_cash = False
+            if registry:
+                brick_id = node_id.split(":", 1)[1]
+                candidate_brick: Any
+                try:
+                    candidate_brick = registry.get_brick(brick_id)
+                except Exception:
+                    pass
+                else:
+                    brick_found = True
+                    if (
+                        candidate_brick
+                        and getattr(candidate_brick, "kind", None) == K.A_CASH
+                    ):
+                        brick_is_cash = True
+
+            if brick_is_cash:
+                selected_cash_nodes.add(node_id)
+            elif not brick_found:
+                undetermined_asset_nodes.add(node_id)
+
+        if not selected_cash_nodes:
+            selected_cash_nodes.update(undetermined_asset_nodes)
+
     # Group entries by month
     entries_by_month: dict[str, list[JournalEntry]] = {}
     for entry in journal.entries:
@@ -1435,6 +1469,18 @@ def _aggregate_journal_monthly(
                 "fx_transfer",
             }
 
+            entry_hits_selected_cash = False
+            if selected_cash_nodes:
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if (
+                        posting_node_id is not None
+                        and isinstance(posting_node_id, str)
+                        and posting_node_id in selected_cash_nodes
+                    ):
+                        entry_hits_selected_cash = True
+                        break
+
             # Check if both postings are INTERNAL (global check, regardless of selection)
             both_internal_global = not touches_boundary
             if both_internal_global:
@@ -1486,9 +1532,17 @@ def _aggregate_journal_monthly(
                         continue  # Skip non-transfer entries
                 elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
                     # Show only boundary-crossing transfers (not internal transfers)
-                    if is_transfer_entry and not touches_boundary:
+                    if (
+                        is_transfer_entry
+                        and not touches_boundary
+                        and not entry_hits_selected_cash
+                    ):
                         continue  # Skip internal transfers
-                    if not is_transfer_entry and not touches_boundary:
+                    if (
+                        not is_transfer_entry
+                        and not touches_boundary
+                        and not entry_hits_selected_cash
+                    ):
                         continue  # Skip non-boundary entries
 
             # Apply cancellation: if both INTERNAL and in selection, cancel
@@ -1496,25 +1550,19 @@ def _aggregate_journal_monthly(
                 # Skip this entry for cashflow (internal transfer cancels)
                 continue
 
-            # Find ASSET posting (selection-aware)
-            asset_posting = None
+            cash_postings: list = []
             if selection_set:
-                # If selection_set is present, prefer the ASSET posting whose node_id is in selection
-                for posting in entry.postings:
-                    posting_node_id = posting.metadata.get("node_id")
-                    if posting_node_id is None or not isinstance(posting_node_id, str):
-                        continue  # Skip postings without node_id (legacy entries)
-                    try:
-                        node_type = get_node_type(posting_node_id, account_registry)
+                if selected_cash_nodes:
+                    for posting in entry.postings:
+                        posting_node_id = posting.metadata.get("node_id")
                         if (
-                            node_type == AccountType.ASSET
-                            and posting_node_id in selection_set
+                            posting_node_id is not None
+                            and isinstance(posting_node_id, str)
+                            and posting_node_id in selected_cash_nodes
                         ):
-                            asset_posting = posting
-                            break
-                    except ValueError:
-                        continue  # Skip if node_id is None or invalid
-                # If none matched, skip this entry's cashflow
+                            cash_postings.append(posting)
+                else:
+                    cash_postings = []
             else:
                 # No selection_set: pick the first ASSET posting (status quo)
                 for posting in entry.postings:
@@ -1524,31 +1572,30 @@ def _aggregate_journal_monthly(
                     try:
                         node_type = get_node_type(posting_node_id, account_registry)
                         if node_type == AccountType.ASSET:
-                            asset_posting = posting
+                            cash_postings = [posting]
                             break
                     except ValueError:
                         continue  # Skip if node_id is None or invalid
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
-            if asset_posting:
+            for asset_posting in cash_postings:
                 is_interest_entry = (
                     entry.metadata.get("tags", {}).get("type") == "interest"
                 )
                 asset_node_id = asset_posting.metadata.get("node_id")
-                if (
-                    asset_node_id is not None
-                    and isinstance(asset_node_id, str)
-                    and (not selection_set or asset_node_id in selection_set)
-                ):
-                    amount = float(asset_posting.amount.value)
-                    if asset_posting.is_debit():
-                        cash_in[month_idx] += abs(amount)
-                        if is_interest_entry:
-                            interest_in_from_journal[month_idx] += abs(amount)
-                    else:  # credit
-                        cash_out[month_idx] += abs(amount)
-                        if is_interest_entry:
-                            interest_out_from_journal[month_idx] += abs(amount)
+                if asset_node_id is None or not isinstance(asset_node_id, str):
+                    continue
+                if selection_set and asset_node_id not in selected_cash_nodes:
+                    continue
+                amount = float(asset_posting.amount.value)
+                if asset_posting.is_debit():
+                    cash_in[month_idx] += abs(amount)
+                    if is_interest_entry:
+                        interest_in_from_journal[month_idx] += abs(amount)
+                else:  # credit
+                    cash_out[month_idx] += abs(amount)
+                    if is_interest_entry:
+                        interest_out_from_journal[month_idx] += abs(amount)
 
         # Aggregate balances from outputs if provided
         if outputs:
@@ -1566,8 +1613,9 @@ def _aggregate_journal_monthly(
     desired_interest_in = np.clip(interest, a_min=0.0, a_max=None)
     desired_interest_out = np.clip(-interest, a_min=0.0, a_max=None)
 
-    cash_in += desired_interest_in - interest_in_from_journal
-    cash_out += desired_interest_out - interest_out_from_journal
+    if not selection_set:
+        cash_in += desired_interest_in - interest_in_from_journal
+        cash_out += desired_interest_out - interest_out_from_journal
 
     net_cf = cash_in - cash_out
     equity = assets - liabilities
