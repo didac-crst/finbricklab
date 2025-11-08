@@ -831,3 +831,45 @@ def test_credit_line_routes_and_accrues_via_journal():
     assert line_view.iloc[0]["cash_in"] == pytest.approx(10_000.0)
     assert line_view.iloc[0]["cash_out"] == pytest.approx(0.0, abs=1e-9)
     assert (line_view.iloc[1:]["cash_out"] > 0.0).any()
+
+
+def test_recurring_transfer_respects_end_date():
+    """Recurring transfers stop once the brick end_date is reached."""
+
+    entity = Entity(name="Transfer Window")
+    entity.new_ABrick(
+        name="Checking",
+        kind=K.A_CASH,
+        start_date=date(2036, 1, 1),
+        spec={"initial_balance": 5_000.0, "interest_pa": 0.0},
+    )
+    entity.new_ABrick(
+        name="Savings",
+        kind=K.A_CASH,
+        start_date=date(2036, 1, 1),
+        spec={"initial_balance": 0.0, "interest_pa": 0.0},
+    )
+    entity.new_TBrick(
+        name="Monthly Saver",
+        kind=K.T_TRANSFER_RECURRING,
+        start_date=date(2036, 1, 1),
+        end_date=date(2037, 2, 1),
+        spec={"amount": 1_000.0, "frequency": "MONTHLY"},
+        links={"from": "checking", "to": "savings"},
+    )
+
+    entity.create_scenario(
+        name="Transfer Window Scenario",
+        brick_ids=["checking", "savings", "monthly_saver"],
+        settlement_default_cash_id="checking",
+    )
+
+    results = entity.run_scenario(
+        "transfer_window_scenario", start=date(2036, 1, 1), months=36
+    )
+
+    savings_view = results["views"].filter(brick_ids=["savings"]).monthly()
+
+    assert savings_view.loc["2037-02", "cash_in"] == pytest.approx(1_000.0)
+    after_end = savings_view.loc["2037-03":, "cash_in"].to_numpy()
+    assert np.allclose(after_end, 0.0, atol=1e-9)

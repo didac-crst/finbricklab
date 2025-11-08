@@ -211,7 +211,7 @@ class TransferRecurring(ITransferStrategy):
             start_idx = 0
 
         # Normalize end_date to month precision
-        end_date = brick.spec.get("end_date")
+        end_date = brick.end_date or brick.spec.get("end_date")
         scenario_end_m = ctx.t_index[-1]
         end_m = np.datetime64(end_date, "M") if end_date else scenario_end_m
         end_m = min(end_m, scenario_end_m)  # Don't go past scenario end
