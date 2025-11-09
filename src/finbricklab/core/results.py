@@ -1602,9 +1602,9 @@ def _aggregate_journal_monthly(
                     if posting_node_id == BOUNDARY_NODE_ID:
                         amount = float(posting.amount.value)
                         if posting.is_debit():
-                            interest_in_from_journal[month_idx] += abs(amount)
-                        else:
                             interest_out_from_journal[month_idx] += abs(amount)
+                        elif posting.is_credit():
+                            interest_in_from_journal[month_idx] += abs(amount)
                         break
 
         # Aggregate balances from outputs if provided
