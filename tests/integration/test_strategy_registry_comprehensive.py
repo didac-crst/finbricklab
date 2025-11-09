@@ -4,6 +4,7 @@ Comprehensive tests for strategy registry alignment and transfer functionality.
 
 from datetime import date
 
+import pytest
 from finbricklab import Entity
 from finbricklab.core.bricks import FlowRegistry, ScheduleRegistry, ValuationRegistry
 from finbricklab.core.kinds import K
@@ -188,10 +189,13 @@ class TestOnetimeFlows:
         assert len(bonus_entries) >= 1, "Should have at least one bonus income entry"
 
         # V2: Check monthly aggregation for income
-        # Month 0 (January) has opening balance (€1000), month 5 (June) has bonus (€5000)
-        assert (
-            monthly["cash_in"].iloc[0] == 1000.0
-        ), "Month 0 should have opening balance"
+        # Month 0 (January) cash balance reflects opening amount; opening deposit excluded from cash_in
+        assert monthly["cash"].iloc[0] == pytest.approx(
+            1000.0, rel=1e-6
+        ), "Month 0 cash balance should equal opening balance"
+        assert monthly["cash_in"].iloc[0] == pytest.approx(
+            0.0, abs=1e-9
+        ), "Month 0 cash_in should not include opening balance"
         assert (
             monthly["cash_in"].iloc[5] == 5000.0
         ), "June (month 5) should have bonus income"

@@ -233,7 +233,7 @@ class ScenarioResults:
         # Add UI/UX guardrails
         self._add_transfer_metadata(filtered_data, visibility, filtered_outputs)
 
-        return filtered_data
+        return finalize_totals(filtered_data)
 
     def _filter_outputs_by_transfer_visibility(
         self, visibility: TransferVisibility
@@ -542,7 +542,8 @@ class ScenarioResults:
             Tuple of (selection_set, unknown_ids, non_al_ids) where:
             - selection_set: Set of A/L node IDs for selection
             - unknown_ids: List of unknown brick IDs (warned)
-            - non_al_ids: List of non-A/L brick IDs (warned, ignored in selection)
+            - non_al_ids: List of non-A/L brick IDs explicitly requested by the user
+              (MacroBrick expansion silently drops F/T members to avoid noisy warnings)
         """
         if self._registry is None:
             return set(), [], []
@@ -565,8 +566,8 @@ class ScenarioResults:
                             elif brick.family == "l":
                                 selection_set.add(f"l:{brick_id}")
                             else:
-                                # F/T bricks are ignored (don't add to selection, but don't warn)
-                                non_al_ids.append(brick_id)
+                                # F/T bricks are ignored silently for MacroBrick expansion
+                                continue
                 elif self._registry.is_brick(item_id):
                     # Direct brick selection - convert to node ID
                     brick = self._registry.get_brick(item_id)
@@ -1223,7 +1224,16 @@ def aggregate_totals(
         return df
 
     # Define aggregation rules based on financial semantics
-    flows = ["cash_in", "cash_out", "net_cf", "interest"]
+    flows = [
+        "cash_in",
+        "cash_out",
+        "net_cf",
+        "interest",
+        "cash_delta",
+        "equity_delta",
+        "capitalized_cf",
+        "cash_rebalancing",
+    ]
     stocks = ["assets", "liabilities", "equity", "cash", "non_cash"]
 
     # Only aggregate columns that exist
@@ -1249,6 +1259,38 @@ def aggregate_totals(
     if return_period_index:
         return out
     return out.to_timestamp(how="end")  # Convert to period-end timestamps
+
+
+def _append_derived_flow_columns(df: pd.DataFrame) -> None:
+    """
+    Append derived cash and equity flow columns in place, preserving accounting identities.
+    """
+
+    if "cash" in df.columns and "cash_delta" not in df.columns:
+        cash_delta = df["cash"].diff()
+        if not cash_delta.empty:
+            cash_delta.iloc[0] = df["cash"].iloc[0]
+        df["cash_delta"] = cash_delta.fillna(0.0)
+
+    if "equity" in df.columns and "equity_delta" not in df.columns:
+        equity_delta = df["equity"].diff()
+        if not equity_delta.empty:
+            equity_delta.iloc[0] = df["equity"].iloc[0]
+        df["equity_delta"] = equity_delta.fillna(0.0)
+
+    if (
+        "net_cf" in df.columns
+        and "equity_delta" in df.columns
+        and "capitalized_cf" not in df.columns
+    ):
+        df["capitalized_cf"] = df["equity_delta"] - df["net_cf"]
+
+    if (
+        "net_cf" in df.columns
+        and "cash_delta" in df.columns
+        and "cash_rebalancing" not in df.columns
+    ):
+        df["cash_rebalancing"] = df["cash_delta"] - df["net_cf"]
 
 
 def _aggregate_journal_monthly(
@@ -1292,6 +1334,8 @@ def _aggregate_journal_monthly(
     length = len(time_index)
     cash_in = np.zeros(length)
     cash_out = np.zeros(length)
+    interest_in_from_journal = np.zeros(length)
+    interest_out_from_journal = np.zeros(length)
     assets = np.zeros(length)
     liabilities = np.zeros(length)
     interest = np.zeros(length)
@@ -1340,6 +1384,43 @@ def _aggregate_journal_monthly(
                     # Direct node ID
                     selection_set.add(node_id)
 
+    def _is_cash_node(node_id: str) -> bool:
+        if not node_id or not isinstance(node_id, str):
+            return False
+        if not node_id.startswith("a:"):
+            return False
+
+        if registry:
+            from .kinds import K
+
+            brick_id = node_id.split(":", 1)[1]
+            try:
+                brick = registry.get_brick(brick_id)
+            except Exception:
+                brick = None
+            if brick and getattr(brick, "kind", None) == K.A_CASH:
+                return True
+            # Registry told us it is not cash; fall through to False
+            if brick is not None:
+                return False
+
+        if account_registry:
+            account = account_registry.get_account(node_id)
+            if account and account.account_type == AccountType.ASSET:
+                name_lower = account.name.lower()
+                if any(
+                    keyword in name_lower
+                    for keyword in ("cash", "checking", "savings", "konto")
+                ):
+                    return True
+        return False
+
+    selected_cash_nodes: set[str] = (
+        {node_id for node_id in selection_set if _is_cash_node(node_id)}
+        if selection_set
+        else set()
+    )
+
     # Group entries by month
     entries_by_month: dict[str, list[JournalEntry]] = {}
     for entry in journal.entries:
@@ -1363,6 +1444,8 @@ def _aggregate_journal_monthly(
 
         # Process each entry
         for entry in month_entries:
+            if entry.metadata.get("transaction_type") == "opening":
+                continue
             # Check if entry touches boundary
             # Use get_node_scope() to detect boundary accounts (including FX_CLEAR_NODE_ID)
             touches_boundary = False
@@ -1389,6 +1472,14 @@ def _aggregate_journal_monthly(
                 "maturity_transfer",
                 "fx_transfer",
             }
+
+            entry_hits_selected_cash = False
+            if selected_cash_nodes:
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id in selected_cash_nodes:
+                        entry_hits_selected_cash = True
+                        break
 
             # Check if both postings are INTERNAL (global check, regardless of selection)
             both_internal_global = not touches_boundary
@@ -1432,6 +1523,8 @@ def _aggregate_journal_monthly(
                     # Hide internal transfers (global check, works without selection)
                     if is_transfer_entry and both_internal_global:
                         continue  # Skip internal transfers
+                    if not touches_boundary:
+                        continue  # Skip all internal entries
                     # Also skip if both internal and in selection (cancellation)
                     if both_internal_in_selection:
                         continue  # Skip internal transfers in selection
@@ -1441,9 +1534,7 @@ def _aggregate_journal_monthly(
                         continue  # Skip non-transfer entries
                 elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
                     # Show only boundary-crossing transfers (not internal transfers)
-                    if is_transfer_entry and not touches_boundary:
-                        continue  # Skip internal transfers
-                    if not is_transfer_entry and not touches_boundary:
+                    if not touches_boundary and not entry_hits_selected_cash:
                         continue  # Skip non-boundary entries
 
             # Apply cancellation: if both INTERNAL and in selection, cancel
@@ -1451,25 +1542,19 @@ def _aggregate_journal_monthly(
                 # Skip this entry for cashflow (internal transfer cancels)
                 continue
 
-            # Find ASSET posting (selection-aware)
-            asset_posting = None
+            cash_postings: list = []
             if selection_set:
-                # If selection_set is present, prefer the ASSET posting whose node_id is in selection
-                for posting in entry.postings:
-                    posting_node_id = posting.metadata.get("node_id")
-                    if posting_node_id is None or not isinstance(posting_node_id, str):
-                        continue  # Skip postings without node_id (legacy entries)
-                    try:
-                        node_type = get_node_type(posting_node_id, account_registry)
+                if selected_cash_nodes:
+                    for posting in entry.postings:
+                        posting_node_id = posting.metadata.get("node_id")
                         if (
-                            node_type == AccountType.ASSET
-                            and posting_node_id in selection_set
+                            posting_node_id is not None
+                            and isinstance(posting_node_id, str)
+                            and posting_node_id in selected_cash_nodes
                         ):
-                            asset_posting = posting
-                            break
-                    except ValueError:
-                        continue  # Skip if node_id is None or invalid
-                # If none matched, skip this entry's cashflow
+                            cash_postings.append(posting)
+                else:
+                    cash_postings = []
             else:
                 # No selection_set: pick the first ASSET posting (status quo)
                 for posting in entry.postings:
@@ -1479,24 +1564,48 @@ def _aggregate_journal_monthly(
                     try:
                         node_type = get_node_type(posting_node_id, account_registry)
                         if node_type == AccountType.ASSET:
-                            asset_posting = posting
+                            cash_postings = [posting]
                             break
                     except ValueError:
                         continue  # Skip if node_id is None or invalid
 
             # Include ASSET posting (already selection-aware if selection_set was provided)
-            if asset_posting:
+            interest_recorded_from_cash = False
+            for asset_posting in cash_postings:
+                is_interest_entry = (
+                    entry.metadata.get("tags", {}).get("type") == "interest"
+                )
                 asset_node_id = asset_posting.metadata.get("node_id")
-                if (
-                    asset_node_id is not None
-                    and isinstance(asset_node_id, str)
-                    and (not selection_set or asset_node_id in selection_set)
-                ):
-                    amount = float(asset_posting.amount.value)
-                    if asset_posting.is_debit():
-                        cash_in[month_idx] += abs(amount)
-                    else:  # credit
-                        cash_out[month_idx] += abs(amount)
+                if asset_node_id is None or not isinstance(asset_node_id, str):
+                    continue
+                if selection_set and asset_node_id not in selected_cash_nodes:
+                    continue
+                amount = float(asset_posting.amount.value)
+                if asset_posting.is_debit():
+                    cash_in[month_idx] += abs(amount)
+                    if is_interest_entry:
+                        interest_in_from_journal[month_idx] += abs(amount)
+                        interest_recorded_from_cash = True
+                else:  # credit
+                    cash_out[month_idx] += abs(amount)
+                    if is_interest_entry:
+                        interest_out_from_journal[month_idx] += abs(amount)
+                        interest_recorded_from_cash = True
+
+            # Track boundary interest postings even if no cash posting is recorded
+            if (
+                entry.metadata.get("tags", {}).get("type") == "interest"
+                and not interest_recorded_from_cash
+            ):
+                for posting in entry.postings:
+                    posting_node_id = posting.metadata.get("node_id")
+                    if posting_node_id == BOUNDARY_NODE_ID:
+                        amount = float(posting.amount.value)
+                        if posting.is_debit():
+                            interest_in_from_journal[month_idx] += abs(amount)
+                        else:
+                            interest_out_from_journal[month_idx] += abs(amount)
+                        break
 
         # Aggregate balances from outputs if provided
         if outputs:
@@ -1511,6 +1620,13 @@ def _aggregate_journal_monthly(
                         interest[month_idx] += output["interest"][month_idx]
 
     # Calculate derived fields
+    desired_interest_in = np.clip(interest, a_min=0.0, a_max=None)
+    desired_interest_out = np.clip(-interest, a_min=0.0, a_max=None)
+
+    if not selection_set:
+        cash_in += desired_interest_in - interest_in_from_journal
+        cash_out += desired_interest_out - interest_out_from_journal
+
     net_cf = cash_in - cash_out
     equity = assets - liabilities
 
@@ -1555,6 +1671,8 @@ def _aggregate_journal_monthly(
         index=time_index,
     )
 
+    _append_derived_flow_columns(df)
+
     return df
 
 
@@ -1580,6 +1698,16 @@ def finalize_totals(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate non_cash assets (only if both columns exist)
     if "assets" in df.columns and "cash" in df.columns:
         df["non_cash"] = df["assets"] - df["cash"]
+
+    _append_derived_flow_columns(df)
+
+    # Clean up numerical noise introduced by floating point arithmetic
+    cleanup_eps = 1e-9
+    numeric_cols = df.select_dtypes(include=["float"]).columns
+    if len(numeric_cols) > 0:
+        df[numeric_cols] = df[numeric_cols].mask(
+            df[numeric_cols].abs() < cleanup_eps, 0.0
+        )
 
     # Assert financial identities with small tolerance for floating point errors
     eps = 1e-6

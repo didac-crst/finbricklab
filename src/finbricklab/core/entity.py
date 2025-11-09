@@ -20,11 +20,13 @@ import pandas as pd
 from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick
 from .clone import clone_brick
 from .exceptions import ScenarioValidationError
+from .kinds import K
 from .links import RouteLink
 from .macrobrick import MacroBrick
 from .registry import Registry
 from .scenario import Scenario
 from .transfer_visibility import TransferVisibility
+from .utils import slugify_name
 
 
 @dataclass
@@ -52,8 +54,8 @@ class Entity:
         _scenarios: Dictionary mapping scenario IDs to scenario objects
     """
 
-    id: str
     name: str
+    id: str = ""
     base_currency: str = "EUR"
     assumptions: dict[str, Any] = field(default_factory=dict)
     scenarios: list[Scenario] = field(default_factory=list)
@@ -63,6 +65,20 @@ class Entity:
     _bricks: dict[str, FinBrickABC] = field(default_factory=dict, repr=False)
     _macrobricks: dict[str, MacroBrick] = field(default_factory=dict, repr=False)
     _scenarios: dict[str, Scenario] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        """Normalize entity ID from name when omitted."""
+
+        if not self.id:
+            if not self.name:
+                raise ValueError("Entity must define either an id or a name")
+
+            normalized = slugify_name(self.name)
+            if not normalized:
+                raise ValueError(
+                    f"Entity name '{self.name}' cannot be converted into a valid id"
+                )
+            self.id = normalized
 
     def compare(
         self,
@@ -360,44 +376,59 @@ class Entity:
 
     def new_ABrick(
         self,
-        id: str,
-        name: str,
-        kind: str,
-        spec: dict,
+        id: str | None = None,
+        name: str | None = None,
+        kind: str | None = None,
+        spec: dict | None = None,
         links: dict | RouteLink | None = None,
         **kwargs,
     ) -> ABrick:
         """
         Create and register a new asset brick.
 
+        Supports both the legacy positional signature
+        ``new_ABrick(id, name, kind, spec, links=None, **kwargs)`` and the
+        newer keyword-based usage where the id is optional.
+
         Args:
-            id: Unique identifier for the brick
-            name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'a.cash', 'a.security.unitized')
-            spec: Brick specification dictionary
-            links: Brick links (dict or RouteLink object)
-            **kwargs: Additional brick attributes
+            id: Optional unique identifier for the brick. If omitted, an ID is
+                derived from the name.
+            name: Human-readable name for the brick.
+            kind: Brick kind (e.g., 'a.cash', 'a.security.unitized').
+            spec: Brick specification dictionary.
+            links: Brick links (dict or RouteLink object).
+            **kwargs: Additional brick attributes forwarded to ``ABrick``.
 
         Returns:
-            The created ABrick object
+            The created ``ABrick`` instance.
 
         Raises:
-            ValueError: If ID already exists in catalog
+            ValueError: If ``name``, ``kind`` or ``spec`` are missing.
         """
-        self._assert_unique_id(id)
+
+        if name is None or kind is None or spec is None:
+            raise ValueError("name, kind, and spec are required for ABrick")
+
         _links = self._normalize_links(links)
         brick = ABrick(
-            id=id, name=name, kind=kind, spec=spec, links=_links or {}, **kwargs
+            id=id or "",
+            name=name,
+            kind=kind,
+            spec=spec,
+            links=_links or {},
+            **kwargs,
         )
-        self._bricks[id] = brick
+        final_id = brick.id
+        self._assert_unique_id(final_id)
+        self._bricks[final_id] = brick
         return brick
 
     def new_LBrick(
         self,
-        id: str,
-        name: str,
-        kind: str,
-        spec: dict,
+        id: str | None = None,
+        name: str | None = None,
+        kind: str | None = None,
+        spec: dict | None = None,
         links: dict | RouteLink | None = None,
         **kwargs,
     ) -> LBrick:
@@ -405,33 +436,43 @@ class Entity:
         Create and register a new liability brick.
 
         Args:
-            id: Unique identifier for the brick
-            name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'l.loan.annuity')
-            spec: Brick specification dictionary
-            links: Brick links (dict or RouteLink object)
-            **kwargs: Additional brick attributes
+            id: Optional unique identifier for the brick. If omitted, an ID is
+                derived from the name.
+            name: Human-readable name for the brick.
+            kind: Brick kind (e.g., 'l.loan.annuity').
+            spec: Brick specification dictionary.
+            links: Brick links (dict or RouteLink object).
+            **kwargs: Additional brick attributes forwarded to ``LBrick``.
 
         Returns:
-            The created LBrick object
+            The created ``LBrick`` instance.
 
         Raises:
-            ValueError: If ID already exists in catalog
+            ValueError: If ``name``, ``kind`` or ``spec`` are missing.
         """
-        self._assert_unique_id(id)
+        if name is None or kind is None or spec is None:
+            raise ValueError("name, kind, and spec are required for LBrick")
+
         _links = self._normalize_links(links)
         brick = LBrick(
-            id=id, name=name, kind=kind, spec=spec, links=_links or {}, **kwargs
+            id=id or "",
+            name=name,
+            kind=kind,
+            spec=spec,
+            links=_links or {},
+            **kwargs,
         )
-        self._bricks[id] = brick
+        final_id = brick.id
+        self._assert_unique_id(final_id)
+        self._bricks[final_id] = brick
         return brick
 
     def new_FBrick(
         self,
-        id: str,
-        name: str,
-        kind: str,
-        spec: dict,
+        id: str | None = None,
+        name: str | None = None,
+        kind: str | None = None,
+        spec: dict | None = None,
         links: dict | RouteLink | None = None,
         **kwargs,
     ) -> FBrick:
@@ -439,32 +480,42 @@ class Entity:
         Create and register a new flow brick.
 
         Args:
-            id: Unique identifier for the brick
-            name: Human-readable name for the brick
-            kind: Brick kind (e.g., 'f.income.recurring', 'f.expense.recurring')
-            spec: Brick specification dictionary
-            links: Brick links (dict or RouteLink object)
-            **kwargs: Additional brick attributes
+            id: Optional unique identifier for the brick. If omitted, an ID is
+                derived from the name.
+            name: Human-readable name for the brick.
+            kind: Brick kind (e.g., 'f.income.recurring', 'f.expense.recurring').
+            spec: Brick specification dictionary.
+            links: Brick links (dict or RouteLink object).
+            **kwargs: Additional brick attributes forwarded to ``FBrick``.
 
         Returns:
-            The created FBrick object
+            The created ``FBrick`` instance.
 
         Raises:
-            ValueError: If ID already exists in catalog
+            ValueError: If ``name``, ``kind`` or ``spec`` are missing.
         """
-        self._assert_unique_id(id)
+        if name is None or kind is None or spec is None:
+            raise ValueError("name, kind, and spec are required for FBrick")
+
         _links = self._normalize_links(links)
         brick = FBrick(
-            id=id, name=name, kind=kind, spec=spec, links=_links or {}, **kwargs
+            id=id or "",
+            name=name,
+            kind=kind,
+            spec=spec,
+            links=_links or {},
+            **kwargs,
         )
-        self._bricks[id] = brick
+        final_id = brick.id
+        self._assert_unique_id(final_id)
+        self._bricks[final_id] = brick
         return brick
 
     def new_TBrick(
         self,
-        id: str,
-        name: str,
-        kind: str,
+        id: str | None = None,
+        name: str | None = None,
+        kind: str | None = None,
         spec: dict[str, Any] | None = None,
         links: dict[str, Any] | None = None,
         start_date: date | None = None,
@@ -476,15 +527,16 @@ class Entity:
         Create and register a new TBrick (Transfer Brick).
 
         Args:
-            id: Unique identifier for the brick
-            name: Human-readable name for the brick
-            kind: Transfer strategy kind (e.g., 't.transfer.lumpsum')
-            spec: Strategy-specific parameters
-            links: Links to other bricks (must include 'from' and 'to' accounts)
-            start_date: Optional start date for the transfer
-            end_date: Optional end date for the transfer
-            duration_m: Optional duration in months (alternative to end_date)
-            transparent: Whether this transfer should be hidden in analysis views by default
+            id: Optional unique identifier for the brick. If omitted, an ID is
+                derived from the name.
+            name: Human-readable name for the brick.
+            kind: Transfer strategy kind (e.g., 't.transfer.lumpsum').
+            spec: Strategy-specific parameters.
+            links: Links to other bricks (must include ``from`` and ``to`` accounts).
+            start_date: Optional start date for the transfer.
+            end_date: Optional end date for the transfer.
+            duration_m: Optional duration in months (alternative to ``end_date``).
+            transparent: Whether this transfer should be hidden in analysis views by default.
 
         Returns:
             The created TBrick object
@@ -492,9 +544,9 @@ class Entity:
         Raises:
             ValueError: If ID already exists or required links are missing
         """
-        self._assert_unique_id(id)
-
         # Validate required links for transfers
+        if name is None or kind is None:
+            raise ValueError("name and kind are required for TBrick")
         if not links:
             raise ValueError(
                 "Transfer bricks require 'links' with 'from' and 'to' accounts"
@@ -505,27 +557,34 @@ class Entity:
             raise ValueError("Transfer bricks must specify 'to' account")
 
         brick = TBrick(
-            id=id,
+            id=id or "",
             name=name,
             kind=kind,
             spec=spec or {},
-            links=links,
+            links=deepcopy(links) if isinstance(links, dict) else links,
             start_date=start_date,
             end_date=end_date,
             duration_m=duration_m,
             transparent=transparent,
         )
-        self._bricks[id] = brick
+        final_id = brick.id
+        self._assert_unique_id(final_id)
+        self._bricks[final_id] = brick
         return brick
 
     def new_MacroBrick(
-        self, id: str, name: str, member_ids: list[str], tags: list[str] | None = None
+        self,
+        id: str | None = None,
+        name: str | None = None,
+        member_ids: list[str] | None = None,
+        tags: list[str] | None = None,
     ) -> MacroBrick:
         """
         Create and register a new MacroBrick.
 
         Args:
-            id: Unique identifier for the MacroBrick
+            id: Optional unique identifier for the MacroBrick. If omitted, an ID is
+                derived from the name.
             name: Human-readable name for the MacroBrick
             member_ids: List of brick/MacroBrick IDs to include
             tags: Optional list of tags for categorization
@@ -536,21 +595,38 @@ class Entity:
         Raises:
             ValueError: If ID already exists or member IDs not found
         """
-        self._assert_unique_id(id)
+        if name is None:
+            raise ValueError("name is required for MacroBrick")
+        if member_ids is None:
+            raise ValueError("member_ids must be provided for MacroBrick")
+
+        if id:
+            candidate_id = id
+        else:
+            candidate_id = slugify_name(name)
+            if not candidate_id:
+                raise ValueError(
+                    f"MacroBrick name '{name}' cannot be converted into a valid id"
+                )
+
+        self._assert_unique_id(candidate_id)
         # Validate membership against current catalog
         for member_id in member_ids:
             if member_id not in self._bricks and member_id not in self._macrobricks:
                 raise ValueError(f"Member ID '{member_id}' not found")
 
-        macrobrick = MacroBrick(id=id, name=name, members=member_ids, tags=tags or [])
-        self._macrobricks[id] = macrobrick
+        macrobrick = MacroBrick(
+            id=candidate_id, name=name, members=member_ids, tags=tags or []
+        )
+        final_id = macrobrick.id
+        self._macrobricks[final_id] = macrobrick
         return macrobrick
 
     def create_scenario(
         self,
-        id: str,
-        name: str,
-        brick_ids: list[str],
+        id: str | None = None,
+        name: str | None = None,
+        brick_ids: list[str] | None = None,
         currency: str | None = None,
         settlement_default_cash_id: str | None = None,
         validate: bool = True,
@@ -564,7 +640,8 @@ class Entity:
         constituent bricks with cycle detection and order preservation.
 
         Args:
-            id: Unique identifier for the scenario
+            id: Optional unique identifier for the scenario. If omitted, an ID is
+                derived from the name.
             name: Human-readable name for the scenario
             brick_ids: List of brick IDs and/or MacroBrick IDs to include
             currency: Currency for the scenario (defaults to entity's base_currency)
@@ -583,8 +660,24 @@ class Entity:
             Ensure strategies are registered (e.g., import finbricklab.strategies)
             before calling this method.
         """
-        if id in self._scenarios:
-            raise ValueError(f"Scenario ID '{id}' already exists")
+        if name is None:
+            raise ValueError("Scenario name is required")
+
+        if brick_ids is None:
+            raise ValueError("brick_ids must be provided")
+
+        scenario_id = id
+        if not scenario_id:
+            if not name:
+                raise ValueError("Scenario must define either an id or a name")
+            scenario_id = slugify_name(name)
+            if not scenario_id:
+                raise ValueError(
+                    f"Scenario name '{name}' cannot be converted into a valid id"
+                )
+
+        if scenario_id in self._scenarios:
+            raise ValueError(f"Scenario ID '{scenario_id}' already exists")
 
         # Build a full registry of all catalog items for validation/expansion
         reg_full = Registry(self._bricks, self._macrobricks)
@@ -606,7 +699,7 @@ class Entity:
                     if item_id in stack:
                         cycle_path = " → ".join(path + [item_id])
                         raise ScenarioValidationError(
-                            id,
+                            scenario_id,
                             f"Cycle in MacroBricks: {cycle_path}",
                             problem_ids=[item_id],
                         )
@@ -616,7 +709,7 @@ class Entity:
                     # Cap recursion depth
                     if len(path) > 64:
                         raise ScenarioValidationError(
-                            id,
+                            scenario_id,
                             f"MacroBrick nesting too deep: {len(path)} levels",
                             problem_ids=[item_id],
                         )
@@ -632,7 +725,9 @@ class Entity:
                     push(item_id)
                 else:
                     raise ScenarioValidationError(
-                        id, f"Unknown id '{item_id}'", problem_ids=[item_id]
+                        scenario_id,
+                        f"Unknown id '{item_id}'",
+                        problem_ids=[item_id],
                     )
 
             for item_id in ids or []:
@@ -641,6 +736,37 @@ class Entity:
 
         included_ids, all_macrobricks = expand(brick_ids)
 
+        included_id_set = set(included_ids)
+
+        # Validate routing targets for flow bricks to ensure they reference a cash account
+        for brick_id in included_ids:
+            source_brick = self._bricks[brick_id]
+            if not isinstance(source_brick, FBrick):
+                continue
+            links = getattr(source_brick, "links", None)
+            if not isinstance(links, dict):
+                continue
+            route = links.get("route")
+            if not isinstance(route, dict):
+                continue
+            target_id = route.get("to")
+            if not isinstance(target_id, str):
+                continue
+            if target_id not in self._bricks:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' is not defined in entity '{self.id}'."
+                )
+            target_brick = self._bricks[target_id]
+            if not isinstance(target_brick, ABrick) or target_brick.kind != K.A_CASH:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' must be an 'a.cash' brick."
+                )
+            if target_id not in included_id_set:
+                raise ValueError(
+                    f"{brick_id}: route target '{target_id}' is not included in scenario '{scenario_id or name}'. "
+                    "Add the cash brick to brick_ids."
+                )
+
         # Build a **scenario-local** registry of only the included bricks + all macrobricks (for rollups)
         scen_bricks = [clone_brick(self._bricks[bid]) for bid in included_ids]
 
@@ -648,7 +774,7 @@ class Entity:
         scen_mbs = [deepcopy(self._macrobricks[mid]) for mid in sorted(all_macrobricks)]
 
         scenario = Scenario(
-            id=id,
+            id=scenario_id,
             name=name,
             bricks=scen_bricks,
             macrobricks=scen_mbs,
@@ -665,10 +791,14 @@ class Entity:
                     getattr(report, "problem_ids", None) or sorted(included_ids)[:10]
                 )
                 raise ScenarioValidationError(
-                    id, "Validation failed", report=report, problem_ids=problem_ids
+                    scenario_id,
+                    "Validation failed",
+                    report=report,
+                    problem_ids=problem_ids,
                 )
 
-        self._scenarios[id] = scenario
+        self._scenarios[scenario_id] = scenario
+        self.scenarios.append(scenario)
         return scenario
 
     # ---------- Catalog helpers ----------

@@ -12,6 +12,7 @@ from finbricklab.core.entity import Entity
 from finbricklab.core.exceptions import ScenarioValidationError
 from finbricklab.core.kinds import K
 from finbricklab.core.links import RouteLink
+from finbricklab.core.scenario import Scenario
 
 
 class TestEntityBuilder:
@@ -132,6 +133,153 @@ class TestEntityBuilder:
             "investments",
             "portfolio",
         }  # Both parent and child MacroBricks
+
+    def test_auto_id_generation_for_entity_and_scenario(self):
+        """Entity and Scenario derive IDs from names when omitted."""
+
+        entity = Entity(id=None, name="Family Portfolio")
+        assert entity.id == "family_portfolio"
+
+        cash_brick = entity.new_ABrick(
+            id=None,
+            name="Cash Account",
+            kind=K.A_CASH,
+            spec={"initial_balance": 1000.0},
+        )
+
+        scenario = entity.create_scenario(
+            id=None,
+            name="Retirement Strategy",
+            brick_ids=[cash_brick.id],
+            settlement_default_cash_id=cash_brick.id,
+        )
+
+        assert scenario.id == "retirement_strategy"
+        assert scenario is entity.get_scenario("retirement_strategy")
+        assert "retirement_strategy" in entity.list_scenarios()
+
+        standalone = Scenario(id=None, name="Standalone Plan", bricks=[])
+        assert standalone.id == "standalone_plan"
+
+        macro = entity.new_MacroBrick(
+            id=None, name="Savings Cluster", member_ids=[cash_brick.id]
+        )
+        assert macro.id == "savings_cluster"
+        assert entity.get_macrobrick("savings_cluster") is macro
+
+    def test_macrobrick_with_shell_bricks_executes_members(self):
+        """MacroBricks can include shell bricks and execute them once."""
+
+        entity = Entity(id="pkg", name="Package")
+        entity.new_ABrick(
+            id="checking",
+            name="Checking",
+            kind=K.A_CASH,
+            spec={"initial_balance": 0.0},
+        )
+        entity.new_ABrick(
+            id="savings",
+            name="Savings",
+            kind=K.A_CASH,
+            spec={"initial_balance": 0.0},
+        )
+        entity.new_FBrick(
+            id="salary",
+            name="Salary",
+            kind=K.F_INCOME_RECURRING,
+            start_date=date(2026, 1, 1),
+            spec={"amount_monthly": 5_000.0},
+            links={"route": {"to": "checking"}},
+        )
+        entity.new_TBrick(
+            id="auto_transfer",
+            name="Auto Transfer",
+            kind=K.T_TRANSFER_RECURRING,
+            start_date=date(2026, 1, 1),
+            spec={"amount": 1_000.0, "frequency": "MONTHLY"},
+            links={"from": "checking", "to": "savings"},
+        )
+
+        entity.new_MacroBrick(
+            id="cash_bundle",
+            name="Cash Bundle",
+            member_ids=["checking", "savings", "salary", "auto_transfer"],
+        )
+
+        scenario = entity.create_scenario(
+            id="bundle_scenario",
+            name="Bundle Scenario",
+            brick_ids=["cash_bundle"],
+            settlement_default_cash_id="checking",
+        )
+
+        results = scenario.run(start=date(2026, 1, 1), months=3)
+        checking_view = results["views"].filter(brick_ids=["checking"]).monthly()
+        savings_view = results["views"].filter(brick_ids=["savings"]).monthly()
+
+        assert checking_view.loc["2026-01", "cash_in"] == pytest.approx(5_000.0)
+        assert checking_view.loc["2026-01", "cash_out"] == pytest.approx(1_000.0)
+        assert savings_view.loc["2026-01", "cash_in"] == pytest.approx(1_000.0)
+
+    def test_macrobrick_overlap_deduplicates_shell_execution(self):
+        """Overlapping MacroBricks share shell bricks without duplicate execution."""
+
+        entity = Entity(id="pkg2", name="Package Two")
+        entity.new_ABrick(
+            id="primary_cash",
+            name="Primary Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 0.0},
+        )
+        entity.new_ABrick(
+            id="reserve_cash",
+            name="Reserve Cash",
+            kind=K.A_CASH,
+            spec={"initial_balance": 0.0},
+        )
+        entity.new_FBrick(
+            id="salary",
+            name="Salary",
+            kind=K.F_INCOME_RECURRING,
+            start_date=date(2026, 1, 1),
+            spec={"amount_monthly": 4_000.0},
+            links={"route": {"to": "primary_cash"}},
+        )
+        entity.new_TBrick(
+            id="monthly_sweep",
+            name="Monthly Sweep",
+            kind=K.T_TRANSFER_RECURRING,
+            start_date=date(2026, 1, 1),
+            spec={"amount": 1_500.0, "frequency": "MONTHLY"},
+            links={"from": "primary_cash", "to": "reserve_cash"},
+        )
+
+        entity.new_MacroBrick(
+            id="income_bundle",
+            name="Income Bundle",
+            member_ids=["primary_cash", "salary", "monthly_sweep"],
+        )
+        entity.new_MacroBrick(
+            id="reserve_bundle",
+            name="Reserve Bundle",
+            member_ids=["reserve_cash", "monthly_sweep"],
+        )
+
+        scenario = entity.create_scenario(
+            id="overlap_scenario",
+            name="Overlap Scenario",
+            brick_ids=["income_bundle", "reserve_bundle"],
+            settlement_default_cash_id="primary_cash",
+        )
+
+        results = scenario.run(start=date(2026, 1, 1), months=2)
+        primary_view = results["views"].filter(brick_ids=["primary_cash"]).monthly()
+        reserve_view = results["views"].filter(brick_ids=["reserve_cash"]).monthly()
+
+        # Salary appears once, transfer executed once per month
+        assert primary_view.loc["2026-01", "cash_in"] == pytest.approx(4_000.0)
+        assert primary_view.loc["2026-01", "cash_out"] == pytest.approx(1_500.0)
+        assert reserve_view.loc["2026-01", "cash_in"] == pytest.approx(1_500.0)
 
     def test_validation_error_handling(self):
         """Test validation error handling with detailed error information."""

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from .context import ScenarioContext
+from .errors import ConfigError
 from .interfaces import (
     IFlowStrategy,
     IScheduleStrategy,
@@ -15,6 +16,7 @@ from .interfaces import (
     IValuationStrategy,
 )
 from .results import BrickOutput
+from .utils import slugify_name
 
 
 @dataclass
@@ -45,7 +47,6 @@ class FinBrickABC:
         enabling scenarios like buying a house in 2028 or starting a new job in 2025.
     """
 
-    id: str
     name: str
     kind: str  # Dot-separated string discriminator
     currency: str = "EUR"
@@ -55,6 +56,25 @@ class FinBrickABC:
     start_date: date | None = None  # When this brick becomes active
     end_date: date | None = None  # When this brick becomes inactive
     duration_m: int | None = None  # Duration in months (alternative to end_date)
+    id: str = ""
+
+    def __post_init__(self) -> None:
+        """
+        Normalize the brick id if it was omitted.
+
+        When an id is not explicitly provided, derive it from the name by lowercasing
+        and replacing whitespace with underscores (e.g., "Cash Reserve" -> "cash_reserve").
+        """
+
+        if not self.id:
+            if not self.name:
+                raise ConfigError("FinBrick must define either an id or a name")
+            normalized = slugify_name(self.name)
+            if not normalized:
+                raise ConfigError(
+                    f"FinBrick name '{self.name}' cannot be converted into a valid id"
+                )
+            self.id = normalized
 
     def prepare(self, ctx: ScenarioContext) -> None:
         """
@@ -113,6 +133,7 @@ class ABrick(FinBrickABC):
 
     def __post_init__(self):
         """Set the family type to 'a' for assets."""
+        super().__post_init__()
         self.family = "a"
 
     def prepare(self, ctx: ScenarioContext) -> None:
@@ -125,8 +146,6 @@ class ABrick(FinBrickABC):
             ctx: The simulation context containing time index and registry
         """
         if self.valuation is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Asset brick '{self.id}' ({self.kind}) has no valuation strategy configured"
             )
@@ -145,8 +164,6 @@ class ABrick(FinBrickABC):
             BrickOutput containing asset values, cash flows, and events
         """
         if self.valuation is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Asset brick '{self.id}' ({self.kind}) has no valuation strategy configured"
             )
@@ -175,6 +192,7 @@ class LBrick(FinBrickABC):
 
     def __post_init__(self):
         """Set the family type to 'l' for liabilities."""
+        super().__post_init__()
         self.family = "l"
 
     def prepare(self, ctx: ScenarioContext) -> None:
@@ -187,8 +205,6 @@ class LBrick(FinBrickABC):
             ctx: The simulation context containing time index and registry
         """
         if self.schedule is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Liability brick '{self.id}' ({self.kind}) has no schedule strategy configured"
             )
@@ -207,8 +223,6 @@ class LBrick(FinBrickABC):
             BrickOutput containing debt balances, payment flows, and events
         """
         if self.schedule is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Liability brick '{self.id}' ({self.kind}) has no schedule strategy configured"
             )
@@ -237,6 +251,7 @@ class FBrick(FinBrickABC):
 
     def __post_init__(self):
         """Set the family type to 'f' for flows."""
+        super().__post_init__()
         self.family = "f"
 
     def prepare(self, ctx: ScenarioContext) -> None:
@@ -249,8 +264,6 @@ class FBrick(FinBrickABC):
             ctx: The simulation context containing time index and registry
         """
         if self.flow is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Flow brick '{self.id}' ({self.kind}) has no flow strategy configured"
             )
@@ -269,8 +282,6 @@ class FBrick(FinBrickABC):
             BrickOutput containing cash flows and events
         """
         if self.flow is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Flow brick '{self.id}' ({self.kind}) has no flow strategy configured"
             )
@@ -302,6 +313,7 @@ class TBrick(FinBrickABC):
 
     def __post_init__(self):
         """Set the family type to 't' for transfers."""
+        super().__post_init__()
         self.family = "t"
 
     def prepare(self, ctx: ScenarioContext) -> None:
@@ -314,8 +326,6 @@ class TBrick(FinBrickABC):
             ctx: The simulation context containing time index and registry
         """
         if self.transfer is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Transfer brick '{self.id}' ({self.kind}) has no transfer strategy configured"
             )
@@ -334,8 +344,6 @@ class TBrick(FinBrickABC):
             BrickOutput containing transfer flows and events
         """
         if self.transfer is None:
-            from .errors import ConfigError
-
             raise ConfigError(
                 f"Transfer brick '{self.id}' ({self.kind}) has no transfer strategy configured"
             )
@@ -363,8 +371,6 @@ def wire_strategies(bricks: list[FinBrickABC]) -> None:
     Raises:
         ConfigError: If a brick's kind is not found in any registry
     """
-    from .errors import ConfigError
-
     for brick in bricks:
         if brick.family == "a":
             if brick.kind not in ValuationRegistry:

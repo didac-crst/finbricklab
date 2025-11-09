@@ -6,7 +6,7 @@ This document translates the logic spec into concrete, code‑level changes for 
 - Replace per‑brick inflow/outflow arrays for A/L with journal‑first aggregation (A/L remain balance‑only, plus optional signed interest).
 - Introduce Shell bricks (FlowShellBrick/TransferShellBrick) as generators of entries in the Journal; no balances.
 - Use BoundaryInterface (singleton) for Income/Expense lines (lives as an account/category on the boundary side).
-- MacroGroups (aka MacroBricks) accept A/L and nested MacroGroups only; Shells and Boundary are not valid members. Apply internal‑cancellation on selection.
+- MacroGroups (aka MacroBricks) can contain any brick type (A/L/F/T) and nested MacroGroups. Apply internal-cancellation on selection using the deduped A/L set.
 
 ## Repository Touchpoints (by file)
 
@@ -41,7 +41,7 @@ This document translates the logic spec into concrete, code‑level changes for 
     - Boundary: never cancel entries that hit Boundary; include the ASSET posting when its node_id is in selection; attribute P&L from boundary tags.
 
 - `src/finbricklab/core/macrobrick.py`
-  - Allow MacroBricks to include A/L and MacroBricks; disallow F/T/Shell/Boundary. Validate DAG and member existence.
+  - Allow MacroBricks to include A/L/F/T bricks and MacroBricks. Validate DAG and member existence.
 
 - `src/finbricklab/core/validation.py`
   - Add checks:

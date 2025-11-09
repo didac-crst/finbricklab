@@ -4,12 +4,31 @@ Utility functions for FinBrickLab.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import warnings
 from datetime import date
 
 import numpy as np
 import pandas as pd
 from pandas import Index
+
+
+def slugify_name(raw_name: str) -> str:
+    """
+    Convert a human-readable name into a normalized identifier.
+
+    Lowercase the string, replace whitespace groups with underscores, drop
+    leading/trailing underscores, and remove characters that are not
+    alphanumeric or underscores.
+    """
+
+    normalized = unicodedata.normalize("NFKD", raw_name or "")
+    stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    name = stripped.strip().lower()
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    return name.strip("_")
 
 
 def month_range(start: date, months: int) -> np.ndarray:
