@@ -91,6 +91,163 @@ class ScenarioResults:
         self._default_visibility = default_visibility
         self._include_cash = include_cash
 
+    # --- Introspection helpers -------------------------------------------------
+    def summary(
+        self,
+        selection: set[str] | None = None,
+        transfer_visibility: TransferVisibility | None = None,
+    ) -> dict:
+        """
+        Lightweight summary for API/CLI usage.
+
+        Args:
+            selection: Optional explicit selection applied to the view.
+            transfer_visibility: Optional transfer visibility override.
+        """
+        sel = selection if selection is not None else self._default_selection
+        visibility = (
+            transfer_visibility
+            if transfer_visibility is not None
+            else (self._default_visibility or TransferVisibility.BOUNDARY_ONLY)
+        )
+
+        resolved: list[str] | None = None
+        macro_ids: list[str] | None = None
+        families: dict[str, int] | None = None
+
+        if self._registry is not None:
+            family_counts: dict[str, int] = {"a": 0, "l": 0, "f": 0, "t": 0}
+            resolved_list: list[str] = []
+            macro_ids = []
+            if sel is not None:
+                for item in sel:
+                    try:
+                        if self._registry.is_macrobrick(item):
+                            macro_ids.append(item)
+                            try:
+                                resolved_list.extend(
+                                    sorted(self._registry.get_struct_flat_members(item))
+                                )
+                            except Exception:
+                                continue
+                        elif self._registry.is_brick(item):
+                            resolved_list.append(item)
+                    except Exception:
+                        continue
+
+                seen: set[str] = set()
+                deduped: list[str] = []
+                for brick_id in resolved_list:
+                    if brick_id in seen:
+                        continue
+                    seen.add(brick_id)
+                    deduped.append(brick_id)
+                resolved = deduped
+
+            if resolved is not None:
+                for brick_id in resolved:
+                    try:
+                        family = getattr(
+                            self._registry.get_brick(brick_id), "family", None
+                        )
+                        if isinstance(family, str) and family in family_counts:
+                            family_counts[family] += 1
+                    except Exception:
+                        continue
+
+            families = family_counts
+
+        idx = self._monthly_data.index
+        date_start = None
+        date_end = None
+        try:
+            if len(idx):
+                first = idx[0]
+                last = idx[-1]
+                first_ts = (
+                    first.to_timestamp("M") if hasattr(first, "to_timestamp") else first
+                )
+                last_ts = (
+                    last.to_timestamp("M") if hasattr(last, "to_timestamp") else last
+                )
+                date_start = (
+                    first_ts.isoformat()
+                    if hasattr(first_ts, "isoformat")
+                    else str(first_ts)
+                )
+                date_end = (
+                    last_ts.isoformat()
+                    if hasattr(last_ts, "isoformat")
+                    else str(last_ts)
+                )
+        except Exception:
+            date_start = None
+            date_end = None
+
+        def _last(series_name: str) -> float | None:
+            if series_name in self._monthly_data.columns:
+                try:
+                    return float(self._monthly_data[series_name].iloc[-1])
+                except Exception:
+                    return None
+            return None
+
+        def _sum(series_name: str) -> float | None:
+            if series_name in self._monthly_data.columns:
+                try:
+                    return float(self._monthly_data[series_name].sum())
+                except Exception:
+                    return None
+            return None
+
+        last_net_worth = None
+        if {"cash", "non_cash", "liabilities"}.issubset(self._monthly_data.columns):
+            try:
+                last_net_worth = float(
+                    self._monthly_data["cash"].iloc[-1]
+                    + self._monthly_data["non_cash"].iloc[-1]
+                    - self._monthly_data["liabilities"].iloc[-1]
+                    + (
+                        self._monthly_data["property_value"].iloc[-1]
+                        if "property_value" in self._monthly_data.columns
+                        else 0.0
+                    )
+                )
+            except Exception:
+                last_net_worth = None
+
+        kpis = {
+            "last_cash": _last("cash"),
+            "last_liabilities": _last("liabilities"),
+            "last_non_cash": _last("non_cash"),
+            "last_property_value": _last("property_value"),
+            "last_net_worth": last_net_worth,
+            "total_inflows": _sum("inflows"),
+            "total_outflows": _sum("outflows"),
+        }
+
+        columns = [str(col) for col in self._monthly_data.columns]
+        selection_in = sorted(sel) if isinstance(sel, (set, list, tuple)) else None
+
+        summary = {
+            "type": "results_view",
+            "selection_in": selection_in,
+            "selection_resolved": resolved,
+            "macrobricks_included": macro_ids,
+            "transfer_visibility": getattr(visibility, "value", str(visibility)),
+            "frame": {
+                "freq": "M",
+                "rows": int(len(self._monthly_data.index)),
+                "date_start": date_start,
+                "date_end": date_end,
+                "columns": columns,
+            },
+            "families": families,
+            "kpis": kpis,
+        }
+
+        return summary
+
     def to_freq(self, freq: str = "Q") -> pd.DataFrame:
         """
         Aggregate to specified frequency.

@@ -102,6 +102,116 @@ class Scenario:
         for macrobrick in self.macrobricks:
             macrobrick.validate_membership(self._registry)
 
+    # --- Introspection helpers -------------------------------------------------
+    def summary(
+        self,
+        *,
+        include_members: bool = False,
+        include_validation: bool = False,
+        include_last_run: bool = True,
+    ) -> dict:
+        """
+        Lightweight, JSON-serializable overview of this Scenario.
+
+        Args:
+            include_members: Include brick_ids and macrobrick_ids.
+            include_validation: Run registry validation and include report (guarded).
+            include_last_run: Include last-run metadata if available.
+
+        Returns:
+            Dict with core scenario metadata suitable for APIs and UIs.
+        """
+        families = {"a": 0, "l": 0, "f": 0, "t": 0}
+        has_cash = False
+        for brick in self.bricks:
+            family = getattr(brick, "family", None)
+            if family in families:
+                families[family] += 1
+            if getattr(brick, "kind", None) == K.A_CASH:
+                has_cash = True
+
+        data: dict[str, object] = {
+            "type": "scenario",
+            "id": self.id,
+            "name": self.name,
+            "currency": self.currency,
+            "n_bricks": len(self.bricks),
+            "n_macrobricks": len(self.macrobricks),
+            "families": families,
+            "has_cash": has_cash,
+            "default_cash_id": self.settlement_default_cash_id,
+        }
+
+        if include_members:
+            data["brick_ids"] = [brick.id for brick in self.bricks]
+            data["macrobrick_ids"] = [macrobrick.id for macrobrick in self.macrobricks]
+
+        if include_validation and self._registry is not None:
+            try:
+                report = self._registry.validate()
+                if hasattr(report, "to_dict"):
+                    data["validation"] = report.to_dict()
+                else:
+                    fields = (
+                        "empty_macrobricks",
+                        "overlaps_global",
+                        "unknown_ids",
+                        "cycles",
+                        "id_conflicts",
+                    )
+                    data["validation"] = {
+                        field: getattr(report, field)
+                        for field in fields
+                        if hasattr(report, field)
+                    }
+            except Exception as exc:  # Summaries should never raise
+                data["validation_error"] = str(exc)
+
+        if include_last_run:
+            last_run: dict[str, object] = {"has_run": False}
+            if isinstance(self._last_results, dict):
+                totals = self._last_results.get("totals")
+                meta = self._last_results.get("meta", {}) or {}
+                last_run = {
+                    "has_run": True,
+                    "execution_order_len": int(
+                        len(meta.get("execution_order", []) or [])
+                    ),
+                    "overlaps": meta.get("overlaps"),
+                }
+                if totals is not None and hasattr(totals, "index"):
+                    try:
+                        idx = totals.index
+                        if len(idx):
+                            first = idx[0]
+                            last = idx[-1]
+                            first_ts = (
+                                first.to_timestamp("M")
+                                if hasattr(first, "to_timestamp")
+                                else first
+                            )
+                            last_ts = (
+                                last.to_timestamp("M")
+                                if hasattr(last, "to_timestamp")
+                                else last
+                            )
+                            last_run["months"] = int(len(idx))
+                            last_run["date_start"] = (
+                                first_ts.isoformat()
+                                if hasattr(first_ts, "isoformat")
+                                else str(first_ts)
+                            )
+                            last_run["date_end"] = (
+                                last_ts.isoformat()
+                                if hasattr(last_ts, "isoformat")
+                                else str(last_ts)
+                            )
+                    except Exception:
+                        pass
+            data["last_run"] = last_run
+
+        return data
+
     def _build_registry(self) -> Registry:
         """Build the registry from bricks and macrobricks."""
         bricks_dict = {brick.id: brick for brick in self.bricks}

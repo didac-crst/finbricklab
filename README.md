@@ -791,6 +791,25 @@ Notes
 - Selection accepts A/L node IDs (e.g., `a:cash`, `l:mortgage`) and MacroBrick IDs (expanded to A/L)
 - Transfer visibility: `BOUNDARY_ONLY` (default), `ALL`, `ONLY`, `OFF`
 
+### Introspection helpers
+
+Every core object now provides a cheap, JSON-safe `summary()`:
+
+- `FinBrickABC.summary(include_spec=False)` → core metadata, activation window, optional spec highlights
+- `MacroBrick.summary(registry=None, flatten=False, include_members=False)` → member counts with optional flattened members
+- `Scenario.summary(include_members=False, include_validation=False, include_last_run=True)` → scenario counts, validation hints, and last-run metadata
+- `ScenarioResults.summary(selection=None, transfer_visibility=None)` → selection resolution, frame shape, quick KPIs
+
+Usage example:
+
+```python
+from finbricklab.examples.summary_helpers_example import main as summaries_demo
+
+summaries_demo()
+```
+
+Running the demo prints ready-to-serve payloads that your API/CLI/UI can reuse directly. See `examples/summary_helpers_example.py` for the minimal setup.
+
 ---
 
 ## Visualization
