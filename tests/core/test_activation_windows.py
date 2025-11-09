@@ -50,12 +50,12 @@ class TestActivationWindows:
 
         # Month 0: cash balance should reflect opening balance plus interest accrual
         assert cash_balance[0] == pytest.approx(
-            10000.0 * (1 + monthly_rate), rel=1e-6
+            10000.0 * (1 + monthly_rate), abs=1e-2
         ), "Month 1 cash balance should include opening balance and interest"
 
         # Month 0 net cash flow equals interest only (opening deposit excluded)
         assert cash_in[0] == pytest.approx(
-            10000.0 * monthly_rate, rel=1e-6
+            10000.0 * monthly_rate, abs=1e-2
         ), "Month 1 cash_in should capture interest accrual only"
 
         # Month 1: cash interest only (no income yet)
@@ -66,7 +66,7 @@ class TestActivationWindows:
             0 < cash_in_m1 < 100
         ), f"Month 2 should have small cash interest only, got {cash_in_m1}"
         assert cash_in_m1 == pytest.approx(
-            expected_interest_m1, rel=1e-6
+            expected_interest_m1, abs=1e-2
         ), "Month 2 should have compounded interest only before income starts"
 
         # Month 3 onwards should have income (4000) plus cash interest

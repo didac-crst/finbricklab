@@ -1533,17 +1533,7 @@ def _aggregate_journal_monthly(
                         continue  # Skip non-transfer entries
                 elif transfer_visibility == TransferVisibility.BOUNDARY_ONLY:
                     # Show only boundary-crossing transfers (not internal transfers)
-                    if (
-                        is_transfer_entry
-                        and not touches_boundary
-                        and not entry_hits_selected_cash
-                    ):
-                        continue  # Skip internal transfers
-                    if (
-                        not is_transfer_entry
-                        and not touches_boundary
-                        and not entry_hits_selected_cash
-                    ):
+                    if not touches_boundary and not entry_hits_selected_cash:
                         continue  # Skip non-boundary entries
 
             # Apply cancellation: if both INTERNAL and in selection, cancel

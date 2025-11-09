@@ -5,8 +5,10 @@ Cash account valuation strategy.
 from __future__ import annotations
 
 import warnings
+from datetime import datetime
 
 import numpy as np
+import pandas as pd
 
 from finbricklab.core.accounts import BOUNDARY_NODE_ID, get_node_id
 from finbricklab.core.bricks import ABrick
@@ -205,10 +207,6 @@ class ValuationCash(IValuationStrategy):
         first_active_idx = int(active_indices[0])
 
         def _normalize_timestamp(ts):
-            from datetime import datetime
-
-            import pandas as pd
-
             if isinstance(ts, np.datetime64):
                 return pd.Timestamp(ts).to_pydatetime()
             if hasattr(ts, "astype"):
@@ -281,6 +279,27 @@ class ValuationCash(IValuationStrategy):
             if not journal.has_id(interest_entry.id):
                 journal.post(interest_entry)
 
+        def _check_overdraft(month_idx: int, balance: float) -> None:
+            if overdraft_limit is None or balance >= -overdraft_limit:
+                return
+
+            if overdraft_policy == "raise":
+                raise ConfigError(
+                    f"{brick.id}: overdraft_limit exceeded at month {month_idx}: "
+                    f"balance {balance:.2f} < -{overdraft_limit:.2f}"
+                )
+            if overdraft_policy == "warn":
+                import logging
+
+                log = logging.getLogger(__name__)
+                log.warning(
+                    "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",
+                    brick.id,
+                    month_idx,
+                    balance,
+                    overdraft_limit,
+                )
+
         # Seed the first active month
         bal[first_active_idx] = (
             brick.spec["initial_balance"]
@@ -293,24 +312,7 @@ class ValuationCash(IValuationStrategy):
         bal[first_active_idx] += (
             post_interest_in[first_active_idx] - post_interest_out[first_active_idx]
         )
-
-        if overdraft_limit is not None and bal[first_active_idx] < -overdraft_limit:
-            if overdraft_policy == "raise":
-                raise ConfigError(
-                    f"{brick.id}: overdraft_limit exceeded at month {first_active_idx}: "
-                    f"balance {bal[first_active_idx]:.2f} < -{overdraft_limit:.2f}"
-                )
-            elif overdraft_policy == "warn":
-                import logging
-
-                log = logging.getLogger(__name__)
-                log.warning(
-                    "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",
-                    brick.id,
-                    first_active_idx,
-                    bal[first_active_idx],
-                    overdraft_limit,
-                )
+        _check_overdraft(first_active_idx, bal[first_active_idx])
 
         # Calculate balance for remaining months (after first active)
         for t in range(first_active_idx + 1, T):
@@ -330,23 +332,7 @@ class ValuationCash(IValuationStrategy):
                 bal[t] += post_interest_in[t] - post_interest_out[t]
 
                 # Enforce overdraft limit if configured
-                if overdraft_limit is not None and bal[t] < -overdraft_limit:
-                    if overdraft_policy == "raise":
-                        raise ConfigError(
-                            f"{brick.id}: overdraft_limit exceeded at month {t}: balance {bal[t]:.2f} < -{overdraft_limit:.2f}"
-                        )
-                    elif overdraft_policy == "warn":
-                        import logging
-
-                        log = logging.getLogger(__name__)
-                        log.warning(
-                            "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",
-                            brick.id,
-                            t,
-                            bal[t],
-                            overdraft_limit,
-                        )
-                    # "ignore": do nothing; keep balance as computed
+                _check_overdraft(t, bal[t])
             else:
                 bal[t] = 0.0
                 interest_earned[t] = 0.0

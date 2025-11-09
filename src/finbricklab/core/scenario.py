@@ -923,6 +923,14 @@ class Scenario:
             cash_node_id = get_node_id(b.id, "a")
             for entry in journal.entries:
                 parent_id = entry.metadata.get("parent_id")
+                if parent_id is None:
+                    operation_id = entry.metadata.get("operation_id")
+                    if isinstance(operation_id, str) and operation_id.startswith("op:"):
+                        parts = operation_id.split(":")
+                        if len(parts) >= 3:
+                            inferred_parent = parts[1]
+                            if inferred_parent:
+                                parent_id = inferred_parent
                 if parent_id in array_parent_ids:
                     continue
                 if entry.metadata.get("transaction_type") == "opening":

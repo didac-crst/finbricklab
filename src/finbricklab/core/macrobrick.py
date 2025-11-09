@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .registry import Registry
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MacroBrick:
     """
     A composite structure that groups bricks and other MacroBricks.
@@ -31,8 +31,8 @@ class MacroBrick:
         tags: Optional tags for UI grouping and filtering
     """
 
-    name: str
     id: str = ""
+    name: str
     members: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 

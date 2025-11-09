@@ -798,6 +798,7 @@ class Entity:
                 )
 
         self._scenarios[scenario_id] = scenario
+        self.scenarios.append(scenario)
         return scenario
 
     # ---------- Catalog helpers ----------
