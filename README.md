@@ -761,7 +761,7 @@ The diagnostics command reports:
 | Liability | `K.L_CREDIT_FIXED`  | Fixed-term credit                | `principal`, `rate_pa`, `term_months`, `start_date` |
 | Flow      | `K.F_INCOME_RECURRING`      | Fixed recurring income           | `amount_monthly`, `start_date?`, `end_date?`                                            |
 | Flow      | `K.F_INCOME_ONE_TIME`      | One-time income                  | `amount`, `date`, `tax_rate?` |
-| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed recurring expense          | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed or stepped expense         | `amount_monthly`, `step_pct?`, `step_every_m?`, `step_cap?`, `start_date?`, `end_date?` |
 | Flow      | `K.F_EXPENSE_ONE_TIME`     | One-time expense                 | `amount`, `date`, `tax_deductible?`, `tax_rate?` |
 | Transfer  | `K.T_TRANSFER_LUMP_SUM`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
 | Transfer  | `K.T_TRANSFER_RECURRING`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
