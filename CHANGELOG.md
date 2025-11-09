@@ -4,30 +4,47 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-- **Journal-first filter refactor**: `ScenarioResults.filter()` now uses journal-first aggregation via `monthly(selection=...)` for V2 compatibility
-- **Sticky filter defaults**: Filtered views persist selection, visibility, and `include_cash` settings for subsequent `monthly()` calls
-- **MacroBrick cache usage**: Filter and aggregation now use `registry.get_struct_flat_members()` for cached expansion instead of recomputing
-- **Empty selection sentinel**: Empty selection returns zeros across all visibility modes by design
-- **Defensive selection validation**: `_validate_node_selection()` ensures only A/L node IDs are used in selection
-- **O(1) journal ID checks**: Journal duplicate detection now uses `_id_index` set for O(1) lookups instead of O(n) scans
-- **Scope-aware legacy visibility**: Legacy transfer visibility path now uses `get_node_scope()` for consistent boundary detection
+- _No unreleased changes yet._
+
+## [0.2.1] - 2025-11-09
 
 ### Fixed
-- **Balloon payoff sequencing**: Loan annuity balloon payments now use distinct sequence numbers (90) to avoid ID conflicts with regular payments
-- **Filter persistence**: Selection and visibility settings now correctly persist across visibility changes in filtered views
-- **Include cash persistence**: `include_cash=False` now correctly persists across visibility changes in filtered views
-- **Legacy filter return path**: Fixed missing return statement in legacy filter path
+- **Balloon payoff sequencing**: Loan annuity balloon payments now use distinct sequence numbers (90) to avoid ID conflicts with regular payments.
+- **Filter persistence**: Selection and visibility settings now correctly persist across visibility changes in filtered views.
+- **Include cash persistence**: `include_cash=False` now correctly persists across visibility changes in filtered views.
+- **Legacy filter return path**: Fixed missing return statement in legacy filter path.
+- **Cashflow Double Counting**: Scenario aggregation skips journal entries whose `parent_id` matches array-origin flows, preventing inflated cash totals across filtered views.
+- **Recurring Transfer Sunsets**: `TransferRecurring` now respects `end_date` (attribute or spec) so funding stops after the configured month.
+- **Liability Cash Routing**: All loan schedules post principal and interest to the configured cash bricks (via `links.route`), keeping routed accounts in balance.
+- **Unicode Slugification**: `slugify_name()` normalizes accented characters (e.g., “São Paulo” → `sao_paulo`) to avoid empty IDs.
 
 ### Changed
-- **Consolidated warnings**: Filter selection warnings now consolidated into a single message to reduce noise
-- **Legacy visibility path**: Marked as fallback-only; journal-first aggregation is authoritative
+- **Consolidated warnings**: Filter selection warnings now consolidated into a single message to reduce noise.
+- **Legacy visibility path**: Marked as fallback-only; journal-first aggregation is authoritative.
+- **MacroBrick Membership**: MacroBricks accept A/L/F/T bricks while de-duplicating shared members; execution still runs each shell brick once per scenario.
+- **Cash Valuation**: `_normalize_timestamp()` now handles `pd.Timestamp`, `pd.Period`, and NumPy scalars; overdraft checks share a helper for monthly and initial balances.
+- **Entity Scenario Catalog**: `create_scenario()` updates the legacy `scenarios` list alongside the registry so compare/breakeven flows keep working.
+
+### Added
+- **Journal-first filter refactor**: `ScenarioResults.filter()` now uses journal-first aggregation via `monthly(selection=...)` for V2 compatibility.
+- **Sticky filter defaults**: Filtered views persist selection, visibility, and `include_cash` settings for subsequent `monthly()` calls.
+- **MacroBrick cache usage**: Filter and aggregation now use `registry.get_struct_flat_members()` for cached expansion instead of recomputing.
+- **Empty selection sentinel**: Empty selection returns zeros across all visibility modes by design.
+- **Defensive selection validation**: `_validate_node_selection()` ensures only A/L node IDs are used in selection.
+- **O(1) journal ID checks**: Journal duplicate detection now uses `_id_index` set for O(1) lookups instead of O(n) scans.
+- **Scope-aware legacy visibility**: Legacy transfer visibility path now uses `get_node_scope()` for consistent boundary detection.
+- **Loan Routing Utility**: New `_loan_utils.resolve_loan_cash_nodes()` centralizes validation for `links.route`, including fallbacks to the default settlement account.
+- **PR Report Targets**: Makefile includes `pr-report`, `pr-report-open`, and `pr-report-clean` helpers for generating GitHub review summaries.
+
+### Tests & Tooling
+- Added regressions for routed loan schedules, multi-cash filtered views, MacroBrick shell execution, and transfer end-dates.
+- Updated activation-window assertions to cent-level tolerances consistent with journal rounding.
 
 ### Documentation
-- Updated `docs/API_REFERENCE.md` with sticky filter defaults and selection rules
-- Updated `docs/EXAMPLES.md` with filter persistence examples
-- Updated `docs/STRATEGIES.md` with filter semantics section
-- Updated `README.md` with sticky defaults and A/L-only selection rules
+- Updated `docs/API_REFERENCE.md` with sticky filter defaults and selection rules.
+- Updated `docs/EXAMPLES.md` with filter persistence examples.
+- Updated `docs/STRATEGIES.md` with filter semantics section.
+- Updated `README.md` with sticky defaults and A/L-only selection rules.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

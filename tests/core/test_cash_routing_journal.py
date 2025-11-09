@@ -367,7 +367,7 @@ class TestCashAccountConstraints:
         expected_month0 = (1000.0 - 2000.0) * (1 + (0.02 / 12.0))
         assert cash_balance[0] == pytest.approx(
             expected_month0, rel=1e-6
-        ), "Month 1 balance should reflect routed expense and interest accrual"
+        ), "Month 0 balance should reflect routed expense and interest accrual"
 
     def test_minimum_buffer_constraint(self):
         """Test minimum buffer constraint (when implemented)."""

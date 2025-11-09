@@ -226,7 +226,7 @@ class ValuationCash(IValuationStrategy):
                 return
 
             interest_timestamp = _normalize_timestamp(ctx.t_index[month_idx])
-            parent_id = f"a:{brick.id}:interest"
+            parent_id = f"a:{brick.id}"
             operation_id = create_operation_id(parent_id, interest_timestamp)
             entry_id = create_entry_id(operation_id, 1)
             origin_id = generate_transaction_id(
