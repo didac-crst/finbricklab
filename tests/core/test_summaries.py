@@ -139,6 +139,6 @@ def test_results_summary_selection_and_kpis(simple_bricks):
     summary = results.summary(selection={macro.id})
     assert summary["selection_resolved"] == [cash.id, salary.id]
     assert summary["families"] == {"a": 1, "l": 0, "f": 1, "t": 0}
-    assert summary["kpis"]["last_net_worth"] == pytest.approx(1650.0)
+    assert summary["kpis"]["last_net_worth"] == pytest.approx(1600.0)
     assert summary["kpis"]["total_inflows"] == pytest.approx(12000.0)
     json.dumps(summary)

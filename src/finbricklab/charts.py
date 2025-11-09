@@ -104,6 +104,11 @@ def asset_composition_small_multiples(
 
     Height scales with number of scenarios unless `fixed_height` is set.
 
+    Note:
+        For a combined asset/liability view, prefer
+        :func:`category_allocation_over_time`, which keeps liabilities in a
+        separate band below zero.
+
     Args:
         tidy: DataFrame from Entity.compare() with asset columns
         height_per_panel: Height per scenario panel (default: 280)
@@ -257,45 +262,94 @@ def cumulative_fees_taxes(
     """
     _check_plotly()
 
-    # Create grouped bar chart
+    summary_data = summary_data.copy()
+    horizon_col = next(
+        (col for col in ("horizon_months", "horizon", "months") if col in summary_data),
+        None,
+    )
+
+    if horizon_col is not None:
+        summary_data[horizon_col] = summary_data[horizon_col].astype(int)
+        summary_data["scenario_horizon"] = summary_data.apply(
+            lambda row: f"{row['scenario_name']} ({row[horizon_col]}m)",
+            axis=1,
+        )
+    else:
+        summary_data["scenario_horizon"] = summary_data["scenario_name"]
+
+    # Drop entries where both fees and taxes are effectively zero
+    nonzero_mask = ~(
+        np.isclose(summary_data["cumulative_fees"], 0.0)
+        & np.isclose(summary_data["cumulative_taxes"], 0.0)
+    )
+    filtered = summary_data[nonzero_mask].copy()
+
     fig = go.Figure()
 
-    # Add fees bars
+    if filtered.empty:
+        fig.update_layout(
+            title="Cumulative Fees & Taxes by Scenario",
+            xaxis={
+                "visible": False,
+                "showticklabels": False,
+            },
+            yaxis={
+                "visible": False,
+                "showticklabels": False,
+            },
+            annotations=[
+                {
+                    "text": "No fees or taxes recorded for the selected horizons.",
+                    "showarrow": False,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                }
+            ],
+        )
+        return fig, filtered
+
+    # Maintain a stable sort order: scenario name then horizon
+    order = filtered.sort_values(["scenario_name", "horizon_months"])
+
     fig.add_trace(
         go.Bar(
             name="Cumulative Fees",
-            x=summary_data["scenario_name"],
-            y=summary_data["cumulative_fees"],
-            marker_color="red",
-            opacity=0.7,
+            x=order["scenario_horizon"],
+            y=order["cumulative_fees"],
+            marker_color="#d62728",
+            opacity=0.8,
         )
     )
 
-    # Add taxes bars
     fig.add_trace(
         go.Bar(
             name="Cumulative Taxes",
-            x=summary_data["scenario_name"],
-            y=summary_data["cumulative_taxes"],
-            marker_color="blue",
-            opacity=0.7,
+            x=order["scenario_horizon"],
+            y=order["cumulative_taxes"],
+            marker_color="#1f77b4",
+            opacity=0.8,
         )
     )
 
     fig.update_layout(
         title="Cumulative Fees & Taxes by Scenario",
-        xaxis_title="Scenario",
+        xaxis_title="Scenario (Horizon)",
         yaxis_title="Cumulative Amount",
         barmode="group",
         legend_title="Type",
     )
 
-    return fig, summary_data
+    return fig, order
 
 
 def net_worth_drawdown(tidy: pd.DataFrame) -> tuple[go.Figure, pd.DataFrame]:
     """
     Plot net worth drawdown (peak-to-trough) for each scenario.
+
+    Drawdown is expressed relative to the running peak, so values are always
+    less than or equal to zero (0 indicates a new peak).
 
     Args:
         tidy: DataFrame from Entity.compare() with net_worth column
@@ -600,6 +654,11 @@ def contribution_vs_market_growth(
     """
     Plot contribution vs market growth decomposition.
 
+    Net worth change is decomposed into:
+    - Net contributions (external cash flow)
+    - Market growth (valuation and yield effects)
+    - Debt principal repayments (shown separately so they no longer inflate market growth)
+
     Args:
         tidy: DataFrame from Entity.compare()
         scenario_name: Name of scenario to analyze. If None, uses first scenario.
@@ -615,22 +674,35 @@ def contribution_vs_market_growth(
     scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
     scenario_data = scenario_data.sort_values("date")
 
-    # Calculate net cash flow (contributions)
-    scenario_data["net_contribution"] = (
-        scenario_data["inflows"] - scenario_data["outflows"]
-    )
-    scenario_data["net_worth_change"] = scenario_data["net_worth"].diff()
-    scenario_data["market_growth"] = (
-        scenario_data["net_worth_change"] - scenario_data["net_contribution"]
-    )
+    dates = pd.to_datetime(scenario_data["date"])
+
+    # Calculate contribution / market decomposition using canonical flows
+    net_contribution = scenario_data["inflows"].fillna(0) - scenario_data[
+        "outflows"
+    ].fillna(0)
+    net_worth_change = scenario_data["net_worth"].diff().fillna(0)
+    liability_delta = scenario_data["liabilities"].diff().fillna(0)
+    principal_repayment = (-liability_delta).clip(lower=0)
+
+    market_growth = net_worth_change - net_contribution - principal_repayment
+
+    # Normalize starting point
+    if not scenario_data.empty:
+        net_contribution.iloc[0] = 0.0
+        principal_repayment.iloc[0] = 0.0
+        market_growth.iloc[0] = 0.0
+
+    scenario_data["net_contribution"] = net_contribution
+    scenario_data["principal_repayment"] = principal_repayment
+    scenario_data["market_growth"] = market_growth
 
     fig = go.Figure()
 
     fig.add_trace(
         go.Scatter(
             name="Net Contributions",
-            x=scenario_data["date"],
-            y=scenario_data["net_contribution"],
+            x=dates,
+            y=net_contribution,
             mode="lines",
             line={"color": "blue"},
             stackgroup="one",
@@ -640,11 +712,25 @@ def contribution_vs_market_growth(
     fig.add_trace(
         go.Scatter(
             name="Market Growth",
-            x=scenario_data["date"],
-            y=scenario_data["market_growth"],
+            x=dates,
+            y=market_growth,
             mode="lines",
             line={"color": "green"},
             stackgroup="one",
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            name="Debt Principal (Outflow)",
+            x=dates,
+            y=-principal_repayment,
+            mode="lines",
+            line={"color": "#9467bd", "width": 2},
+            fill="tozeroy",
+            fillcolor="rgba(148, 103, 189, 0.2)",
+            hovertemplate="Debt Principal: %{customdata:,.2f}<extra></extra>",
+            customdata=principal_repayment,
         )
     )
 
@@ -653,6 +739,7 @@ def contribution_vs_market_growth(
         xaxis_title="Date",
         yaxis_title="Net Worth Change",
         hovermode="x unified",
+        legend_title="Component",
     )
 
     return fig, scenario_data
@@ -687,39 +774,81 @@ def category_allocation_over_time(
     scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
     scenario_data = scenario_data.sort_values("date")
 
-    # Create category allocation data
-    # For now, we'll use the canonical schema fields as proxies for categories
-    allocation_df = pd.DataFrame(
-        {
-            "date": scenario_data["date"],
-            "Cash": scenario_data["cash"],
-            "Liquid Assets": scenario_data["liquid_assets"],
-            "Illiquid Assets": scenario_data["illiquid_assets"],
-            "Liabilities": -scenario_data["liabilities"],  # Negative for stacked area
-        }
-    )
+    dates = pd.to_datetime(scenario_data["date"])
 
-    # Melt for stacked area chart
-    melted = allocation_df.melt(
-        id_vars=["date"], var_name="category", value_name="value"
-    )
+    asset_categories = {
+        "Cash": scenario_data["cash"],
+        "Liquid Assets": scenario_data["liquid_assets"],
+        "Illiquid Assets": scenario_data["illiquid_assets"],
+    }
+    liabilities_series = scenario_data["liabilities"]
 
-    fig = px.area(
-        melted,
-        x="date",
-        y="value",
-        color="category",
-        title=f"Category Allocation Over Time - {scenario_name}",
-        labels={"value": "Amount", "date": "Date", "category": "Category"},
+    fig = go.Figure()
+
+    # Stacked area for assets (above zero)
+    for name, series in asset_categories.items():
+        fig.add_trace(
+            go.Scatter(
+                name=name,
+                x=dates,
+                y=series,
+                mode="lines",
+                line={"width": 0.5},
+                stackgroup="assets",
+                hovertemplate=f"{name}: %{{y:,.2f}}<extra></extra>",
+            )
+        )
+
+    # Liabilities plotted below zero
+    liabilities_area = -liabilities_series
+    fig.add_trace(
+        go.Scatter(
+            name="Liabilities",
+            x=dates,
+            y=liabilities_area,
+            mode="lines",
+            line={"color": "#d62728"},
+            fill="tozeroy",
+            hovertemplate="Liabilities: %{customdata:,.2f}<extra></extra>",
+            customdata=liabilities_series.values,
+        )
     )
 
     fig.update_layout(
+        title=f"Category Allocation Over Time - {scenario_name}",
         xaxis_title="Date",
         yaxis_title="Amount",
         hovermode="x unified",
+        legend_title="Category",
     )
 
-    return fig, melted
+    fig.add_hline(y=0, line_color="gray", opacity=0.4, line_width=1)
+
+    allocation_records = []
+    for name, series in asset_categories.items():
+        allocation_records.append(
+            pd.DataFrame(
+                {
+                    "date": dates,
+                    "category": name,
+                    "value": series,
+                    "group": "asset",
+                }
+            )
+        )
+    allocation_records.append(
+        pd.DataFrame(
+            {
+                "date": dates,
+                "category": "Liabilities",
+                "value": liabilities_area,
+                "group": "liability",
+            }
+        )
+    )
+    allocation_df = pd.concat(allocation_records, ignore_index=True)
+
+    return fig, allocation_df
 
 
 def category_cashflow_bars(
@@ -744,6 +873,7 @@ def category_cashflow_bars(
 
     scenario_data = tidy[tidy["scenario_name"] == scenario_name].copy()
     scenario_data = scenario_data.sort_values("date")
+    scenario_data["date"] = pd.to_datetime(scenario_data["date"])
 
     # Create yearly aggregation
     scenario_data["year"] = scenario_data["date"].dt.year
@@ -768,6 +898,32 @@ def category_cashflow_bars(
         value_name="amount",
     )
 
+    # Drop categories that are entirely zero to avoid blank bars
+    nonzero_mask = cashflow_df.groupby("category")["amount"].transform(
+        lambda series: ~np.all(np.isclose(series, 0.0))
+    )
+    cashflow_df = cashflow_df[nonzero_mask]
+
+    fig = go.Figure()
+
+    if cashflow_df.empty:
+        fig.update_layout(
+            title=f"Category Cashflows Per Year - {scenario_name}",
+            xaxis={"visible": False, "showticklabels": False},
+            yaxis={"visible": False, "showticklabels": False},
+            annotations=[
+                {
+                    "text": "No cashflow activity recorded for the selected categories.",
+                    "showarrow": False,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                }
+            ],
+        )
+        return fig, cashflow_df
+
     # Color mapping
     colors = {
         "inflows": "green",
@@ -775,8 +931,6 @@ def category_cashflow_bars(
         "taxes": "orange",
         "fees": "purple",
     }
-
-    fig = go.Figure()
 
     for category in cashflow_df["category"].unique():
         category_data = cashflow_df[cashflow_df["category"] == category]

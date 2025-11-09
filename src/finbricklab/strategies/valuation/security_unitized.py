@@ -221,6 +221,8 @@ class ValuationSecurityUnitized(IValuationStrategy):
         # V2: Don't emit cash arrays - use journal entries instead
         cash_in = np.zeros(T)
         cash_out = np.zeros(T)
+        fees_series = np.zeros(T)
+        taxes_series = np.zeros(T)
         units = np.zeros(T)
         price = np.zeros(T)
         dividends_earned = np.zeros(T)  # Track dividends/yield earned
@@ -1079,6 +1081,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
                     )
 
                     journal.post(fee_entry)
+                    fees_series[t_stop] += fees
 
             asset_value[t_stop] = 0.0  # explicit zero on the sale month
             # Set all future values to 0 (ETF is liquidated)
@@ -1099,5 +1102,7 @@ class ValuationSecurityUnitized(IValuationStrategy):
             assets=asset_value,
             liabilities=np.zeros(T),
             interest=dividends_earned,  # Positive for dividend income
+            fees=fees_series,
+            taxes=taxes_series,
             events=events,
         )

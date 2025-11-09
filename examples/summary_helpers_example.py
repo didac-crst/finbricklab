@@ -48,10 +48,14 @@ def build_sample_scenario() -> Scenario:
         {
             "cash": [5000.0, 7000.0],
             "non_cash": [0.0, 0.0],
-            "liabilities": [0.0, 0.0],
+            "liabilities": [1000.0, 950.0],
+            "property_value": [0.0, 0.0],
+            "fees": [25.0, 10.0],
+            "taxes": [800.0, 820.0],
         },
         index=pd.period_range("2024-01", periods=2, freq="M"),
     )
+    scenario._last_totals = monthly
     scenario._last_results = {
         "totals": monthly,
         "meta": {"execution_order": [cash.id, salary.id], "overlaps": {}},
@@ -66,11 +70,15 @@ def build_results_view(scenario: Scenario) -> ScenarioResults:
     return ScenarioResults(
         totals=monthly.assign(
             property_value=[0.0, 0.0],
+            owner_equity=[0.0, 0.0],
+            mortgage_balance=[1000.0, 950.0],
             inflows=[4000.0, 4000.0],
             outflows=[2500.0, 2500.0],
             non_cash=monthly["non_cash"],
             cash=monthly["cash"],
             liabilities=monthly["liabilities"],
+            fees=monthly["fees"],
+            taxes=monthly["taxes"],
         ),
         registry=scenario._registry,
         default_selection={"household"},
@@ -94,6 +102,12 @@ def main() -> None:
 
     print("\nResults view summary:")
     print(pretty(results_view.summary(selection={"household"})))
+
+    canonical_df = scenario.to_canonical_frame()
+    print("\nCanonical frame columns:")
+    print(list(canonical_df.columns))
+    print("\nCanonical frame preview:")
+    print(canonical_df.tail(2).to_string(index=False))
 
 
 if __name__ == "__main__":

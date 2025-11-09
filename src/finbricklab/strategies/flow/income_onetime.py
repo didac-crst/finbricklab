@@ -96,6 +96,7 @@ class FlowIncomeOneTime(IFlowStrategy):
 
         # V2: Shell behavior - no cash arrays emitted
         cash_in = np.zeros(T)
+        taxes_series = np.zeros(T)
 
         # Get journal from context (V2)
         if ctx.journal is None:
@@ -137,7 +138,7 @@ class FlowIncomeOneTime(IFlowStrategy):
                 event_month_idx = month_idx
                 break
 
-        # V2: Create journal entry for one-time income (BOUNDARY↔INTERNAL: CR income, DR cash)
+        # V2: Create journal entry for one-time income (BOUNDARY↔INTERNAL)
         if event_month_idx is not None and net_amount > 0:
             income_timestamp = ctx.t_index[event_month_idx]
             # Convert numpy datetime64 to Python datetime
@@ -160,22 +161,36 @@ class FlowIncomeOneTime(IFlowStrategy):
                 sequence=0,
             )
 
-            # CR income (boundary), DR cash (internal)
+            tax_amount = max(amount - net_amount, 0.0)
+            postings = [
+                Posting(
+                    account_id=cash_node_id,
+                    amount=create_amount(net_amount, ctx.currency),
+                    metadata={},
+                )
+            ]
+            tax_posting_idx: int | None = None
+            if tax_amount > 0:
+                postings.append(
+                    Posting(
+                        account_id=BOUNDARY_NODE_ID,
+                        amount=create_amount(tax_amount, ctx.currency),
+                        metadata={},
+                    )
+                )
+                tax_posting_idx = 1
+            postings.append(
+                Posting(
+                    account_id=BOUNDARY_NODE_ID,
+                    amount=create_amount(-amount, ctx.currency),
+                    metadata={},
+                )
+            )
+
             income_entry = JournalEntry(
                 id=entry_id,
                 timestamp=income_timestamp,
-                postings=[
-                    Posting(
-                        account_id=cash_node_id,
-                        amount=create_amount(net_amount, ctx.currency),
-                        metadata={},
-                    ),
-                    Posting(
-                        account_id=BOUNDARY_NODE_ID,
-                        amount=create_amount(-net_amount, ctx.currency),
-                        metadata={},
-                    ),
-                ],
+                postings=postings,
                 metadata={},
             )
 
@@ -190,20 +205,30 @@ class FlowIncomeOneTime(IFlowStrategy):
 
             # Set transaction_type for income flows
             income_entry.metadata["transaction_type"] = "income"
+            if tax_amount > 0:
+                income_entry.metadata["tax_withheld"] = tax_amount
 
             stamp_posting_metadata(
                 income_entry.postings[0],
                 node_id=cash_node_id,
                 type_tag="income",
             )
+            if tax_posting_idx is not None:
+                stamp_posting_metadata(
+                    income_entry.postings[tax_posting_idx],
+                    node_id=BOUNDARY_NODE_ID,
+                    category="expense.tax",
+                    type_tag="tax",
+                )
             stamp_posting_metadata(
-                income_entry.postings[1],
+                income_entry.postings[-1],
                 node_id=BOUNDARY_NODE_ID,
                 category="income.onetime",
                 type_tag="income",
             )
 
             journal.post(income_entry)
+            taxes_series[event_month_idx] = tax_amount
 
         # V2: Shell behavior - return zero arrays (no balances)
         return BrickOutput(
@@ -212,5 +237,7 @@ class FlowIncomeOneTime(IFlowStrategy):
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             interest=np.zeros(T),  # Flow bricks don't generate interest
+            fees=np.zeros(T),
+            taxes=taxes_series,
             events=[],
         )

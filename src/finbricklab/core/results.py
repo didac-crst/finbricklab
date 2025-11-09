@@ -36,6 +36,11 @@ class BrickOutput(TypedDict):
         assets: Monthly asset valuation (0 for non-assets)
         liabilities: Monthly debt balance (0 for non-liabilities)
         interest: Monthly interest income (+) / expense (-) (0 if not applicable)
+        property_value: Monthly property valuation (for property bricks)
+        owner_equity: Monthly equity in the property (property_value - linked debt)
+        mortgage_balance: Monthly balance of linked property liabilities
+        fees: Monthly fees associated with the brick (e.g., acquisition costs)
+        taxes: Monthly taxes associated with the brick
         events: List of time-stamped events describing key occurrences
 
     Note:
@@ -51,6 +56,11 @@ class BrickOutput(TypedDict):
     assets: np.ndarray  # Monthly asset value (0 if not an asset)
     liabilities: np.ndarray  # Monthly debt balance (0 if not a liability)
     interest: np.ndarray  # Monthly interest income (+) / expense (-) (0 if not applicable)
+    property_value: NotRequired[np.ndarray]  # Property-specific valuation
+    owner_equity: NotRequired[np.ndarray]  # Property equity (property_value - mortgage)
+    mortgage_balance: NotRequired[np.ndarray]  # Property-linked liability balance
+    fees: NotRequired[np.ndarray]  # Fee flows associated with the brick
+    taxes: NotRequired[np.ndarray]  # Tax flows associated with the brick
     events: list[Event]  # Time-stamped events describing key occurrences
 
 
@@ -201,17 +211,28 @@ class ScenarioResults:
             return None
 
         last_net_worth = None
-        if {"cash", "non_cash", "liabilities"}.issubset(self._monthly_data.columns):
+        if {"total_assets", "liabilities"}.issubset(self._monthly_data.columns):
+            try:
+                last_net_worth = float(
+                    self._monthly_data["total_assets"].iloc[-1]
+                    - self._monthly_data["liabilities"].iloc[-1]
+                )
+            except Exception:
+                last_net_worth = None
+        elif {"assets", "liabilities"}.issubset(self._monthly_data.columns):
+            try:
+                last_net_worth = float(
+                    self._monthly_data["assets"].iloc[-1]
+                    - self._monthly_data["liabilities"].iloc[-1]
+                )
+            except Exception:
+                last_net_worth = None
+        elif {"cash", "non_cash", "liabilities"}.issubset(self._monthly_data.columns):
             try:
                 last_net_worth = float(
                     self._monthly_data["cash"].iloc[-1]
                     + self._monthly_data["non_cash"].iloc[-1]
                     - self._monthly_data["liabilities"].iloc[-1]
-                    + (
-                        self._monthly_data["property_value"].iloc[-1]
-                        if "property_value" in self._monthly_data.columns
-                        else 0.0
-                    )
                 )
             except Exception:
                 last_net_worth = None
@@ -1390,8 +1411,19 @@ def aggregate_totals(
         "equity_delta",
         "capitalized_cf",
         "cash_rebalancing",
+        "fees",
+        "taxes",
     ]
-    stocks = ["assets", "liabilities", "equity", "cash", "non_cash"]
+    stocks = [
+        "assets",
+        "liabilities",
+        "equity",
+        "cash",
+        "non_cash",
+        "property_value",
+        "owner_equity",
+        "mortgage_balance",
+    ]
 
     # Only aggregate columns that exist
     flows = [c for c in flows if c in df.columns]
@@ -1496,6 +1528,11 @@ def _aggregate_journal_monthly(
     assets = np.zeros(length)
     liabilities = np.zeros(length)
     interest = np.zeros(length)
+    property_value = np.zeros(length)
+    owner_equity = np.zeros(length)
+    mortgage_balance = np.zeros(length)
+    fees_series = np.zeros(length)
+    taxes_series = np.zeros(length)
 
     # Get account registry from journal
     account_registry = journal.account_registry
@@ -1519,6 +1556,11 @@ def _aggregate_journal_monthly(
                     "equity": assets - liabilities,
                     "cash": np.zeros(length),
                     "non_cash": assets,
+                    "property_value": np.zeros(length),
+                    "owner_equity": np.zeros(length),
+                    "mortgage_balance": np.zeros(length),
+                    "fees": np.zeros(length),
+                    "taxes": np.zeros(length),
                 },
                 index=time_index,
             )
@@ -1775,6 +1817,20 @@ def _aggregate_journal_monthly(
                         assets[month_idx] += output["assets"][month_idx]
                         liabilities[month_idx] += output["liabilities"][month_idx]
                         interest[month_idx] += output["interest"][month_idx]
+                        if "property_value" in output:
+                            property_value[month_idx] += output["property_value"][
+                                month_idx
+                            ]
+                        if "owner_equity" in output:
+                            owner_equity[month_idx] += output["owner_equity"][month_idx]
+                        if "mortgage_balance" in output:
+                            mortgage_balance[month_idx] += output["mortgage_balance"][
+                                month_idx
+                            ]
+                        if "fees" in output:
+                            fees_series[month_idx] += output["fees"][month_idx]
+                        if "taxes" in output:
+                            taxes_series[month_idx] += output["taxes"][month_idx]
 
     # Calculate derived fields
     desired_interest_in = np.clip(interest, a_min=0.0, a_max=None)
@@ -1824,6 +1880,11 @@ def _aggregate_journal_monthly(
             "equity": equity,
             "cash": cash_assets,
             "non_cash": non_cash_assets,
+            "property_value": property_value,
+            "owner_equity": owner_equity,
+            "mortgage_balance": mortgage_balance,
+            "fees": fees_series,
+            "taxes": taxes_series,
         },
         index=time_index,
     )

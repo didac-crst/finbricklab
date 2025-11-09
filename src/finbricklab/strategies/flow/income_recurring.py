@@ -69,6 +69,7 @@ class FlowIncomeRecurring(IFlowStrategy):
         brick.spec.setdefault("annual_step_pct", 0.0)
         brick.spec.setdefault("step_month", None)
         brick.spec.setdefault("step_every_m", None)
+        brick.spec.setdefault("tax_rate", 0.0)
 
         # Validate escalation configuration
         annual_step = brick.spec["annual_step_pct"]
@@ -83,6 +84,10 @@ class FlowIncomeRecurring(IFlowStrategy):
             # For step_every_m, we need a step percentage
             if "step_pct" not in brick.spec:
                 brick.spec["step_pct"] = annual_step  # Use annual_step_pct as default
+
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
+        if not (0.0 <= tax_rate <= 1.0):
+            raise ValueError("tax_rate must be in [0,1]")
 
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
@@ -102,6 +107,7 @@ class FlowIncomeRecurring(IFlowStrategy):
         T = len(ctx.t_index)
         # V2: Shell behavior - no cash arrays emitted
         cash_in = np.zeros(T)
+        taxes_series = np.zeros(T)
 
         # Get journal from context (V2)
         if ctx.journal is None:
@@ -138,6 +144,8 @@ class FlowIncomeRecurring(IFlowStrategy):
         step_pct = float(
             brick.spec.get("step_pct", annual_step_pct)
         )  # For step_every_m
+        tax_rate = float(brick.spec.get("tax_rate", 0.0))
+        category = brick.spec.get("category", "income.salary")
 
         # Determine start date for anniversary calculations
         start_date = brick.start_date or ctx.t_index[0].astype("datetime64[D]").astype(
@@ -157,7 +165,7 @@ class FlowIncomeRecurring(IFlowStrategy):
                 # Non-annual escalation
                 months_since_start = t
                 steps = months_since_start // step_every_m
-                amount = base_amount * ((1 + step_pct) ** steps)
+                gross_amount = base_amount * ((1 + step_pct) ** steps)
             else:
                 # Annual escalation
                 years_since_start = current_date.year - start_date.year
@@ -175,10 +183,16 @@ class FlowIncomeRecurring(IFlowStrategy):
                     ):
                         years_since_start += 1
 
-                amount = base_amount * ((1 + annual_step_pct) ** years_since_start)
+                gross_amount = base_amount * (
+                    (1 + annual_step_pct) ** years_since_start
+                )
+
+            tax_amount = gross_amount * tax_rate
+            net_amount = gross_amount - tax_amount
+            amount = net_amount
 
             # V2: Create journal entry for income (BOUNDARY↔INTERNAL: CR income, DR cash)
-            if amount > 0:
+            if net_amount > 0:
                 income_timestamp = ctx.t_index[t]
                 if isinstance(income_timestamp, np.datetime64):
                     import pandas as pd
@@ -206,21 +220,35 @@ class FlowIncomeRecurring(IFlowStrategy):
                 )
 
                 # CR income (boundary), DR cash (internal)
+                postings = [
+                    Posting(
+                        account_id=cash_node_id,
+                        amount=create_amount(net_amount, ctx.currency),
+                        metadata={},
+                    )
+                ]
+                tax_posting_idx: int | None = None
+                if tax_amount > 0:
+                    postings.append(
+                        Posting(
+                            account_id=BOUNDARY_NODE_ID,
+                            amount=create_amount(tax_amount, ctx.currency),
+                            metadata={},
+                        )
+                    )
+                    tax_posting_idx = 1
+                postings.append(
+                    Posting(
+                        account_id=BOUNDARY_NODE_ID,
+                        amount=create_amount(-gross_amount, ctx.currency),
+                        metadata={},
+                    )
+                )
+
                 income_entry = JournalEntry(
                     id=entry_id,
                     timestamp=income_timestamp,
-                    postings=[
-                        Posting(
-                            account_id=cash_node_id,
-                            amount=create_amount(amount, ctx.currency),
-                            metadata={},
-                        ),
-                        Posting(
-                            account_id=BOUNDARY_NODE_ID,
-                            amount=create_amount(-amount, ctx.currency),
-                            metadata={},
-                        ),
-                    ],
+                    postings=postings,
                     metadata={},
                 )
 
@@ -235,20 +263,30 @@ class FlowIncomeRecurring(IFlowStrategy):
 
                 # Set transaction_type for income flows
                 income_entry.metadata["transaction_type"] = "income"
+                if tax_amount > 0:
+                    income_entry.metadata["tax_withheld"] = tax_amount
 
                 stamp_posting_metadata(
                     income_entry.postings[0],
                     node_id=cash_node_id,
                     type_tag="income",
                 )
+                if tax_posting_idx is not None:
+                    stamp_posting_metadata(
+                        income_entry.postings[tax_posting_idx],
+                        node_id=BOUNDARY_NODE_ID,
+                        category="expense.tax",
+                        type_tag="tax",
+                    )
                 stamp_posting_metadata(
-                    income_entry.postings[1],
+                    income_entry.postings[-1],
                     node_id=BOUNDARY_NODE_ID,
-                    category="income.salary",
+                    category=category,
                     type_tag="income",
                 )
 
                 journal.post(income_entry)
+                taxes_series[t] = tax_amount
 
             # Add escalation event for the first month of each new amount
             # V2: cash_in is a shell array (zeros); compare against previously computed amount
@@ -258,8 +296,13 @@ class FlowIncomeRecurring(IFlowStrategy):
                         Event(
                             ctx.t_index[t],
                             "income_escalation",
-                            f"Income escalated to €{amount:,.2f}/month",
-                            {"amount": amount, "annual_step_pct": annual_step_pct},
+                            f"Income escalated to €{net_amount:,.2f}/month",
+                            {
+                                "net_amount": net_amount,
+                                "gross_amount": gross_amount,
+                                "tax_withheld": tax_amount,
+                                "annual_step_pct": annual_step_pct,
+                            },
                         )
                     )
             prev_amount = amount
@@ -271,5 +314,7 @@ class FlowIncomeRecurring(IFlowStrategy):
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             interest=np.zeros(T),  # Flow bricks don't generate interest
+            fees=np.zeros(T),
+            taxes=taxes_series,
             events=events,
         )

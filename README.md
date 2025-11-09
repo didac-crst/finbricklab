@@ -274,10 +274,12 @@ All scenarios emit standardized monthly data:
 | `liabilities` | float64 | All debt balances |
 | `inflows` | float64 | Post-tax income + dividends + rents |
 | `outflows` | float64 | Consumption + rent + maintenance + insurance |
-| `taxes` | float64 | Tax payments (currently defaults to 0) |
-| `fees` | float64 | Fee payments (currently defaults to 0) |
+| `taxes` | float64 | Tax payments (withholding, remittances, etc.) |
+| `fees` | float64 | Fees charged by instruments, transfers, or services |
 | `total_assets` | float64 | `cash + liquid_assets + illiquid_assets` |
 | `net_worth` | float64 | `total_assets - liabilities` |
+
+> Property bricks now populate `property_value` / `owner_equity`, and linked mortgages forward their `mortgage_balance`, making housing KPIs and LTV charts turnkey.
 
 ### Visualization Workflow
 
@@ -832,14 +834,14 @@ pip install -e .[viz]
 - **Asset Composition**: Small multiples showing cash/liquid/illiquid assets
 - **Liabilities Amortization**: Debt reduction over time
 - **Liquidity Runway**: Heatmap showing months of buffer
-- **Cumulative Fees & Taxes**: Cost comparison at different horizons
-- **Net Worth Drawdown**: Risk analysis across scenarios
+- **Cumulative Fees & Taxes**: Cost comparison with horizon labels; hides empty results
+- **Net Worth Drawdown**: Risk analysis across scenarios (drawdown ≤ 0 by definition)
 
 #### Scenario-Level Charts
 - **Cashflow Waterfall**: Annual income → expenses breakdown
 - **Owner Equity vs Property Value**: Real estate analysis
 - **LTV & DSTI Over Time**: Risk metrics evolution
-- **Contribution vs Market Growth**: Performance attribution
+- **Contribution vs Market Growth**: Performance attribution with debt principal separated
 
 ### Chart Usage
 

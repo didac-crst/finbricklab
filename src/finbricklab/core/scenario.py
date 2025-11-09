@@ -1080,6 +1080,9 @@ class Scenario:
         # Handle maturity transfers for cash accounts with end_date and route links
         self._handle_maturity_transfers(outputs, ctx, journal, brick_iteration_counters)
 
+        # Enrich property outputs with linked mortgage metrics
+        self._attach_property_metrics(outputs)
+
         # Validate journal invariants (V2)
         if self.validate_routing:
             errors = journal.validate_invariants(account_registry)
@@ -1095,6 +1098,63 @@ class Scenario:
                 raise AssertionError(f"Journal origin_id validation failed: {e}") from e
 
         return outputs, journal
+
+    def _attach_property_metrics(self, outputs: dict[str, BrickOutput]) -> None:
+        """
+        Populate property-specific metrics (property_value, owner_equity, mortgage_balance)
+        after all bricks have been simulated.
+        """
+        property_bricks = [
+            b
+            for b in self.bricks
+            if isinstance(b, ABrick) and b.kind == K.A_PROPERTY and b.id in outputs
+        ]
+
+        if not property_bricks:
+            return
+
+        for prop in property_bricks:
+            prop_output = outputs.get(prop.id)
+            if prop_output is None:
+                continue
+
+            prop_value = np.array(
+                prop_output.get(
+                    "property_value", prop_output.get("assets", np.array([]))
+                ),
+                copy=True,
+            )
+            if prop_value.size == 0:
+                continue
+
+            mortgage_balance = np.zeros_like(prop_value)
+
+            for brick in self.bricks:
+                if brick.id == prop.id or brick.id not in outputs:
+                    continue
+                if not isinstance(brick, LBrick):
+                    continue
+                if not getattr(brick, "links", None):
+                    continue
+
+                principal_link = brick.links.get("principal")
+                if (
+                    isinstance(principal_link, dict)
+                    and principal_link.get("from_house") == prop.id
+                ):
+                    mortgage_output = outputs.get(brick.id)
+                    if mortgage_output is None:
+                        continue
+                    mortgage_series = mortgage_output.get(
+                        "mortgage_balance", mortgage_output.get("liabilities")
+                    )
+                    if mortgage_series is None:
+                        continue
+                    mortgage_balance = mortgage_balance + np.asarray(mortgage_series)
+
+            prop_output["mortgage_balance"] = mortgage_balance
+            prop_output["property_value"] = prop_value
+            prop_output["owner_equity"] = prop_value - mortgage_balance
 
     def _handle_maturity_transfers(
         self,
@@ -1914,14 +1974,20 @@ class Scenario:
 
     def _create_empty_output(self, length: int) -> BrickOutput:
         """Create an empty BrickOutput for bricks that don't participate in simulation."""
-        return BrickOutput(
+        empty = BrickOutput(
             cash_in=np.zeros(length),
             cash_out=np.zeros(length),
             assets=np.zeros(length),
             liabilities=np.zeros(length),
             interest=np.zeros(length),
+            property_value=np.zeros(length),
+            owner_equity=np.zeros(length),
+            mortgage_balance=np.zeros(length),
+            fees=np.zeros(length),
+            taxes=np.zeros(length),
             events=[],
         )
+        return empty
 
     def _aggregate_results(
         self,
@@ -1982,6 +2048,19 @@ class Scenario:
         assets_tot = sum(o["assets"] for o in outputs.values())
         liabilities_tot = sum(o["liabilities"] for o in outputs.values())
         interest_tot = sum(o["interest"] for o in outputs.values())
+        property_value_tot = sum(
+            o.get("property_value", np.zeros(len(t_index))) for o in outputs.values()
+        )
+        owner_equity_tot = sum(
+            o.get("owner_equity", np.zeros(len(t_index))) for o in outputs.values()
+        )
+        mortgage_balance_tot = sum(
+            o.get("mortgage_balance", np.zeros(len(t_index))) for o in outputs.values()
+        )
+        fees_tot = sum(o.get("fees", np.zeros(len(t_index))) for o in outputs.values())
+        taxes_tot = sum(
+            o.get("taxes", np.zeros(len(t_index))) for o in outputs.values()
+        )
         net_cf = cash_in_tot - cash_out_tot
         equity = assets_tot - liabilities_tot
 
@@ -2004,6 +2083,11 @@ class Scenario:
                 "assets": assets_tot,
                 "liabilities": liabilities_tot,
                 "interest": interest_tot,
+                "property_value": property_value_tot,
+                "owner_equity": owner_equity_tot,
+                "mortgage_balance": mortgage_balance_tot,
+                "fees": fees_tot,
+                "taxes": taxes_tot,
                 "non_cash": non_cash_assets,
                 "equity": equity,
             }
@@ -2113,35 +2197,46 @@ class Scenario:
         # Map current columns to canonical schema
         canonical_df = pd.DataFrame(index=df.index)
 
+        # Helper to ensure column exists as float Series
+        def _series_or_zero(column: str) -> pd.Series:
+            if column in df.columns:
+                return df[column].astype("float64")
+            return pd.Series(0.0, index=df.index, dtype="float64")
+
         # Required columns - map from current schema
         canonical_df["date"] = df.index
 
         # Cash and asset mapping
-        canonical_df["cash"] = df.get("cash", 0.0)
-        canonical_df["liquid_assets"] = df.get("non_cash", 0.0)
+        canonical_df["cash"] = _series_or_zero("cash")
 
-        # Map property_value -> illiquid_assets (Option B, strict non-negative)
-        if "property_value" in df.columns:
-            pv = df["property_value"]
-            if (pv < 0).any():
-                bad_ix = list(df.index[(pv < 0)])
-                raise ValueError(
-                    f"property_value contains negative entries at indices {bad_ix[:5]}..."
-                )
-            canonical_df["illiquid_assets"] = pv
-        else:
-            canonical_df["illiquid_assets"] = 0.0
+        # Split non_cash into liquid (non-property) and illiquid (property) assets
+        non_cash = _series_or_zero("non_cash")
+        pv = _series_or_zero("property_value")
+        if (pv < 0).any():
+            bad_ix = list(df.index[(pv < 0)])
+            raise ValueError(
+                f"property_value contains negative entries at indices {bad_ix[:5]}..."
+            )
+        liquid = (non_cash - pv).clip(lower=0.0)
+        canonical_df["liquid_assets"] = liquid
+        canonical_df["illiquid_assets"] = pv
+        canonical_df["property_value"] = pv
 
         # Liabilities
-        canonical_df["liabilities"] = df.get("liabilities", 0.0)
+        canonical_df["liabilities"] = _series_or_zero("liabilities")
 
         # Cash flows
-        canonical_df["inflows"] = df.get("cash_in", 0.0)
-        canonical_df["outflows"] = df.get("cash_out", 0.0)
+        canonical_df["inflows"] = _series_or_zero("cash_in")
+        canonical_df["outflows"] = _series_or_zero("cash_out")
 
-        # Fees and taxes (not currently tracked separately)
-        canonical_df["taxes"] = 0.0
-        canonical_df["fees"] = 0.0
+        # Fees and taxes
+        canonical_df["taxes"] = _series_or_zero("taxes")
+        canonical_df["fees"] = _series_or_zero("fees")
+
+        # Optional property-specific fields
+        canonical_df["owner_equity"] = _series_or_zero("owner_equity")
+        canonical_df["mortgage_balance"] = _series_or_zero("mortgage_balance")
+        canonical_df["interest"] = _series_or_zero("interest")
 
         # Compute derived columns
         canonical_df["total_assets"] = (
@@ -2163,6 +2258,10 @@ class Scenario:
             "outflows",
             "taxes",
             "fees",
+            "property_value",
+            "owner_equity",
+            "mortgage_balance",
+            "interest",
             "total_assets",
             "net_worth",
         ]
