@@ -29,6 +29,27 @@ All notable changes to this project will be documented in this file.
 - Updated `docs/STRATEGIES.md` with filter semantics section
 - Updated `README.md` with sticky defaults and A/L-only selection rules
 
+## [0.2.1] - 2025-11-09
+
+### Fixed
+- **Cashflow Double Counting**: Scenario aggregation skips journal entries whose `parent_id` matches array-origin flows, preventing inflated cash totals across filtered views.
+- **Recurring Transfer Sunsets**: `TransferRecurring` now respects `end_date` (attribute or spec) so funding stops after the configured month.
+- **Liability Cash Routing**: All loan schedules post principal and interest to the configured cash bricks (via `links.route`), keeping routed accounts in balance.
+- **Unicode Slugification**: `slugify_name()` normalizes accented characters (e.g., “São Paulo” → `sao_paulo`) to avoid empty IDs.
+
+### Changed
+- **MacroBrick Membership**: MacroBricks accept A/L/F/T bricks while de-duplicating shared members; execution still runs each shell brick once per scenario.
+- **Cash Valuation**: `_normalize_timestamp()` now handles `pd.Timestamp`, `pd.Period`, and NumPy scalars; overdraft checks share a helper for monthly and initial balances.
+- **Entity Scenario Catalog**: `create_scenario()` updates the legacy `scenarios` list alongside the registry so compare/breakeven flows keep working.
+
+### Added
+- **Loan Routing Utility**: New `_loan_utils.resolve_loan_cash_nodes()` centralizes validation for `links.route`, including fallbacks to the default settlement account.
+- **PR Report Targets**: Makefile includes `pr-report`, `pr-report-open`, and `pr-report-clean` helpers for generating GitHub review summaries.
+
+### Tests & Tooling
+- Added regressions for routed loan schedules, multi-cash filtered views, MacroBrick shell execution, and transfer end-dates.
+- Updated activation-window assertions to cent-level tolerances consistent with journal rounding.
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
