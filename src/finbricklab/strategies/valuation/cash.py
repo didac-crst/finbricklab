@@ -4,6 +4,7 @@ Cash account valuation strategy.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from datetime import datetime
 
@@ -289,8 +290,6 @@ class ValuationCash(IValuationStrategy):
                     f"balance {balance:.2f} < -{overdraft_limit:.2f}"
                 )
             if overdraft_policy == "warn":
-                import logging
-
                 log = logging.getLogger(__name__)
                 log.warning(
                     "%s: overdraft_limit exceeded at month %d: balance %.2f < -%.2f",

@@ -233,7 +233,7 @@ class ScenarioResults:
         # Add UI/UX guardrails
         self._add_transfer_metadata(filtered_data, visibility, filtered_outputs)
 
-        return filtered_data
+        return finalize_totals(filtered_data)
 
     def _filter_outputs_by_transfer_visibility(
         self, visibility: TransferVisibility
@@ -542,7 +542,8 @@ class ScenarioResults:
             Tuple of (selection_set, unknown_ids, non_al_ids) where:
             - selection_set: Set of A/L node IDs for selection
             - unknown_ids: List of unknown brick IDs (warned)
-            - non_al_ids: List of non-A/L brick IDs (warned, ignored in selection)
+            - non_al_ids: List of non-A/L brick IDs explicitly requested by the user
+              (MacroBrick expansion silently drops F/T members to avoid noisy warnings)
         """
         if self._registry is None:
             return set(), [], []

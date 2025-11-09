@@ -561,7 +561,7 @@ class Entity:
             name=name,
             kind=kind,
             spec=spec or {},
-            links=links.copy() if isinstance(links, dict) else links,
+            links=deepcopy(links) if isinstance(links, dict) else links,
             start_date=start_date,
             end_date=end_date,
             duration_m=duration_m,

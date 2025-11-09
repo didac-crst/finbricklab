@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .errors import ConfigError
 from .utils import slugify_name
 
 if TYPE_CHECKING:
@@ -40,10 +41,10 @@ class MacroBrick:
         """Normalize MacroBrick ID from name when omitted."""
         if not self.id:
             if not self.name:
-                raise ValueError("MacroBrick must define either an id or a name")
+                raise ConfigError("MacroBrick must define either an id or a name")
             normalized = slugify_name(self.name)
             if not normalized:
-                raise ValueError(
+                raise ConfigError(
                     f"MacroBrick name '{self.name}' cannot be converted into a valid id"
                 )
             self.id = normalized

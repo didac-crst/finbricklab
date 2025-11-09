@@ -514,17 +514,6 @@ class Scenario:
 
         return by_struct
 
-    def _create_empty_output(self, length: int) -> BrickOutput:
-        """Create an empty BrickOutput with the specified length."""
-        return {
-            "cash_in": np.zeros(length),
-            "cash_out": np.zeros(length),
-            "assets": np.zeros(length),
-            "liabilities": np.zeros(length),
-            "interest": np.zeros(length),
-            "equity": np.zeros(length),
-        }
-
     def _initialize_simulation(
         self, start: date, months: int
     ) -> tuple[np.ndarray, ScenarioContext]:
@@ -2589,8 +2578,11 @@ def validate_run(
                 ob = outputs[b.id]
                 # Check if there's a stock change at t_stop (auto-dispose/payoff)
                 # If stocks change at t_stop, the flows at t_stop should match the change
-                d_assets = ob["asset_value"][t_stop + 1] - ob["asset_value"][t_stop]
-                d_debt = ob["debt_balance"][t_stop + 1] - ob["debt_balance"][t_stop]
+                assets_key = "assets" if "assets" in ob else "asset_value"
+                debt_key = "liabilities" if "liabilities" in ob else "debt_balance"
+
+                d_assets = ob[assets_key][t_stop + 1] - ob[assets_key][t_stop]
+                d_debt = ob[debt_key][t_stop + 1] - ob[debt_key][t_stop]
                 flows_t = ob["cash_in"][t_stop] - ob["cash_out"][t_stop]
 
                 # Only validate if there's a significant stock change

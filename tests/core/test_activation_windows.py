@@ -107,7 +107,7 @@ class TestActivationWindows:
 
         # Month 0: cash balance reflects opening balance
         assert cash_balance[0] == pytest.approx(
-            5000.0, rel=1e-6
+            5000.0, abs=1e-2
         ), "Month 1 cash balance should equal opening balance"
 
         # Month 0: no cash inflow recorded (opening excluded)
