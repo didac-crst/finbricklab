@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import warnings
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -208,11 +207,18 @@ class ValuationCash(IValuationStrategy):
         first_active_idx = int(active_indices[0])
 
         def _normalize_timestamp(ts):
+            if isinstance(ts, pd.Timestamp):
+                return ts.to_pydatetime()
+            if isinstance(ts, pd.Period):
+                return ts.to_timestamp().to_pydatetime()
             if isinstance(ts, np.datetime64):
                 return pd.Timestamp(ts).to_pydatetime()
             if hasattr(ts, "astype"):
-                return pd.Timestamp(ts.astype("datetime64[D]")).to_pydatetime()
-            return datetime.fromisoformat(str(ts))
+                try:
+                    return pd.Timestamp(ts.astype("datetime64[D]")).to_pydatetime()
+                except Exception:
+                    pass
+            return pd.Timestamp(ts).to_pydatetime()
 
         def _post_interest_entry(month_idx: int) -> None:
             interest_value = interest_earned[month_idx]

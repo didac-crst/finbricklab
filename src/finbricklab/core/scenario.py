@@ -920,6 +920,20 @@ class Scenario:
                             inferred_parent = parts[1]
                             if inferred_parent:
                                 parent_id = inferred_parent
+                bt = entry.metadata.get("brick_type")
+                bid = entry.metadata.get("brick_id")
+                prefix = {
+                    "flow": "fs",
+                    "transfer": "ts",
+                    "liability": "l",
+                    "asset": "a",
+                }.get(bt or "")
+                if prefix and bid:
+                    candidate = f"{prefix}:{bid}"
+                    if candidate in array_parent_ids:
+                        continue
+                    if parent_id is None:
+                        parent_id = candidate
                 if parent_id in array_parent_ids:
                     continue
                 if entry.metadata.get("transaction_type") == "opening":
@@ -1319,6 +1333,7 @@ class Scenario:
                 "amount_type": "credit" if cash_in > 0 else "debit",
             },
         )
+        entry.metadata["parent_id"] = f"ts:{brick.id}"
 
         # Stamp posting metadata with node_id (V2 requirement)
         from .journal import stamp_posting_metadata
@@ -1468,6 +1483,7 @@ class Scenario:
                 "boundary_account": boundary_account,
             },
         )
+        entry.metadata["parent_id"] = f"fs:{brick.id}"
 
         # Stamp posting metadata with node_id (V2 requirement)
         from .accounts import BOUNDARY_NODE_ID
@@ -1599,6 +1615,7 @@ class Scenario:
                 "boundary_account": boundary_account,
                 "total_disbursement": cash_in,
             }
+            disbursement_metadata["parent_id"] = f"l:{brick.id}"
 
             disbursement_entry = JournalEntry(
                 id=disbursement_record_id,
@@ -1698,6 +1715,7 @@ class Scenario:
                     "total_payment": cash_out,
                 }
             )
+            metadata["parent_id"] = f"l:{brick.id}"
 
             entry = JournalEntry(
                 id=record_id,
