@@ -184,6 +184,16 @@ runway_df = entity.liquidity_runway(lookback_months=3, essential_share=0.5)
 # Returns DataFrame with columns: scenario_id, scenario_name, date, cash, essential_outflows, liquidity_runway_months
 ```
 
+### `ingest_catalog(source, format=None)`
+Loads bricks and MacroBricks from a YAML/JSON catalog and registers them in the
+entity. Returns the list of created IDs plus catalog metadata. See
+`docs/BRICK_CATALOG_YAML.md` for the catalog syntax.
+
+```python
+summary = entity.ingest_catalog("./catalogs/base.yaml")
+print(summary["bricks"], summary["macrobricks"])
+```
+
 ## Chart Functions
 
 Chart functions are available in `finbricklab.charts` and require Plotly installation:
