@@ -141,6 +141,8 @@ class TransferLumpSum(ITransferStrategy):
         # V2: Don't emit cash arrays - use journal entries instead
         cash_in = np.zeros(T, dtype=float)
         cash_out = np.zeros(T, dtype=float)
+        fees_series = np.zeros(T, dtype=float)
+        taxes_series = np.zeros(T, dtype=float)
 
         # Get journal from context (V2)
         if ctx.journal is None:
@@ -192,6 +194,8 @@ class TransferLumpSum(ITransferStrategy):
                 assets=np.zeros(T),
                 liabilities=np.zeros(T),
                 interest=np.zeros(T),
+                fees=fees_series,
+                taxes=taxes_series,
                 events=[],
             )
 
@@ -369,6 +373,7 @@ class TransferLumpSum(ITransferStrategy):
                 },
             )
             events.append(fee_event)
+            fees_series[month_idx] += float(fee_amount)
 
         # Handle FX if specified (V2: create FX journal entries)
         # FX entries are created outside the regular transfer block
@@ -628,5 +633,7 @@ class TransferLumpSum(ITransferStrategy):
             assets=np.zeros(T),
             liabilities=np.zeros(T),
             interest=np.zeros(T),  # Transfer bricks don't generate interest
+            fees=fees_series,
+            taxes=taxes_series,
             events=events,
         )

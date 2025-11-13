@@ -12,12 +12,19 @@ from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from .bricks import ABrick, FBrick, FinBrickABC, LBrick, TBrick
+from .catalog_loader import (
+    BrickDirective,
+    CatalogDefinition,
+    CatalogError,
+    load_catalog,
+)
 from .clone import clone_brick
 from .exceptions import ScenarioValidationError
 from .kinds import K
@@ -340,6 +347,79 @@ class Entity:
 
         return pd.concat(results, axis=0, ignore_index=True)
 
+    # ---------- Catalog ingestion ----------
+
+    def ingest_catalog(
+        self,
+        source: str | Path | dict[str, Any],
+        *,
+        format: str | None = None,
+        validate_macro_membership: bool = True,
+    ) -> dict[str, Any]:
+        """Load bricks and MacroBricks from a structured catalog file."""
+
+        catalog: CatalogDefinition = load_catalog(source, format=format)
+
+        created_bricks: list[str] = []
+        for directive in catalog.bricks:
+            brick = self._register_brick_from_directive(directive)
+            created_bricks.append(brick.id)
+
+        created_macrobricks: list[str] = []
+        for directive in catalog.macrobricks:
+            macro = self.new_MacroBrick(
+                id=directive.id,
+                name=directive.name,
+                member_ids=directive.members,
+                tags=directive.tags,
+                allow_unknown_members=True,
+            )
+            created_macrobricks.append(macro.id)
+
+        if validate_macro_membership and created_macrobricks:
+            try:
+                Registry(self._bricks, self._macrobricks)
+            except Exception as exc:  # pragma: no cover - defensive
+                raise CatalogError(
+                    f"Catalog '{catalog.source}' registered invalid MacroBrick members"
+                ) from exc
+
+        return {
+            "bricks": created_bricks,
+            "macrobricks": created_macrobricks,
+            "metadata": catalog.metadata,
+            "source": catalog.source,
+        }
+
+    def _register_brick_from_directive(self, directive: BrickDirective) -> FinBrickABC:
+        """Instantiate a brick from a catalog directive and register it."""
+
+        kwargs: dict[str, Any] = {
+            "id": directive.id,
+            "name": directive.name,
+            "kind": directive.kind,
+            "spec": deepcopy(directive.spec),
+            "links": deepcopy(directive.links) if directive.links else None,
+            "currency": directive.currency or self.base_currency,
+            "start_date": directive.start_date,
+            "end_date": directive.end_date,
+            "duration_m": directive.duration_m,
+        }
+
+        family = directive.family
+        if family == "a":
+            return self.new_ABrick(**kwargs)
+        if family == "l":
+            return self.new_LBrick(**kwargs)
+        if family == "f":
+            return self.new_FBrick(**kwargs)
+        if family == "t":
+            transparent = directive.transparent
+            if transparent is None:
+                transparent = True
+            return self.new_TBrick(transparent=transparent, **kwargs)
+        raise CatalogError(f"Unsupported brick family '{family}' for {directive.kind}")
+
     def _get_scenario(self, scenario_id: str) -> Scenario:
         """Get scenario by ID."""
         for scenario in self.scenarios:
@@ -522,6 +602,7 @@ class Entity:
         end_date: date | None = None,
         duration_m: int | None = None,
         transparent: bool = True,
+        currency: str | None = None,
     ) -> TBrick:
         """
         Create and register a new TBrick (Transfer Brick).
@@ -551,21 +632,32 @@ class Entity:
             raise ValueError(
                 "Transfer bricks require 'links' with 'from' and 'to' accounts"
             )
-        if "from" not in links:
-            raise ValueError("Transfer bricks must specify 'from' account")
-        if "to" not in links:
-            raise ValueError("Transfer bricks must specify 'to' account")
+        normalized_links = deepcopy(links) if isinstance(links, dict) else links
+        if isinstance(normalized_links, dict):
+            if "from" not in normalized_links and "route" in normalized_links:
+                route = normalized_links["route"]
+                if isinstance(route, dict):
+                    if "from" in route:
+                        normalized_links["from"] = route["from"]
+                    if "to" in route:
+                        normalized_links["to"] = route["to"]
+        if isinstance(normalized_links, dict):
+            if "from" not in normalized_links:
+                raise ValueError("Transfer bricks must specify 'from' account")
+            if "to" not in normalized_links:
+                raise ValueError("Transfer bricks must specify 'to' account")
 
         brick = TBrick(
             id=id or "",
             name=name,
             kind=kind,
             spec=spec or {},
-            links=deepcopy(links) if isinstance(links, dict) else links,
+            links=normalized_links,
             start_date=start_date,
             end_date=end_date,
             duration_m=duration_m,
             transparent=transparent,
+            currency=currency or self.base_currency,
         )
         final_id = brick.id
         self._assert_unique_id(final_id)
@@ -578,6 +670,7 @@ class Entity:
         name: str | None = None,
         member_ids: list[str] | None = None,
         tags: list[str] | None = None,
+        allow_unknown_members: bool = False,
     ) -> MacroBrick:
         """
         Create and register a new MacroBrick.
@@ -588,6 +681,7 @@ class Entity:
             name: Human-readable name for the MacroBrick
             member_ids: List of brick/MacroBrick IDs to include
             tags: Optional list of tags for categorization
+            allow_unknown_members: Skip immediate membership validation (ingestion paths)
 
         Returns:
             The created MacroBrick object
@@ -610,10 +704,10 @@ class Entity:
                 )
 
         self._assert_unique_id(candidate_id)
-        # Validate membership against current catalog
-        for member_id in member_ids:
-            if member_id not in self._bricks and member_id not in self._macrobricks:
-                raise ValueError(f"Member ID '{member_id}' not found")
+        if not allow_unknown_members:
+            for member_id in member_ids:
+                if member_id not in self._bricks and member_id not in self._macrobricks:
+                    raise ValueError(f"Member ID '{member_id}' not found")
 
         macrobrick = MacroBrick(
             id=candidate_id, name=name, members=member_ids, tags=tags or []

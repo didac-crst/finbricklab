@@ -76,6 +76,79 @@ class FinBrickABC:
                 )
             self.id = normalized
 
+    # --- Introspection helpers -------------------------------------------------
+    def summary(self, include_spec: bool = False) -> dict:
+        """
+        Lightweight JSON-serializable overview of this brick.
+
+        Args:
+            include_spec: Include a small, whitelisted snapshot of spec fields.
+
+        Returns:
+            Dict with core metadata and window/links hints.
+        """
+        spec_snapshot = None
+        if include_spec and isinstance(self.spec, dict):
+            whitelist = {
+                "initial_balance",
+                "initial_value",
+                "principal",
+                "rate_pa",
+                "drift_pa",
+                "price0",
+                "amount",
+                "amount_monthly",
+                "term_months",
+                "fees_pct",
+                "appreciation_pa",
+            }
+            filtered = {k: v for k, v in self.spec.items() if k in whitelist}
+            if filtered:
+                spec_snapshot = filtered
+
+        route_to = None
+        if isinstance(self.links, dict):
+            route = self.links.get("route")
+            if isinstance(route, dict):
+                destination = route.get("to")
+                if isinstance(destination, str):
+                    route_to = destination
+
+        strategy_bound = False
+        if self.family == "a":
+            strategy_bound = getattr(self, "valuation", None) is not None
+        elif self.family == "l":
+            strategy_bound = getattr(self, "schedule", None) is not None
+        elif self.family == "f":
+            strategy_bound = getattr(self, "flow", None) is not None
+        elif self.family == "t":
+            strategy_bound = getattr(self, "transfer", None) is not None
+
+        summary: dict[str, object] = {
+            "type": "brick",
+            "id": self.id,
+            "name": self.name,
+            "family": self.family,
+            "kind": self.kind,
+            "currency": self.currency,
+            "window": {
+                "start": self.start_date.isoformat()
+                if isinstance(self.start_date, date)
+                else None,
+                "end": self.end_date.isoformat()
+                if isinstance(self.end_date, date)
+                else None,
+                "duration_m": self.duration_m,
+            },
+            "links": {"route_to": route_to} if route_to else {},
+            "strategy_bound": bool(strategy_bound),
+        }
+
+        if spec_snapshot is not None:
+            summary["spec_summary"] = spec_snapshot
+
+        return summary
+
     def prepare(self, ctx: ScenarioContext) -> None:
         """
         Prepare the brick for simulation.

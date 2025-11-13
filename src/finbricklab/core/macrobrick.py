@@ -163,3 +163,53 @@ class MacroBrick:
 
     def __repr__(self) -> str:
         return f"MacroBrick(id='{self.id}', name='{self.name}', members={self.members}, tags={self.tags})"
+
+    # --- Introspection helpers -------------------------------------------------
+    def summary(
+        self,
+        registry: Registry | None = None,
+        *,
+        flatten: bool = False,
+        include_members: bool = False,
+    ) -> dict:
+        """
+        Lightweight overview of this MacroBrick for API/CLI/UI.
+
+        Args:
+            registry: Optional registry for expansion/validation.
+            flatten: When True, include flattened members (requires registry).
+            include_members: Include direct members list.
+
+        Returns:
+            Dict with core metadata and member counts.
+        """
+        flat_members: list[str] | None = None
+        if flatten and registry is not None:
+            try:
+                flat_members = sorted(self.expand_member_bricks(registry))
+            except Exception:
+                flat_members = None
+
+        data: dict[str, object] = {
+            "type": "macrobrick",
+            "id": self.id,
+            "name": self.name,
+            "tags": list(self.tags) if self.tags else [],
+            "n_direct": len(self.members),
+            "is_empty": len(self.members) == 0,
+        }
+
+        if include_members:
+            data["direct_members"] = list(self.members)
+
+        if registry is not None:
+            contains_macros = sum(
+                1 for member_id in self.members if registry.is_macrobrick(member_id)
+            )
+            data["contains_macros"] = contains_macros
+
+        if flat_members is not None:
+            data["flat_members"] = flat_members
+            data["n_flat"] = len(flat_members)
+
+        return data

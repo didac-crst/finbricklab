@@ -1,0 +1,96 @@
+# Example FinBrickLab catalog (YAML)
+#
+# Load with:
+#   entity.ingest_catalog("examples/catalogs/starter.yaml")
+#
+# After ingestion you can create scenarios by referencing the brick IDs
+# defined below (cash, salary, brokerage, mortgage, insurance, transfer_savings).
+
+version: 1
+entity:
+  name: Starter Catalog
+defaults:
+  currency: EUR
+  window:
+    start: 2026-01-01
+
+bricks:
+  - id: cash
+    name: Cash Account
+    kind: a.cash
+    spec:
+      initial_balance: 20000
+      interest_pa: 0.01
+
+  - id: salary
+    name: Salary
+    kind: f.income.recurring
+    spec:
+      amount_monthly: 5000
+      step_pct: 0.03
+      step_every_m: 12
+
+  - id: rent
+    name: Rent
+    kind: f.expense.recurring
+    spec:
+      amount_monthly: 1800
+      step_pct: 0.02
+      step_every_m: 12
+
+  - id: insurance
+    name: Home Insurance
+    kind: f.expense.recurring
+    spec:
+      amount_monthly: 65
+      step_pct: 0.05
+      step_every_m: 24
+
+  - id: brokerage
+    name: Brokerage Account
+    kind: a.security.unitized
+    spec:
+      initial_units: 25
+      price0: 200
+
+  - id: house
+    name: Primary Residence
+    kind: a.property
+    spec:
+      initial_value: 500000
+      fees_pct: 0.05
+      appreciation_pa: 0.02
+
+  - id: mortgage
+    name: Mortgage
+    kind: l.loan.annuity
+    spec:
+      principal: 350000
+      rate_pa: 0.025
+      term_months: 360
+    window:
+      start: 2026-01-01
+    links:
+      principal:
+        from_house: house
+
+  - id: transfer_savings
+    name: Transfer to Brokerage
+    kind: t.transfer.recurring
+    spec:
+      amount_monthly: 1000
+    links:
+      route:
+        from: cash
+        to: brokerage
+
+macrobricks:
+  - id: liquid_assets
+    name: Liquid Assets
+    members: [cash, brokerage]
+  - id: housing_stack
+    name: Housing Stack
+    members: [house, mortgage]
+  - id: recurring_flows
+    name: Recurring Flows
+    members: [salary, rent, insurance, transfer_savings]

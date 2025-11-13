@@ -335,6 +335,8 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
         cash_out = np.zeros(T)
         debt = np.zeros(T)
         interest_paid = np.zeros(T)
+        fees_series = np.zeros(T)
+        taxes_series = np.zeros(T)
 
         # Get journal from context (V2)
         if ctx.journal is None:
@@ -490,6 +492,8 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
                 if prepay_amt > 0:
                     prepay_fee = prepay_amt * prepay_fee_pct
                     total_payment = interest + principal_pay + prepay_amt + prepay_fee
+                    if prepay_fee > 0:
+                        fees_series[t] += prepay_fee
                     debt[t] = max(bal_after_sched - prepay_amt, 0.0)
                 else:
                     total_payment = interest + principal_pay
@@ -857,5 +861,7 @@ class ScheduleLoanAnnuity(IScheduleStrategy):
             assets=np.zeros(T),
             liabilities=debt,
             interest=-interest_paid,  # Negative for interest expense
+            fees=fees_series,
+            taxes=taxes_series,
             events=events,
         )

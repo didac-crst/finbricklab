@@ -25,6 +25,7 @@ numpy = "^1.24.0"
 pandas = "^2.0.0"
 plotly = ">=6.1.1"
 kaleido = "^1.1.0"
+pyyaml = "^6.0.3"
 
 [tool.poetry.extras]
 viz = ["plotly", "kaleido"]
@@ -50,6 +51,10 @@ mkdocs-autorefs = "^0.5"
 mkdocs-include-markdown-plugin = "^6.0"
 interrogate = "^1.6"
 griffe = "^0.36"
+
+
+[tool.poetry.group.viz.dependencies]
+nbformat = "^5.10.4"
 
 [tool.poetry.scripts]
 finbrick = "finbricklab.cli:main"

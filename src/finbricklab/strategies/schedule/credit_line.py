@@ -143,6 +143,8 @@ class ScheduleCreditLine(IScheduleStrategy):
         # Initialize arrays
         debt_balance = np.zeros(months, dtype=float)
         interest_paid = np.zeros(months, dtype=float)
+        fees_series = np.zeros(months, dtype=float)
+        taxes_series = np.zeros(months, dtype=float)
 
         if ctx.journal is None:
             raise ValueError(
@@ -380,6 +382,7 @@ class ScheduleCreditLine(IScheduleStrategy):
                     )
                     if not journal.has_id(fee_entry.id):
                         journal.post(fee_entry)
+                    fees_series[month_idx] += float(monthly_fee)
                     sequence += 1
 
                 # 3. Calculate minimum payment (with i_m)
@@ -451,6 +454,8 @@ class ScheduleCreditLine(IScheduleStrategy):
             assets=np.zeros(months, dtype=float),
             liabilities=debt_balance,
             interest=-interest_paid,  # Negative for interest expense
+            fees=fees_series,
+            taxes=taxes_series,
             events=[],
         )
 

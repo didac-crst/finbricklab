@@ -61,8 +61,8 @@ All scenarios must emit data in the canonical schema format through the `to_cano
 | `liabilities` | float64 | All debt balances |
 | `inflows` | float64 | Post-tax income + dividends + rents received |
 | `outflows` | float64 | Consumption + rent paid + maintenance + insurance |
-| `taxes` | float64 | Tax payments (currently defaults to 0) |
-| `fees` | float64 | Fee payments (currently defaults to 0) |
+| `taxes` | float64 | Tax payments (withholding, remittances, etc.) |
+| `fees` | float64 | Fees charged by instruments, transfers, or services |
 
 ### Derived Columns
 
@@ -79,8 +79,8 @@ These enable richer visualizations but are not required:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `interest` | float64 | Interest payments |
-| `principal` | float64 | Principal payments |
+| `interest` | float64 | Interest income or expense |
+| `principal` | float64 | Principal payments (deprecated in V2) |
 | `mortgage_balance` | float64 | Outstanding mortgage balance |
 | `property_value` | float64 | Property market value |
 | `owner_equity` | float64 | Property owner equity |
@@ -88,6 +88,9 @@ These enable richer visualizations but are not required:
 | `market_growth` | float64 | Market-driven growth |
 | `rent_paid` | float64 | Rent payments |
 | `insurance_premiums` | float64 | Insurance payments |
+| `interest` | float64 | Interest income or expense |
+
+> **Real estate integration (V2.1):** Property bricks now populate `property_value` and `owner_equity` automatically. When a linked mortgage is present, its balance is forwarded to the `mortgage_balance` column, enabling LTV and housing equity charts without additional bookkeeping.
 
 ## Asset Classification Rules
 
@@ -179,6 +182,16 @@ Calculates liquidity runway for each scenario.
 ```python
 runway_df = entity.liquidity_runway(lookback_months=3, essential_share=0.5)
 # Returns DataFrame with columns: scenario_id, scenario_name, date, cash, essential_outflows, liquidity_runway_months
+```
+
+### `ingest_catalog(source, format=None)`
+Loads bricks and MacroBricks from a YAML/JSON catalog and registers them in the
+entity. Returns the list of created IDs plus catalog metadata. See
+`docs/BRICK_CATALOG_YAML.md` for the catalog syntax.
+
+```python
+summary = entity.ingest_catalog("./catalogs/base.yaml")
+print(summary["bricks"], summary["macrobricks"])
 ```
 
 ## Chart Functions

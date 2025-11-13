@@ -1,0 +1,42 @@
+version: 1
+defaults:
+  currency: EUR
+  spec:
+    tax_rate: 0.2
+  window:
+    start: 2026-01-01
+bricks:
+  - id: cash
+    name: Cash Reserve
+    kind: a.cash
+    spec:
+      initial_balance: 15000
+  - name: Salary
+    kind: f.income.recurring
+    spec:
+      amount_monthly: 5000
+  - id: brokerage
+    name: Brokerage
+    kind: a.security.unitized
+    spec:
+      initial_units: 10
+      price0: 100
+    window:
+      start: 2026-03-01
+      duration_m: 12
+  - name: Transfer to Brokerage
+    id: transfer_brokerage
+    kind: t.transfer.recurring
+    spec:
+      amount_monthly: 700
+    links:
+      route:
+        from: cash
+        to: brokerage
+    transparent: false
+macrobricks:
+  - id: liquid
+    name: Liquid Net Worth
+    members: [cash, brokerage]
+  - name: Portfolio Total
+    members: [liquid]

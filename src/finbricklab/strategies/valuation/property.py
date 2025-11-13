@@ -73,6 +73,7 @@ class ValuationProperty(IValuationStrategy):
         cash_in = np.zeros(T)
         cash_out = np.zeros(T)
         value = np.zeros(T)
+        fees_series = np.zeros(T)
 
         # Extract parameters
         initial_value = float(brick.spec["initial_value"])
@@ -86,6 +87,7 @@ class ValuationProperty(IValuationStrategy):
         )
         fees_fin_pct = max(0.0, min(1.0, fees_fin_pct))  # Clamp to [0,1]
         fees_cash = fees * (1.0 - fees_fin_pct)
+        fees_series[0] += fees
 
         # t0 settlement: pay seller + cash portion of fees ONCE
         cash_out[0] = initial_value + fees_cash
@@ -143,6 +145,7 @@ class ValuationProperty(IValuationStrategy):
             value[t_stop] = 0.0  # explicit zero on the sale month
             # Set all future values to 0 (property is sold)
             value[t_stop + 1 :] = 0.0
+            fees_series[t_stop] += fees
             events.append(
                 Event(
                     ctx.t_index[t_stop],
@@ -158,5 +161,10 @@ class ValuationProperty(IValuationStrategy):
             assets=value,
             liabilities=np.zeros(T),
             interest=np.zeros(T),  # Property doesn't generate interest/dividends
+            property_value=value.copy(),
+            owner_equity=value.copy(),  # Updated later when mortgages linked
+            mortgage_balance=np.zeros(T),
+            fees=fees_series,
+            taxes=np.zeros(T),
             events=events,
         )

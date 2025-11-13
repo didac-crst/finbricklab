@@ -28,15 +28,18 @@ class FlowExpenseRecurring(IFlowStrategy):
     """
     Fixed monthly expense flow strategy (kind: 'f.expense.recurring').
 
-    This strategy models a regular monthly expense with a constant amount (V2: shell behavior).
-    Commonly used for living expenses, insurance, subscriptions, or other
-    regular recurring costs.
+    This strategy models a regular monthly expense (V2: shell behavior). Amounts
+    can optionally step up on a fixed cadence to represent inflation indexing,
+    insurance premium uprates, etc.
 
     Required Parameters:
         - amount_monthly: The monthly expense amount
 
     Optional Parameters:
         - category: Expense category for boundary posting metadata (default: 'expense.recurring')
+        - step_pct: Multiplicative step applied at each cadence (e.g., 0.02 = +2%)
+        - step_every_m: Number of months between steps (default: 12)
+        - step_cap: Maximum number of steps to apply (None = unlimited)
 
     Note:
         V2: This strategy generates journal entries for expenses (BOUNDARY↔INTERNAL).
@@ -59,6 +62,26 @@ class FlowExpenseRecurring(IFlowStrategy):
         assert (
             "amount_monthly" in brick.spec
         ), "Missing required parameter: amount_monthly"
+
+        step_pct = float(brick.spec.get("step_pct", 0.0))
+        step_every = int(brick.spec.get("step_every_m", 12))
+        if step_every <= 0:
+            raise ValueError("step_every_m must be >= 1")
+        if step_pct <= -1.0:
+            raise ValueError("step_pct must be greater than -1")
+
+        step_cap = brick.spec.get("step_cap")
+        if step_cap is not None:
+            try:
+                step_cap = int(step_cap)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("step_cap must be an integer") from exc
+            if step_cap < 0:
+                raise ValueError("step_cap must be >= 0")
+            brick.spec["step_cap"] = step_cap
+
+        brick.spec.setdefault("step_every_m", step_every)
+        brick.spec.setdefault("step_pct", step_pct)
 
     def simulate(self, brick: FBrick, ctx: ScenarioContext) -> BrickOutput:
         """
@@ -107,15 +130,42 @@ class FlowExpenseRecurring(IFlowStrategy):
             cash_node_id = "a:cash"  # Default fallback
 
         # Extract parameters
-        amount = float(brick.spec["amount_monthly"])
+        base_amount = float(brick.spec["amount_monthly"])
         category = brick.spec.get("category", "expense.recurring")
+        step_pct = float(brick.spec.get("step_pct", 0.0))
+        step_every = int(brick.spec.get("step_every_m", 12))
+        step_cap = brick.spec.get("step_cap")
+        steps_applied = 0
 
         events: list[Event] = []
+        current_amount = base_amount
 
         # Calculate expense for each month
         for t in range(T):
+            if (
+                step_pct != 0.0
+                and step_every > 0
+                and t > 0
+                and t % step_every == 0
+                and (step_cap is None or steps_applied < step_cap)
+            ):
+                current_amount *= 1 + step_pct
+                steps_applied += 1
+                events.append(
+                    Event(
+                        ctx.t_index[t],
+                        "expense_step",
+                        f"Expense stepped to €{current_amount:,.2f}",
+                        {
+                            "step_pct": step_pct,
+                            "steps_applied": steps_applied,
+                            "amount": current_amount,
+                        },
+                    )
+                )
+
             # V2: Create journal entry for expense (BOUNDARY↔INTERNAL: DR expense, CR cash)
-            if amount > 0:
+            if current_amount > 0:
                 expense_timestamp = ctx.t_index[t]
                 if isinstance(expense_timestamp, np.datetime64):
                     import pandas as pd
@@ -149,12 +199,12 @@ class FlowExpenseRecurring(IFlowStrategy):
                     postings=[
                         Posting(
                             account_id=BOUNDARY_NODE_ID,
-                            amount=create_amount(amount, ctx.currency),
+                            amount=create_amount(current_amount, ctx.currency),
                             metadata={},
                         ),
                         Posting(
                             account_id=cash_node_id,
-                            amount=create_amount(-amount, ctx.currency),
+                            amount=create_amount(-current_amount, ctx.currency),
                             metadata={},
                         ),
                     ],

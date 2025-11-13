@@ -274,10 +274,12 @@ All scenarios emit standardized monthly data:
 | `liabilities` | float64 | All debt balances |
 | `inflows` | float64 | Post-tax income + dividends + rents |
 | `outflows` | float64 | Consumption + rent + maintenance + insurance |
-| `taxes` | float64 | Tax payments (currently defaults to 0) |
-| `fees` | float64 | Fee payments (currently defaults to 0) |
+| `taxes` | float64 | Tax payments (withholding, remittances, etc.) |
+| `fees` | float64 | Fees charged by instruments, transfers, or services |
 | `total_assets` | float64 | `cash + liquid_assets + illiquid_assets` |
 | `net_worth` | float64 | `total_assets - liabilities` |
+
+> Property bricks now populate `property_value` / `owner_equity`, and linked mortgages forward their `mortgage_balance`, making housing KPIs and LTV charts turnkey.
 
 ### Visualization Workflow
 
@@ -759,7 +761,7 @@ The diagnostics command reports:
 | Liability | `K.L_CREDIT_FIXED`  | Fixed-term credit                | `principal`, `rate_pa`, `term_months`, `start_date` |
 | Flow      | `K.F_INCOME_RECURRING`      | Fixed recurring income           | `amount_monthly`, `start_date?`, `end_date?`                                            |
 | Flow      | `K.F_INCOME_ONE_TIME`      | One-time income                  | `amount`, `date`, `tax_rate?` |
-| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed recurring expense          | `amount_monthly`, `start_date?`, `end_date?`                                            |
+| Flow      | `K.F_EXPENSE_RECURRING`     | Fixed or stepped expense         | `amount_monthly`, `step_pct?`, `step_every_m?`, `step_cap?`, `start_date?`, `end_date?` |
 | Flow      | `K.F_EXPENSE_ONE_TIME`     | One-time expense                 | `amount`, `date`, `tax_deductible?`, `tax_rate?` |
 | Transfer  | `K.T_TRANSFER_LUMP_SUM`  | One-time internal transfer       | `amount`, `currency`, `from`, `to`                                                |
 | Transfer  | `K.T_TRANSFER_RECURRING`| Recurring internal transfer      | `amount`, `currency`, `freq`, `day`, `from`, `to`                                 |
@@ -791,6 +793,25 @@ Notes
 - Selection accepts A/L node IDs (e.g., `a:cash`, `l:mortgage`) and MacroBrick IDs (expanded to A/L)
 - Transfer visibility: `BOUNDARY_ONLY` (default), `ALL`, `ONLY`, `OFF`
 
+### Introspection helpers
+
+Every core object now provides a cheap, JSON-safe `summary()`:
+
+- `FinBrickABC.summary(include_spec=False)` → core metadata, activation window, optional spec highlights
+- `MacroBrick.summary(registry=None, flatten=False, include_members=False)` → member counts with optional flattened members
+- `Scenario.summary(include_members=False, include_validation=False, include_last_run=True)` → scenario counts, validation hints, and last-run metadata
+- `ScenarioResults.summary(selection=None, transfer_visibility=None)` → selection resolution, frame shape, quick KPIs
+
+Usage example:
+
+```python
+from finbricklab.examples.summary_helpers_example import main as summaries_demo
+
+summaries_demo()
+```
+
+Running the demo prints ready-to-serve payloads that your API/CLI/UI can reuse directly. See `examples/summary_helpers_example.py` for the minimal setup.
+
 ---
 
 ## Visualization
@@ -813,14 +834,14 @@ pip install -e .[viz]
 - **Asset Composition**: Small multiples showing cash/liquid/illiquid assets
 - **Liabilities Amortization**: Debt reduction over time
 - **Liquidity Runway**: Heatmap showing months of buffer
-- **Cumulative Fees & Taxes**: Cost comparison at different horizons
-- **Net Worth Drawdown**: Risk analysis across scenarios
+- **Cumulative Fees & Taxes**: Cost comparison with horizon labels; hides empty results
+- **Net Worth Drawdown**: Risk analysis across scenarios (drawdown ≤ 0 by definition)
 
 #### Scenario-Level Charts
 - **Cashflow Waterfall**: Annual income → expenses breakdown
 - **Owner Equity vs Property Value**: Real estate analysis
 - **LTV & DSTI Over Time**: Risk metrics evolution
-- **Contribution vs Market Growth**: Performance attribution
+- **Contribution vs Market Growth**: Performance attribution with debt principal separated
 
 ### Chart Usage
 
